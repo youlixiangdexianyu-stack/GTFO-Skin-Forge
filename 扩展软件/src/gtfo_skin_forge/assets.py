@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 import copy
 import hashlib
@@ -99,7 +99,7 @@ def _find_file(env, asset_file: Path):
             return value
     if hasattr(env, "file") and env.file is not None:
         return env.file
-    raise ValueError(f"无法读取 Unity 文件容器: {asset_file.name}")
+    raise ValueError(f"鏃犳硶璇诲彇 Unity 鏂囦欢瀹瑰櫒: {asset_file.name}")
 
 
 def _objects_by_id(env) -> dict[int, Any]:
@@ -117,7 +117,7 @@ def _material(env, material_name: str):
         for obj in env.objects
         if obj.type.name == "Material"
     )
-    raise KeyError(f"材质 {material_name} 不存在；可用材质: {', '.join(available)}")
+    raise KeyError(f"鏉愯川 {material_name} 涓嶅瓨鍦紱鍙敤鏉愯川: {', '.join(available)}")
 
 
 def _slots(material) -> list[tuple[str, Any]]:
@@ -153,7 +153,7 @@ def inspect_material(game: GameInstall, part: PartSpec) -> AssetMaterialInfo:
         )
         warnings: list[str] = []
         if not compatible:
-            warnings.append("当前 shader 未发现标准发光属性，启用发光可能无效")
+            warnings.append("褰撳墠 shader 鏈彂鐜版爣鍑嗗彂鍏夊睘鎬э紝鍚敤鍙戝厜鍙兘鏃犳晥")
         emissive_texture_name = ""
         emissive_path = slot_values.get("_EmissiveMap")
         if emissive_path:
@@ -173,7 +173,7 @@ def inspect_material(game: GameInstall, part: PartSpec) -> AssetMaterialInfo:
             )
         )
         if customized:
-            warnings.append("检测到当前材质可能已被旧枪皮修改，已加入基准警告")
+            warnings.append("妫€娴嬪埌褰撳墠鏉愯川鍙兘宸茶鏃ф灙鐨慨鏀癸紝宸插姞鍏ュ熀鍑嗚鍛?)
         return AssetMaterialInfo(
             asset=part.asset,
             material=part.material,
@@ -372,7 +372,7 @@ def _set_texture_slot(material, slot_name: str, texture_path_id: int) -> None:
             return
     main = next((value for name, value in slots if name == "_MainTex"), None)
     if main is None:
-        raise ValueError(f"无法创建 {slot_name}: 材质没有 _MainTex 模板")
+        raise ValueError(f"鏃犳硶鍒涘缓 {slot_name}: 鏉愯川娌℃湁 _MainTex 妯℃澘")
     new_value = copy.copy(main)
     new_value.m_Texture.m_FileID = 0
     new_value.m_Texture.m_PathID = int(texture_path_id)
@@ -411,7 +411,7 @@ def _update_color(material, key: str, color: tuple[float, float, float, float]) 
     else:
         template = values[0][1] if values else None
         if template is None:
-            raise ValueError(f"无法创建颜色属性 {key}: 材质没有颜色模板")
+            raise ValueError(f"鏃犳硶鍒涘缓棰滆壊灞炴€?{key}: 鏉愯川娌℃湁棰滆壊妯℃澘")
         values.append((key, type(template)(*color)))
     material.m_SavedProperties.m_Colors = values
 
@@ -489,11 +489,11 @@ def _build_one_asset(
             material = _material(env, change.part.material)
             main_slot = _slot_value(material, "_MainTex")
             if main_slot is None:
-                ctx.warnings.append(f"{change.part.display_name}: 材质缺少 _MainTex，已跳过")
+                ctx.warnings.append(f"{change.part.display_name}: 鏉愯川缂哄皯 _MainTex锛屽凡璺宠繃")
                 continue
             main_reader = objects.get(int(main_slot.m_Texture.m_PathID or 0))
             if main_reader is None:
-                raise ValueError(f"{change.part.material}: _MainTex 引用无效")
+                raise ValueError(f"{change.part.material}: _MainTex 寮曠敤鏃犳晥")
             main_texture = main_reader.read()
             material_keywords = set(str(material.m_ShaderKeywords or "").split())
             emissive_compatible = (
@@ -503,7 +503,7 @@ def _build_one_asset(
             )
             if change.emissive.enabled and not emissive_compatible:
                 ctx.warnings.append(
-                    f"{change.part.display_name}: 当前 shader 未声明标准发光属性，仍会写入但游戏可能忽略"
+                    f"{change.part.display_name}: 褰撳墠 shader 鏈０鏄庢爣鍑嗗彂鍏夊睘鎬э紝浠嶄細鍐欏叆浣嗘父鎴忓彲鑳藉拷鐣?
                 )
 
             assigned_paths = dict(change.files)
@@ -514,8 +514,8 @@ def _build_one_asset(
                     assigned_paths["Emissive"] = change.emissive.mask_path
                 else:
                     ctx.warnings.append(
-                        f"{change.part.display_name}: 未提供发光图，仅修改发光参数，"
-                        "不会硬塞一张发光贴图"
+                        f"{change.part.display_name}: 鏈彁渚涘彂鍏夊浘锛屼粎淇敼鍙戝厜鍙傛暟锛?
+                        "涓嶄細纭涓€寮犲彂鍏夎创鍥?
                     )
 
             ids: dict[str, int] = {}
@@ -526,7 +526,7 @@ def _build_one_asset(
                 existing_slot = _slot_value(material, slot_name)
                 if existing_slot is None and channel != "Emissive":
                     ctx.warnings.append(
-                        f"{change.part.display_name}: 材质没有 {slot_name}，已忽略 {channel}"
+                        f"{change.part.display_name}: 鏉愯川娌℃湁 {slot_name}锛屽凡蹇界暐 {channel}"
                     )
                     continue
                 template_reader = main_reader
@@ -582,7 +582,7 @@ def _build_one_asset(
             }
             if "ENABLE_EMISSIVE" in material_keywords:
                 ctx.warnings.append(
-                    f"{change.part.material}: 原材质已有发光关键字，已按当前设置重新计算"
+                    f"{change.part.material}: 鍘熸潗璐ㄥ凡鏈夊彂鍏夊叧閿瓧锛屽凡鎸夊綋鍓嶈缃噸鏂拌绠?
                 )
 
         output = ctx.output_dir / f"sharedassets{asset_id}.assets"
@@ -609,7 +609,7 @@ def build_assets(ctx: BuildContext) -> BuildResult:
     for part_id, files in ctx.project.assignments.items():
         part = parts_by_id.get(part_id)
         if not part:
-            ctx.warnings.append(f"项目包含未知部件 {part_id}，已忽略")
+            ctx.warnings.append(f"椤圭洰鍖呭惈鏈煡閮ㄤ欢 {part_id}锛屽凡蹇界暐")
             continue
         if part.id in set(ctx.project.disabled_parts):
             continue
@@ -626,7 +626,7 @@ def build_assets(ctx: BuildContext) -> BuildResult:
         )
 
     if not changes_by_asset:
-        raise ValueError("没有可构建的贴图或发光设置")
+        raise ValueError("娌℃湁鍙瀯寤虹殑璐村浘鎴栧彂鍏夎缃?)
 
     outputs: list[BuildFileResult] = []
     for asset_id, changes in sorted(changes_by_asset.items()):
@@ -635,7 +635,7 @@ def build_assets(ctx: BuildContext) -> BuildResult:
     manifest = {
         "schema_version": 1,
         "application": "GTFO Skin Forge",
-        "version": "0.1.52",
+        "version": "0.1.53",
         "created_at": datetime.now(timezone.utc).isoformat(),
         "project": ctx.project.to_dict(),
         "item": {

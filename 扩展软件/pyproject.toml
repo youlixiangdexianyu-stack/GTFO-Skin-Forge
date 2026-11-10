@@ -1,10 +1,10 @@
-[build-system]
+﻿[build-system]
 requires = ["setuptools>=75", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
 name = "gtfo-skin-forge"
-version = "0.1.52"
+version = "0.1.53"
 description = "GTFO weapon texture replacement desktop application"
 readme = "README.md"
 requires-python = ">=3.11"

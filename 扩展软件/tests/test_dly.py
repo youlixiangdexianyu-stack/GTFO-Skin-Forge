@@ -201,9 +201,41 @@ def test_saved_dly_project_is_json_compatible(forge_data):
     path = forge_data / "projects" / "sample.gtfdly"
     save_dly_preset(path, DlyDisplayPreset(anchor_part_id="front"))
     value = json.loads(path.read_text(encoding="utf-8"))
-    assert value["schema_version"] == 1
+    assert value["schema_version"] == 2
     assert value["target_item_id"] == "auto_pistol"
     assert value["anchor_part_id"] == "front"
+
+
+def test_v1_preset_is_migrated_from_forge_space_to_game_space(tmp_path):
+    path = tmp_path / "legacy-v1.gtfdly"
+    path.write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "anchor_part_id": "front",
+                "anchor_local_x": 0.004,
+                "anchor_local_y": 0.05,
+                "anchor_local_z": -0.12,
+                "offset_x": 0.008,
+                "offset_y": 0.0,
+                "offset_z": 0.148,
+                "surface_clearance": 0.001,
+                "panel_width": 0.03,
+                "use_absolute_anchor": True,
+            }
+        ),
+        encoding="utf-8",
+    )
+    preset = load_dly_preset(path)
+    assert preset.schema_version == 2
+    assert preset.anchor_local_x == pytest.approx(0.005)
+    assert preset.anchor_local_y == pytest.approx(0.0625)
+    assert preset.anchor_local_z == pytest.approx(-0.15)
+    assert preset.offset_x == pytest.approx(0.01)
+    assert preset.offset_z == pytest.approx(0.185)
+    assert preset.surface_clearance == pytest.approx(0.00125)
+    # Sizes are physical values and are not rescaled.
+    assert preset.panel_width == pytest.approx(0.03)
 
 
 def test_old_dly_preset_gets_blender_interaction_defaults(tmp_path):

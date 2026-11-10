@@ -9,7 +9,11 @@ from pathlib import Path
 import numpy as np
 from PIL import Image
 
-from .assembly import load_assembly_catalog, resolve_mesh_offset
+from .assembly import (
+    FORGE_SCENE_TO_GAME_SCALE,
+    load_assembly_catalog,
+    resolve_mesh_offset,
+)
 from .assets import (
     asset_path,
     close_unity_env,
@@ -216,16 +220,37 @@ def _obj_bounds(text: str) -> tuple[tuple[float, float, float], tuple[float, flo
     )
 
 
+def _scale_obj_text(text: str, scale: float) -> str:
+    """Return OBJ text with every vertex position multiplied by ``scale``."""
+    lines: list[str] = []
+    for line in text.splitlines(keepends=True):
+        if line.startswith("v "):
+            fields = line.split()
+            x = float(fields[1]) * scale
+            y = float(fields[2]) * scale
+            z = float(fields[3]) * scale
+            tail = " ".join(fields[4:])
+            suffix = f" {tail}" if tail else ""
+            lines.append(f"v {x:.8f} {y:.8f} {z:.8f}{suffix}\n")
+        else:
+            lines.append(line)
+    return "".join(lines)
+
+
 def _official_preview_meshes(
     item: CatalogItem,
     cache_root: Path | None = None,
     enabled_parts: set[str] | None = None,
     disabled_parts: set[str] | None = None,
+    unit_scale: float = 1.0,
 ) -> tuple[list[PreviewMesh], tuple[np.ndarray, np.ndarray]] | None:
     root = Path(__file__).with_name("data") / "preview_meshes" / item.id
     if not root.is_dir():
         return None
-    cache = (cache_root or ensure_app_dirs()["cache"]) / "forge_preview_meshes_v1"
+    cache_name = "forge_preview_meshes_v1"
+    if abs(unit_scale - 1.0) > 1e-9:
+        cache_name = f"{cache_name}_x{unit_scale:g}"
+    cache = (cache_root or ensure_app_dirs()["cache"]) / cache_name
     meshes: list[PreviewMesh] = []
     all_min: list[np.ndarray] = []
     all_max: list[np.ndarray] = []
@@ -238,8 +263,11 @@ def _official_preview_meshes(
             return None
         path = cache / item.id / f"{part.id}.obj"
         if not path.is_file() or path.stat().st_mtime < source.stat().st_mtime:
+            text = gzip.decompress(source.read_bytes()).decode("utf-8")
+            if abs(unit_scale - 1.0) > 1e-9:
+                text = _scale_obj_text(text, unit_scale)
             path.parent.mkdir(parents=True, exist_ok=True)
-            path.write_bytes(gzip.decompress(source.read_bytes()))
+            path.write_text(text, encoding="utf-8")
         bounds_min, bounds_max = _obj_bounds(path.read_text(encoding="utf-8"))
         all_min.append(np.asarray(bounds_min, dtype=np.float32))
         all_max.append(np.asarray(bounds_max, dtype=np.float32))
@@ -268,12 +296,14 @@ def extract_weapon_meshes(
     cache_root: Path | None = None,
     enabled_parts: set[str] | None = None,
     disabled_parts: set[str] | None = None,
+    unit_scale: float = 1.0,
 ) -> tuple[list[PreviewMesh], tuple[np.ndarray, np.ndarray]]:
     official = _official_preview_meshes(
         item,
         cache_root,
         enabled_parts,
         disabled_parts,
+        unit_scale=unit_scale,
     )
     if official is not None:
         return official
@@ -306,7 +336,18 @@ def extract_weapon_meshes(
                 if not target.is_file() or target.stat().st_size < 32:
                     target.write_text(obj_text, encoding="utf-8")
                 bounds_min, bounds_max = _obj_bounds(obj_text)
-                position = resolve_mesh_offset(item, part, mesh_name, assembly)
+                # assembly.json node translations come from the Forge scene and
+                # are therefore 0.8x game weapon space; convert them before they
+                # are applied to real game meshes.
+                position = tuple(
+                    float(component) * FORGE_SCENE_TO_GAME_SCALE
+                    for component in resolve_mesh_offset(
+                        item,
+                        part,
+                        mesh_name,
+                        assembly,
+                    )
+                )
                 offset = np.asarray(position, dtype=np.float32)
                 all_min.append(np.asarray(bounds_min, dtype=np.float32) + offset)
                 all_max.append(np.asarray(bounds_max, dtype=np.float32) + offset)

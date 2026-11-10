@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 import copy
 import os
@@ -373,7 +373,7 @@ class PreviewTile(QFrame):
         label = QLabel(title)
         label.setStyleSheet("color: #9fb0b5; font-weight: 600; border: none;")
         label.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
-        self.image = QLabel("未分配")
+        self.image = QLabel("鏈垎閰?)
         self.image.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.image.setMinimumSize(110, 90)
         self.image.setSizePolicy(
@@ -391,13 +391,13 @@ class PreviewTile(QFrame):
         self.path = path if path and path.is_file() else None
         if path is None or not path.is_file():
             self.image.setPixmap(QPixmap())
-            self.image.setText("未分配")
+            self.image.setText("鏈垎閰?)
             self.image.setToolTip("")
             return
         pixmap = _read_pixmap(path)
         if pixmap.isNull():
             self.image.setPixmap(QPixmap())
-            self.image.setText("无法预览")
+            self.image.setText("鏃犳硶棰勮")
         else:
             self.image.setPixmap(
                 pixmap.scaled(
@@ -473,21 +473,21 @@ class ImageViewerDialog(QDialog):
         pixmap = _read_pixmap(path)
         layout = QVBoxLayout(self)
         info = QLabel(
-            f"{path.name}   {pixmap.width()}×{pixmap.height()}   "
-            "滚轮缩放 · 按住左键拖动"
+            f"{path.name}   {pixmap.width()}脳{pixmap.height()}   "
+            "婊氳疆缂╂斁 路 鎸変綇宸﹂敭鎷栧姩"
         )
         info.setStyleSheet("color: #9cadb2;")
         layout.addWidget(info)
         self.image_view = ZoomableImageView(pixmap, self)
         layout.addWidget(self.image_view, 1)
         controls = QHBoxLayout()
-        fit_button = QPushButton("适应窗口")
+        fit_button = QPushButton("閫傚簲绐楀彛")
         fit_button.clicked.connect(self.image_view.fit_image)
         actual_button = QPushButton("100%")
         actual_button.clicked.connect(self.image_view.actual_size)
         self.zoom_label = QLabel("100%")
         self.zoom_label.setMinimumWidth(70)
-        close_button = QPushButton("关闭")
+        close_button = QPushButton("鍏抽棴")
         close_button.clicked.connect(self.accept)
         controls.addWidget(fit_button)
         controls.addWidget(actual_button)
@@ -573,7 +573,7 @@ def _read_pixmap(path: Path) -> QPixmap:
 class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("GTFO 枪皮工坊 v0.1.52")
+        self.setWindowTitle("GTFO 鏋毊宸ュ潑 v0.1.53")
         self.resize(1480, 920)
         self.setMinimumSize(1120, 720)
         self.setStyleSheet(APP_STYLE)
@@ -828,9 +828,9 @@ class MainWindow(QMainWindow):
         header_layout = QHBoxLayout(header)
         header_layout.setContentsMargins(18, 12, 18, 12)
         title_box = QVBoxLayout()
-        title = QLabel("GTFO 枪皮工坊")
+        title = QLabel("GTFO 鏋毊宸ュ潑")
         title.setObjectName("Title")
-        subtitle = QLabel("WORKSPACE TOOLS // v0.1.52")
+        subtitle = QLabel("WORKSPACE TOOLS // v0.1.53")
         subtitle.setObjectName("Subtitle")
         title_box.addWidget(title)
         title_box.addWidget(subtitle)
@@ -839,21 +839,21 @@ class MainWindow(QMainWindow):
         self.workspace_tabs.setObjectName("WorkspaceTabs")
         self.workspace_tabs.setDrawBase(False)
         self.workspace_tabs.setExpanding(False)
-        self.workspace_tabs.addTab("枪皮工坊")
-        self.workspace_tabs.addTab("DLY 弹夹显示")
+        self.workspace_tabs.addTab("鏋毊宸ュ潑")
+        self.workspace_tabs.addTab("DLY 寮瑰す鏄剧ず")
         self.workspace_tabs.currentChanged.connect(
             self._workspace_tab_changed
         )
         header_layout.addSpacing(30)
         header_layout.addWidget(self.workspace_tabs)
         header_layout.addStretch(1)
-        self.game_status = QLabel("正在检测 GTFO…")
+        self.game_status = QLabel("姝ｅ湪妫€娴?GTFO鈥?)
         self.game_status.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
         self.game_status.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
         header_layout.addWidget(self.game_status, 1)
-        detect_button = QPushButton("重新检测")
+        detect_button = QPushButton("閲嶆柊妫€娴?)
         detect_button.clicked.connect(lambda: self._detect_game(""))
-        browse_game = QPushButton("选择目录")
+        browse_game = QPushButton("閫夋嫨鐩綍")
         browse_game.clicked.connect(self._browse_game)
         header_layout.addWidget(detect_button)
         header_layout.addWidget(browse_game)
@@ -902,17 +902,17 @@ class MainWindow(QMainWindow):
             lambda: self.ensure_backup_directory_interactive(force=True)
         )
         bottom_layout.addWidget(self.backup_path_label)
-        self.status_label = QLabel("就绪")
+        self.status_label = QLabel("灏辩华")
         self.status_label.setStyleSheet("color: #87969b;")
         bottom_layout.addWidget(self.status_label, 1)
-        self.rollback_button = QPushButton("还原上次安装")
+        self.rollback_button = QPushButton("杩樺師涓婃瀹夎")
         self.rollback_button.setObjectName("Danger")
         self.rollback_button.clicked.connect(self._rollback_last)
-        self.export_obj_button = QPushButton("导出 OBJ")
+        self.export_obj_button = QPushButton("瀵煎嚭 OBJ")
         self.export_obj_button.clicked.connect(self._export_obj)
-        self.export_button = QPushButton("导出 .assets")
+        self.export_button = QPushButton("瀵煎嚭 .assets")
         self.export_button.clicked.connect(self._export)
-        self.install_button = QPushButton("安装到游戏")
+        self.install_button = QPushButton("瀹夎鍒版父鎴?)
         self.install_button.setObjectName("Primary")
         self.install_button.clicked.connect(self._install)
         bottom_layout.addWidget(self.rollback_button)
@@ -922,12 +922,12 @@ class MainWindow(QMainWindow):
         skin_layout.addWidget(bottom)
 
         menu = self.menuBar()
-        file_menu = menu.addMenu("文件")
-        open_action = file_menu.addAction("打开工程")
+        file_menu = menu.addMenu("鏂囦欢")
+        open_action = file_menu.addAction("鎵撳紑宸ョ▼")
         open_action.triggered.connect(self._open_project)
-        save_action = file_menu.addAction("保存工程")
+        save_action = file_menu.addAction("淇濆瓨宸ョ▼")
         save_action.triggered.connect(lambda: self._save_project(False))
-        save_as_action = file_menu.addAction("工程另存为")
+        save_as_action = file_menu.addAction("宸ョ▼鍙﹀瓨涓?)
         save_as_action.triggered.connect(lambda: self._save_project(True))
         self.skin_only_actions = [
             open_action,
@@ -935,26 +935,26 @@ class MainWindow(QMainWindow):
             save_as_action,
         ]
         file_menu.addSeparator()
-        quit_action = file_menu.addAction("退出")
+        quit_action = file_menu.addAction("閫€鍑?)
         quit_action.triggered.connect(self.close)
-        tools_menu = menu.addMenu("工具")
-        self.persistent_backup_action = tools_menu.addAction("自动保存源 .assets 基准")
+        tools_menu = menu.addMenu("宸ュ叿")
+        self.persistent_backup_action = tools_menu.addAction("鑷姩淇濆瓨婧?.assets 鍩哄噯")
         self.persistent_backup_action.setCheckable(True)
         self.persistent_backup_action.setChecked(self.settings.persistent_backup)
         self.persistent_backup_action.toggled.connect(self._toggle_persistent_backup)
-        open_data = tools_menu.addAction("打开应用数据目录")
+        open_data = tools_menu.addAction("鎵撳紑搴旂敤鏁版嵁鐩綍")
         open_data.triggered.connect(lambda: os.startfile(app_data_dir()))
-        clean_baseline = tools_menu.addAction("指定干净 .assets 目录")
+        clean_baseline = tools_menu.addAction("鎸囧畾骞插噣 .assets 鐩綍")
         clean_baseline.triggered.connect(self._choose_clean_baseline)
-        backup_dir_action = tools_menu.addAction("选择备份目录")
+        backup_dir_action = tools_menu.addAction("閫夋嫨澶囦唤鐩綍")
         backup_dir_action.triggered.connect(
             lambda: self.ensure_backup_directory_interactive(force=True)
         )
-        last_install = tools_menu.addAction("还原最近一次安装")
+        last_install = tools_menu.addAction("杩樺師鏈€杩戜竴娆″畨瑁?)
         last_install.triggered.connect(self._rollback_last)
-        self.undo_action = menu.addAction("撤回")
+        self.undo_action = menu.addAction("鎾ゅ洖")
         self.undo_action.setShortcut(QKeySequence.StandardKey.Undo)
-        self.undo_action.setToolTip("撤回上一个映射或参数编辑操作（Ctrl+Z）")
+        self.undo_action.setToolTip("鎾ゅ洖涓婁竴涓槧灏勬垨鍙傛暟缂栬緫鎿嶄綔锛圕trl+Z锛?)
         self.undo_action.setEnabled(False)
         self.undo_action.triggered.connect(self._undo_last_action)
 
@@ -964,11 +964,11 @@ class MainWindow(QMainWindow):
         panel.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Expanding)
         layout = QVBoxLayout(panel)
         layout.setContentsMargins(12, 12, 6, 12)
-        heading = QLabel("武器目录")
+        heading = QLabel("姝﹀櫒鐩綍")
         heading.setStyleSheet("font-size: 15px; font-weight: 700; color: #cbd5d1;")
         layout.addWidget(heading)
         self.search_box = QLineEdit()
-        self.search_box.setPlaceholderText("搜索名称、英文别名或内部名称")
+        self.search_box.setPlaceholderText("鎼滅储鍚嶇О銆佽嫳鏂囧埆鍚嶆垨鍐呴儴鍚嶇О")
         self.search_box.textChanged.connect(self._filter_tree)
         layout.addWidget(self.search_box)
         self.catalog_tree = CompactTreeWidget()
@@ -980,7 +980,7 @@ class MainWindow(QMainWindow):
         self.catalog_tree.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
         self.catalog_tree.itemSelectionChanged.connect(self._tree_selection_changed)
         layout.addWidget(self.catalog_tree, 1)
-        hint = QLabel("双击映射表任意贴图格可手动替换。\n枪械缺件时可继续部分构建。")
+        hint = QLabel("鍙屽嚮鏄犲皠琛ㄤ换鎰忚创鍥炬牸鍙墜鍔ㄦ浛鎹€俓n鏋缂轰欢鏃跺彲缁х画閮ㄥ垎鏋勫缓銆?)
         hint.setWordWrap(True)
         hint.setStyleSheet("color: #6f7f84; font-size: 9pt;")
         layout.addWidget(hint)
@@ -995,9 +995,9 @@ class MainWindow(QMainWindow):
 
         title_row = QHBoxLayout()
         title_box = QVBoxLayout()
-        self.item_title = QLabel("选择一把武器")
+        self.item_title = QLabel("閫夋嫨涓€鎶婃鍣?)
         self.item_title.setStyleSheet("font-size: 20px; font-weight: 700; color: #d8ff67;")
-        self.item_description = QLabel("从左侧目录选择后，导入整枪贴图目录。")
+        self.item_description = QLabel("浠庡乏渚х洰褰曢€夋嫨鍚庯紝瀵煎叆鏁存灙璐村浘鐩綍銆?)
         self.item_description.setWordWrap(True)
         self.item_description.setStyleSheet("color: #829197;")
         title_box.addWidget(self.item_title)
@@ -1006,13 +1006,13 @@ class MainWindow(QMainWindow):
         layout.addLayout(title_row)
 
         project_row = QHBoxLayout()
-        project_row.addWidget(QLabel("枪皮名称"))
-        self.project_name = QLineEdit("未命名枪皮")
+        project_row.addWidget(QLabel("鏋毊鍚嶇О"))
+        self.project_name = QLineEdit("鏈懡鍚嶆灙鐨?)
         project_row.addWidget(self.project_name, 1)
-        project_row.addWidget(QLabel("输出尺寸"))
+        project_row.addWidget(QLabel("杈撳嚭灏哄"))
         self.resolution_combo = QComboBox()
-        self.resolution_combo.addItem("保持用户贴图尺寸", "user")
-        self.resolution_combo.addItem("跟随原材质", "source")
+        self.resolution_combo.addItem("淇濇寔鐢ㄦ埛璐村浘灏哄", "user")
+        self.resolution_combo.addItem("璺熼殢鍘熸潗璐?, "source")
         self.resolution_combo.addItem("1K", "1k")
         self.resolution_combo.addItem("2K", "2k")
         self.resolution_combo.addItem("4K", "4k")
@@ -1020,17 +1020,17 @@ class MainWindow(QMainWindow):
         layout.addLayout(project_row)
 
         folder_row = QHBoxLayout()
-        self.folder_label = QLabel("尚未选择贴图目录")
+        self.folder_label = QLabel("灏氭湭閫夋嫨璐村浘鐩綍")
         self.folder_label.setStyleSheet("color: #91a1a6;")
         self.folder_label.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
         self.folder_label.setSizePolicy(
             QSizePolicy.Policy.Ignored,
             QSizePolicy.Policy.Preferred,
         )
-        self.analyze_button = QPushButton("选择整枪贴图目录")
+        self.analyze_button = QPushButton("閫夋嫨鏁存灙璐村浘鐩綍")
         self.analyze_button.setObjectName("Primary")
         self.analyze_button.clicked.connect(self._choose_texture_folder)
-        self.clear_slot_button = QPushButton("清除当前通道")
+        self.clear_slot_button = QPushButton("娓呴櫎褰撳墠閫氶亾")
         self.clear_slot_button.setEnabled(False)
         self.clear_slot_button.clicked.connect(self._clear_current_channel)
         folder_row.addWidget(self.folder_label, 1)
@@ -1038,13 +1038,13 @@ class MainWindow(QMainWindow):
         folder_row.addWidget(self.analyze_button)
         layout.addLayout(folder_row)
 
-        self.selected_channel_label = QLabel("当前通道：未选择")
+        self.selected_channel_label = QLabel("褰撳墠閫氶亾锛氭湭閫夋嫨")
         self.selected_channel_label.setStyleSheet("color: #74868b;")
         layout.addWidget(self.selected_channel_label)
 
         self.table = CompactTableWidget(0, 8)
         self.table.setHorizontalHeaderLabels(
-            ["部件", "位置", "Asset", "基础色", "法线", "金属/光滑", "自发光", "识别状态"]
+            ["閮ㄤ欢", "浣嶇疆", "Asset", "鍩虹鑹?, "娉曠嚎", "閲戝睘/鍏夋粦", "鑷彂鍏?, "璇嗗埆鐘舵€?]
         )
         self.table.setAlternatingRowColors(True)
         self.table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
@@ -1089,7 +1089,7 @@ class MainWindow(QMainWindow):
         emissive_layout.setContentsMargins(8, 5, 8, 5)
         emissive_layout.setSpacing(5)
         self.emissive_layout = emissive_layout
-        emissive_title = QLabel("自发光颜色 / 强度")
+        emissive_title = QLabel("鑷彂鍏夐鑹?/ 寮哄害")
         emissive_title.setStyleSheet(
             "color: #b7c4c8; font-weight: 600; border: none;"
         )
@@ -1125,12 +1125,12 @@ class MainWindow(QMainWindow):
         layout.addLayout(emissive_row)
 
         review_row = QHBoxLayout()
-        self.partial_check = QCheckBox("允许缺失部件/通道保持原样")
-        self.low_confidence_check = QCheckBox("我已检查低置信度自动匹配")
-        self.auto_backup_check = QCheckBox("安装前自动备份")
+        self.partial_check = QCheckBox("鍏佽缂哄け閮ㄤ欢/閫氶亾淇濇寔鍘熸牱")
+        self.low_confidence_check = QCheckBox("鎴戝凡妫€鏌ヤ綆缃俊搴﹁嚜鍔ㄥ尮閰?)
+        self.auto_backup_check = QCheckBox("瀹夎鍓嶈嚜鍔ㄥ浠?)
         self.auto_backup_check.setChecked(self.settings.auto_backup)
         self.auto_backup_check.setToolTip(
-            "勾选后会保留可还原的安装备份；取消后仅在安装过程中临时保留，成功后自动删除"
+            "鍕鹃€夊悗浼氫繚鐣欏彲杩樺師鐨勫畨瑁呭浠斤紱鍙栨秷鍚庝粎鍦ㄥ畨瑁呰繃绋嬩腑涓存椂淇濈暀锛屾垚鍔熷悗鑷姩鍒犻櫎"
         )
         self.auto_backup_check.toggled.connect(self._toggle_auto_backup)
         self.partial_check.toggled.connect(self._save_autosave)
@@ -1141,13 +1141,13 @@ class MainWindow(QMainWindow):
         review_row.addStretch(1)
         layout.addLayout(review_row)
 
-        log_label = QLabel("识别与构建日志")
+        log_label = QLabel("璇嗗埆涓庢瀯寤烘棩蹇?)
         log_label.setStyleSheet("color: #9caaa6; font-weight: 600;")
         layout.addWidget(log_label)
         self.log = QPlainTextEdit()
         self.log.setReadOnly(True)
         self.log.setMaximumBlockCount(2000)
-        self.log.setPlaceholderText("操作日志将在这里显示")
+        self.log.setPlaceholderText("鎿嶄綔鏃ュ織灏嗗湪杩欓噷鏄剧ず")
         self.log.setLineWrapMode(QPlainTextEdit.LineWrapMode.WidgetWidth)
         self.log.setSizePolicy(
             QSizePolicy.Policy.Ignored,
@@ -1163,10 +1163,10 @@ class MainWindow(QMainWindow):
         panel.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Expanding)
         layout = QVBoxLayout(panel)
         layout.setContentsMargins(6, 12, 12, 12)
-        heading = QLabel("部件预览")
+        heading = QLabel("閮ㄤ欢棰勮")
         heading.setStyleSheet("font-size: 15px; font-weight: 700; color: #cbd5d1;")
         layout.addWidget(heading)
-        self.preview_part_label = QLabel("尚未选择部件")
+        self.preview_part_label = QLabel("灏氭湭閫夋嫨閮ㄤ欢")
         self.preview_part_label.setStyleSheet("color: #d8ff67; font-weight: 600;")
         layout.addWidget(self.preview_part_label)
         scroll = QScrollArea()
@@ -1183,15 +1183,15 @@ class MainWindow(QMainWindow):
             grid.addWidget(tile, index // 2, index % 2)
         scroll.setWidget(content)
         self.preview_tabs = QTabWidget()
-        self.preview_tabs.addTab(scroll, "2D 通道")
+        self.preview_tabs.addTab(scroll, "2D 閫氶亾")
         self.three_d_page = QWidget()
         self.three_d_page_layout = QVBoxLayout(self.three_d_page)
         self.three_d_page_layout.setContentsMargins(0, 0, 0, 0)
-        self.preview_tabs.addTab(self.three_d_page, "3D 视图")
+        self.preview_tabs.addTab(self.three_d_page, "3D 瑙嗗浘")
         self.preview_tabs.currentChanged.connect(self._preview_tab_changed)
         layout.addWidget(self.preview_tabs, 1)
 
-        warning_group = QGroupBox("检查项")
+        warning_group = QGroupBox("妫€鏌ラ」")
         warning_layout = QVBoxLayout(warning_group)
         self.warning_list = QListWidget()
         self.warning_list.setMaximumHeight(140)
@@ -1216,7 +1216,7 @@ class MainWindow(QMainWindow):
             for catalog_item in items:
                 section_item.addChild(self._catalog_leaf(catalog_item))
 
-        attachment_section = self._catalog_container("枪械配件")
+        attachment_section = self._catalog_container("鏋閰嶄欢")
         self.catalog_tree.addTopLevelItem(attachment_section)
         attachment_items = [
             item for item in self.catalog.values() if item.kind == "attachment"
@@ -1262,7 +1262,7 @@ class MainWindow(QMainWindow):
         child.setData(0, Qt.ItemDataRole.UserRole, catalog_item.id)
         tooltip = (
             f"{label}\n"
-            f"{len(catalog_item.parts)} 个部件\n"
+            f"{len(catalog_item.parts)} 涓儴浠禱n"
             + (" / ".join(catalog_item.aliases[:4]))
         )
         child.setToolTip(0, tooltip)
@@ -1371,10 +1371,10 @@ class MainWindow(QMainWindow):
         self.item_title.setText(display_name)
         self.item_description.setText(
             item.description
-            or f"{official_chinese} · {len(item.parts)} 个可编辑部件 · "
+            or f"{official_chinese} 路 {len(item.parts)} 涓彲缂栬緫閮ㄤ欢 路 "
             f"Asset {', '.join(str(value) for value in sorted({p.asset for p in item.parts}))}"
         )
-        self.project_name.setText(f"{item_display_name(item)}-枪皮")
+        self.project_name.setText(f"{item_display_name(item)}-鏋毊")
         self._set_folder_label(None)
         self._populate_empty_table()
         self._clear_previews()
@@ -1412,10 +1412,10 @@ class MainWindow(QMainWindow):
             if first:
                 self.current_part_id = str(first.data(Qt.ItemDataRole.UserRole) or "")
             self.selected_channel = None
-            self.selected_channel_label.setText("当前通道：未选择")
+            self.selected_channel_label.setText("褰撳墠閫氶亾锛氭湭閫夋嫨")
             self.selected_channel_label.setStyleSheet("color: #74868b;")
             self.clear_slot_button.setEnabled(False)
-            self.clear_slot_button.setText("清除当前通道")
+            self.clear_slot_button.setText("娓呴櫎褰撳墠閫氶亾")
             self._refresh_part_preview()
             self._load_emissive_controls()
 
@@ -1435,11 +1435,11 @@ class MainWindow(QMainWindow):
             name,
             role,
             str(asset),
-            "未启用" if inactive else "待导入",
-            "未启用" if inactive else "待导入",
-            "未启用" if inactive else "待导入",
-            "未启用" if inactive else "待导入",
-            "可选未启用" if inactive else "未分析",
+            "鏈惎鐢? if inactive else "寰呭鍏?,
+            "鏈惎鐢? if inactive else "寰呭鍏?,
+            "鏈惎鐢? if inactive else "寰呭鍏?,
+            "鏈惎鐢? if inactive else "寰呭鍏?,
+            "鍙€夋湭鍚敤" if inactive else "鏈垎鏋?,
         ]
         for column, value in enumerate(values):
             item = QTableWidgetItem(value)
@@ -1452,11 +1452,11 @@ class MainWindow(QMainWindow):
                     Qt.CheckState.Checked if enabled else Qt.CheckState.Unchecked
                 )
                 item.setToolTip(
-                    "取消勾选后，该部件从 3D 预览隐藏，且不参与导出和安装"
+                    "鍙栨秷鍕鹃€夊悗锛岃閮ㄤ欢浠?3D 棰勮闅愯棌锛屼笖涓嶅弬涓庡鍑哄拰瀹夎"
                 )
             if inactive and column >= 3:
                 item.setForeground(QColor("#69767a"))
-                item.setToolTip("该部件为可选内容，勾选左侧复选框后启用")
+                item.setToolTip("璇ラ儴浠朵负鍙€夊唴瀹癸紝鍕鹃€夊乏渚у閫夋鍚庡惎鐢?)
             self.table.setItem(row, column, item)
 
     def _render_analysis_table(
@@ -1491,13 +1491,13 @@ class MainWindow(QMainWindow):
                 cell = self.table.item(row, column)
                 cell.setData(Qt.ItemDataRole.UserRole, channel)
                 if not enabled:
-                    cell.setText("未启用")
+                    cell.setText("鏈惎鐢?)
                     cell.setForeground(QColor("#69767a"))
-                    cell.setToolTip("勾选左侧部件复选框后启用")
+                    cell.setToolTip("鍕鹃€夊乏渚ч儴浠跺閫夋鍚庡惎鐢?)
                 elif match is None:
-                    cell.setText("不支持")
+                    cell.setText("涓嶆敮鎸?)
                     cell.setForeground(QColor("#69767a"))
-                    cell.setToolTip("当前 shader 不支持该通道")
+                    cell.setToolTip("褰撳墠 shader 涓嶆敮鎸佽閫氶亾")
                 elif match.path:
                     cell.setText(match.path.name)
                     cell.setToolTip(str(match.path))
@@ -1507,25 +1507,25 @@ class MainWindow(QMainWindow):
                     else:
                         cell.setForeground(QColor("#a8d45b"))
                 else:
-                    cell.setText("缺失")
+                    cell.setText("缂哄け")
                     cell.setForeground(QColor("#ff7c75"))
             status = self.table.item(row, 7)
             if not enabled:
-                status.setText("部件未启用")
+                status.setText("閮ㄤ欢鏈惎鐢?)
                 status.setForeground(QColor("#69767a"))
             elif not slots:
-                status.setText("材质不可读")
+                status.setText("鏉愯川涓嶅彲璇?)
                 status.setForeground(QColor("#ff7c75"))
             elif any(slots.get(channel) and slots[channel].path for channel in CHANNELS):
                 minimum = min(confidences) if confidences else 0.0
                 if minimum >= 0.82:
-                    status.setText(f"自动 {minimum:.0%}")
+                    status.setText(f"鑷姩 {minimum:.0%}")
                     status.setForeground(QColor("#a8d45b"))
                 else:
-                    status.setText(f"待确认 {minimum:.0%}")
+                    status.setText(f"寰呯‘璁?{minimum:.0%}")
                     status.setForeground(QColor("#ffc75a"))
             else:
-                status.setText("缺少贴图")
+                status.setText("缂哄皯璐村浘")
                 status.setForeground(QColor("#ff7c75"))
         self._loading_table = False
         if self.table.rowCount():
@@ -1546,7 +1546,7 @@ class MainWindow(QMainWindow):
         if not self._ensure_game() or not self.current_item:
             return
         initial = self.settings.last_texture_folder or str(Path.home())
-        folder = QFileDialog.getExistingDirectory(self, "选择整枪贴图目录", initial)
+        folder = QFileDialog.getExistingDirectory(self, "閫夋嫨鏁存灙璐村浘鐩綍", initial)
         if not folder:
             return
         self._clear_undo_history()
@@ -1556,7 +1556,7 @@ class MainWindow(QMainWindow):
         game = self.current_game
         item = self.current_item
         self._start_worker(
-            "正在分析贴图通道和部件…",
+            "姝ｅ湪鍒嗘瀽璐村浘閫氶亾鍜岄儴浠垛€?,
             lambda report: analyze_texture_folder(
                 game,
                 item,
@@ -1574,7 +1574,7 @@ class MainWindow(QMainWindow):
         self._clear_undo_history()
         self.current_project = SkinProject.from_analysis(
             name=self.project_name.text().strip()
-            or f"{item_display_name(self.current_item)}-枪皮",
+            or f"{item_display_name(self.current_item)}-鏋毊",
             game_root=self.current_game.root if self.current_game else "",
             item_id=self.current_item.id,
             folder=analysis.folder,
@@ -1588,8 +1588,8 @@ class MainWindow(QMainWindow):
         self._render_analysis_table()
         self._render_warnings()
         self._log(
-            f"分析完成：识别 {sum(1 for c in analysis.candidates if c.channel_guess)} 张通道图，"
-            f"{len(analysis.unknown_files)} 张未归类。"
+            f"鍒嗘瀽瀹屾垚锛氳瘑鍒?{sum(1 for c in analysis.candidates if c.channel_guess)} 寮犻€氶亾鍥撅紝"
+            f"{len(analysis.unknown_files)} 寮犳湭褰掔被銆?
         )
         self._save_autosave()
         self._mark_3d_dirty()
@@ -1605,12 +1605,12 @@ class MainWindow(QMainWindow):
         for part_id in analysis.missing_parts:
             part = next((value for value in self.current_item.parts if value.id == part_id), None)
             if part:
-                self.warning_list.addItem(f"缺失部件：{part.display_name}")
+                self.warning_list.addItem(f"缂哄け閮ㄤ欢锛歿part.display_name}")
         for part_id, channels in analysis.missing_channels.items():
             part = next((value for value in self.current_item.parts if value.id == part_id), None)
             if part and channels:
-                labels = "、".join(CHANNEL_LABELS_ZH.get(channel, channel) for channel in channels)
-                self.warning_list.addItem(f"{part.display_name}：缺少 {labels}")
+                labels = "銆?.join(CHANNEL_LABELS_ZH.get(channel, channel) for channel in channels)
+                self.warning_list.addItem(f"{part.display_name}锛氱己灏?{labels}")
         low = sum(
             1
             for slots in analysis.slots.values()
@@ -1618,13 +1618,13 @@ class MainWindow(QMainWindow):
             if match.needs_confirmation
         )
         if low:
-            self.warning_list.addItem(f"低置信度自动匹配：{low} 项")
+            self.warning_list.addItem(f"浣庣疆淇″害鑷姩鍖归厤锛歿low} 椤?)
         for warning in analysis.warnings:
             self.warning_list.addItem(warning)
         if analysis.unknown_files:
-            names = "、".join(path.name for path in analysis.unknown_files[:5])
-            suffix = "…" if len(analysis.unknown_files) > 5 else ""
-            self.warning_list.addItem(f"未使用文件：{names}{suffix}")
+            names = "銆?.join(path.name for path in analysis.unknown_files[:5])
+            suffix = "鈥? if len(analysis.unknown_files) > 5 else ""
+            self.warning_list.addItem(f"鏈娇鐢ㄦ枃浠讹細{names}{suffix}")
         for warning in analysis.warnings:
             self._log(warning)
 
@@ -1652,13 +1652,13 @@ class MainWindow(QMainWindow):
             ) if self.current_item else None
             part_name = part.display_name if part else self.current_part_id
             self.selected_channel_label.setText(
-                f"当前通道：{part_name} · {CHANNEL_LABELS_ZH[self.selected_channel]}"
-                f"（{self.selected_channel}）"
+                f"褰撳墠閫氶亾锛歿part_name} 路 {CHANNEL_LABELS_ZH[self.selected_channel]}"
+                f"锛坽self.selected_channel}锛?
             )
             self.selected_channel_label.setStyleSheet("color: #b7dc55; font-weight: 600;")
             self.clear_slot_button.setEnabled(True)
             self.clear_slot_button.setText(
-                f"清除：{CHANNEL_LABELS_ZH[self.selected_channel]}"
+                f"娓呴櫎锛歿CHANNEL_LABELS_ZH[self.selected_channel]}"
             )
             self.clear_slot_button.setStyleSheet(
                 "QPushButton { background: #536b27; border: none; "
@@ -1666,10 +1666,10 @@ class MainWindow(QMainWindow):
             )
         else:
             self.selected_channel = None
-            self.selected_channel_label.setText("当前通道：未选择")
+            self.selected_channel_label.setText("褰撳墠閫氶亾锛氭湭閫夋嫨")
             self.selected_channel_label.setStyleSheet("color: #74868b;")
             self.clear_slot_button.setEnabled(False)
-            self.clear_slot_button.setText("清除当前通道")
+            self.clear_slot_button.setText("娓呴櫎褰撳墠閫氶亾")
             self.clear_slot_button.setStyleSheet("")
         self._refresh_part_preview()
         self._load_emissive_controls()
@@ -1709,7 +1709,7 @@ class MainWindow(QMainWindow):
         if self.current_project is None:
             self.current_project = SkinProject(
                 name=self.project_name.text().strip()
-                or f"{item_display_name(self.current_item)}-枪皮",
+                or f"{item_display_name(self.current_item)}-鏋毊",
                 game_root=str(self.current_game.root) if self.current_game else "",
                 item_id=self.current_item.id,
                 enabled_parts=sorted(self._optional_enabled),
@@ -1736,7 +1736,7 @@ class MainWindow(QMainWindow):
             folder = self.current_analysis.folder
             game = self.current_game
             self._start_worker(
-                f"正在识别 {part.display_name} 的贴图…",
+                f"姝ｅ湪璇嗗埆 {part.display_name} 鐨勮创鍥锯€?,
                 lambda report: analyze_texture_folder(
                     game,
                     optional_item,
@@ -1796,10 +1796,10 @@ class MainWindow(QMainWindow):
         if part.id in self._disabled_parts or (
             part.optional and part.id not in self._optional_enabled
         ):
-            self.preview_part_label.setText(f"{part.display_name} · 部件已取消勾选")
+            self.preview_part_label.setText(f"{part.display_name} 路 閮ㄤ欢宸插彇娑堝嬀閫?)
             return
         self.preview_part_label.setText(
-            f"{part.display_name} · {part.material} · Asset {part.asset}"
+            f"{part.display_name} 路 {part.material} 路 Asset {part.asset}"
         )
         slots = self.current_analysis.slots.get(part.id, {}) if self.current_analysis else {}
         for channel, tile in self.preview_tiles.items():
@@ -1808,7 +1808,7 @@ class MainWindow(QMainWindow):
             tile.set_file(match.path if match and match.path else None)
 
     def _clear_previews(self) -> None:
-        self.preview_part_label.setText("尚未选择部件")
+        self.preview_part_label.setText("灏氭湭閫夋嫨閮ㄤ欢")
         for tile in self.preview_tiles.values():
             tile.setEnabled(True)
             tile.set_file(None)
@@ -1849,7 +1849,7 @@ class MainWindow(QMainWindow):
             )
             self.three_d_page_layout.addWidget(self.three_d_view)
         except Exception as exc:
-            error = QLabel(f"3D 预览不可用：{type(exc).__name__}: {exc}")
+            error = QLabel(f"3D 棰勮涓嶅彲鐢細{type(exc).__name__}: {exc}")
             error.setWordWrap(True)
             error.setStyleSheet("color: #ff8b83;")
             self.three_d_page_layout.addWidget(error)
@@ -1907,14 +1907,14 @@ class MainWindow(QMainWindow):
             None,
         )
         if part and part.optional and part.id not in self._optional_enabled:
-            self._log(f"{part.display_name} 尚未启用，请先勾选该部件。")
+            self._log(f"{part.display_name} 灏氭湭鍚敤锛岃鍏堝嬀閫夎閮ㄤ欢銆?)
             return
         initial = self.current_analysis.folder if self.current_analysis else Path.home()
         path, _ = QFileDialog.getOpenFileName(
             self,
-            f"为 {CHANNEL_LABELS_ZH[channel]} 选择贴图",
+            f"涓?{CHANNEL_LABELS_ZH[channel]} 閫夋嫨璐村浘",
             str(initial),
-            "贴图 (*.png *.tga *.tif *.tiff *.webp *.jpg *.jpeg);;所有文件 (*.*)",
+            "璐村浘 (*.png *.tga *.tif *.tiff *.webp *.jpg *.jpeg);;鎵€鏈夋枃浠?(*.*)",
         )
         if path:
             self._assign_path(part_id, channel, Path(path))
@@ -1936,7 +1936,7 @@ class MainWindow(QMainWindow):
 
     def _clear_current_channel(self) -> None:
         if not self.selected_channel or not self.current_part_id:
-            self._log("请先在映射表中选中一个贴图通道单元格。")
+            self._log("璇峰厛鍦ㄦ槧灏勮〃涓€変腑涓€涓创鍥鹃€氶亾鍗曞厓鏍笺€?)
             return
         self._assign_path(self.current_part_id, self.selected_channel, None)
 
@@ -2026,10 +2026,10 @@ class MainWindow(QMainWindow):
             return False
         self._sync_project_from_analysis()
         if not self.current_project or not self.current_project.assignments:
-            QMessageBox.warning(self, "没有贴图", "请先选择贴图目录并完成分析。")
+            QMessageBox.warning(self, "娌℃湁璐村浘", "璇峰厛閫夋嫨璐村浘鐩綍骞跺畬鎴愬垎鏋愩€?)
             return False
         if is_gtfo_running():
-            QMessageBox.warning(self, "GTFO 正在运行", "请先退出游戏，再生成或安装资产。")
+            QMessageBox.warning(self, "GTFO 姝ｅ湪杩愯", "璇峰厛閫€鍑烘父鎴忥紝鍐嶇敓鎴愭垨瀹夎璧勪骇銆?)
             return False
         if self.current_analysis:
             low = sum(
@@ -2041,16 +2041,16 @@ class MainWindow(QMainWindow):
             if low and not self.low_confidence_check.isChecked():
                 QMessageBox.warning(
                     self,
-                    "仍有低置信度匹配",
-                    "请先检查橙色标记项；确认无误后勾选“我已检查低置信度自动匹配”。",
+                    "浠嶆湁浣庣疆淇″害鍖归厤",
+                    "璇峰厛妫€鏌ユ鑹叉爣璁伴」锛涚‘璁ゆ棤璇悗鍕鹃€夆€滄垜宸叉鏌ヤ綆缃俊搴﹁嚜鍔ㄥ尮閰嶁€濄€?,
                 )
                 return False
             missing = self.current_analysis.missing_parts or self.current_analysis.missing_channels
             if missing and not self.partial_check.isChecked():
                 QMessageBox.warning(
                     self,
-                    "存在缺失内容",
-                    "请勾选“允许缺失部件/通道保持原样”，或补齐全部文件。",
+                    "瀛樺湪缂哄け鍐呭",
+                    "璇峰嬀閫夆€滃厑璁哥己澶遍儴浠?閫氶亾淇濇寔鍘熸牱鈥濓紝鎴栬ˉ榻愬叏閮ㄦ枃浠躲€?,
                 )
                 return False
         return True
@@ -2067,29 +2067,29 @@ class MainWindow(QMainWindow):
 
     def _export_obj(self) -> None:
         if not self.current_item or self.current_game is None:
-            QMessageBox.warning(self, "无法导出 OBJ", "请先选择武器并确认 GTFO 目录。")
+            QMessageBox.warning(self, "鏃犳硶瀵煎嚭 OBJ", "璇峰厛閫夋嫨姝﹀櫒骞剁‘璁?GTFO 鐩綍銆?)
             return
         selected = self._selected_export_part_ids()
         if not selected:
-            QMessageBox.warning(self, "没有勾选部件", "请先勾选需要导出的部件。")
+            QMessageBox.warning(self, "娌℃湁鍕鹃€夐儴浠?, "璇峰厛鍕鹃€夐渶瑕佸鍑虹殑閮ㄤ欢銆?)
             return
         output_dir = QFileDialog.getExistingDirectory(
             self,
-            "选择 OBJ 导出目录",
+            "閫夋嫨 OBJ 瀵煎嚭鐩綍",
             self.settings.last_texture_folder or str(Path.home()),
         )
         if not output_dir:
             return
 
         choice = QMessageBox(self)
-        choice.setWindowTitle("选择 OBJ 导出方式")
-        choice.setText("请选择部件文件的组织方式：")
+        choice.setWindowTitle("閫夋嫨 OBJ 瀵煎嚭鏂瑰紡")
+        choice.setText("璇烽€夋嫨閮ㄤ欢鏂囦欢鐨勭粍缁囨柟寮忥細")
         separate_button = choice.addButton(
-            "每个部件单独导出",
+            "姣忎釜閮ㄤ欢鍗曠嫭瀵煎嚭",
             QMessageBox.ButtonRole.ActionRole,
         )
         combined_button = choice.addButton(
-            "合并为一个 OBJ",
+            "鍚堝苟涓轰竴涓?OBJ",
             QMessageBox.ButtonRole.AcceptRole,
         )
         choice.addButton(QMessageBox.StandardButton.Cancel)
@@ -2121,30 +2121,30 @@ class MainWindow(QMainWindow):
         try:
             result = export_obj(request)
         except ObjExportError as exc:
-            QMessageBox.critical(self, "OBJ 导出失败", str(exc))
-            self._log(f"OBJ 导出失败：{exc}")
+            QMessageBox.critical(self, "OBJ 瀵煎嚭澶辫触", str(exc))
+            self._log(f"OBJ 瀵煎嚭澶辫触锛歿exc}")
             return
         except Exception as exc:
             QMessageBox.critical(
                 self,
-                "OBJ 导出失败",
+                "OBJ 瀵煎嚭澶辫触",
                 f"{type(exc).__name__}: {exc}",
             )
-            self._log(f"OBJ 导出失败：{type(exc).__name__}: {exc}")
+            self._log(f"OBJ 瀵煎嚭澶辫触锛歿type(exc).__name__}: {exc}")
             return
         finally:
             QApplication.restoreOverrideCursor()
         self._set_folder_label(result.mtl_path.parent)
         self._log(
-            f"OBJ 导出完成：{result.object_count} 个对象，"
-            f"{len(result.output_files)} 个 OBJ 文件，目录：{result.mtl_path.parent}"
+            f"OBJ 瀵煎嚭瀹屾垚锛歿result.object_count} 涓璞★紝"
+            f"{len(result.output_files)} 涓?OBJ 鏂囦欢锛岀洰褰曪細{result.mtl_path.parent}"
         )
         QMessageBox.information(
             self,
-            "OBJ 导出完成",
-            f"已导出 {result.object_count} 个独立部件/纹理集。\n"
-            f"OBJ 文件：{len(result.output_files)} 个\n\n"
-            f"输出目录：{result.mtl_path.parent}",
+            "OBJ 瀵煎嚭瀹屾垚",
+            f"宸插鍑?{result.object_count} 涓嫭绔嬮儴浠?绾圭悊闆嗐€俓n"
+            f"OBJ 鏂囦欢锛歿len(result.output_files)} 涓猏n\n"
+            f"杈撳嚭鐩綍锛歿result.mtl_path.parent}",
         )
 
     def _export(self) -> None:
@@ -2152,7 +2152,7 @@ class MainWindow(QMainWindow):
             return
         directory = QFileDialog.getExistingDirectory(
             self,
-            "选择导出目录",
+            "閫夋嫨瀵煎嚭鐩綍",
             str(Path.home()),
         )
         if not directory:
@@ -2165,8 +2165,8 @@ class MainWindow(QMainWindow):
         if any(target.glob("sharedassets*.assets")):
             answer = QMessageBox.question(
                 self,
-                "目标目录已有资产",
-                "输出子目录中已有 sharedassets 文件，是否覆盖？",
+                "鐩爣鐩綍宸叉湁璧勪骇",
+                "杈撳嚭瀛愮洰褰曚腑宸叉湁 sharedassets 鏂囦欢锛屾槸鍚﹁鐩栵紵",
                 QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
                 QMessageBox.StandardButton.No,
             )
@@ -2178,7 +2178,7 @@ class MainWindow(QMainWindow):
 
         def task(report):
             try:
-                report("正在临时目录生成 sharedassets…")
+                report("姝ｅ湪涓存椂鐩綍鐢熸垚 sharedassets鈥?)
                 affected = affected_by_asset(
                     self.catalog.values(),
                     [part.asset for part in item.parts if part.id in project.assignments],
@@ -2196,7 +2196,7 @@ class MainWindow(QMainWindow):
                         else None,
                     )
                 )
-                report("正在复制到导出目录…")
+                report("姝ｅ湪澶嶅埗鍒板鍑虹洰褰曗€?)
                 target.mkdir(parents=True, exist_ok=True)
                 for built in result.files:
                     final = target / built.output_path.name
@@ -2210,20 +2210,20 @@ class MainWindow(QMainWindow):
             finally:
                 shutil.rmtree(temp_root, ignore_errors=True)
 
-        self._start_worker("正在构建资产…", task, self._export_finished)
+        self._start_worker("姝ｅ湪鏋勫缓璧勪骇鈥?, task, self._export_finished)
 
     def _export_finished(self, result: object) -> None:
         if not hasattr(result, "output_dir"):
             return
-        self._log(f"已导出到：{result.output_dir}")
+        self._log(f"宸插鍑哄埌锛歿result.output_dir}")
         for warning in result.warnings:
-            self._log(f"警告：{warning}")
-        message = f"已生成 {len(result.files)} 个 .assets 文件。\n\n{result.output_dir}"
+            self._log(f"璀﹀憡锛歿warning}")
+        message = f"宸茬敓鎴?{len(result.files)} 涓?.assets 鏂囦欢銆俓n\n{result.output_dir}"
         if result.affected_items:
-            message += "\n\n可能共用这些资产的武器：\n" + "、".join(result.affected_items)
+            message += "\n\n鍙兘鍏辩敤杩欎簺璧勪骇鐨勬鍣細\n" + "銆?.join(result.affected_items)
         QMessageBox.information(
             self,
-            "导出完成",
+            "瀵煎嚭瀹屾垚",
             message,
         )
 
@@ -2235,9 +2235,9 @@ class MainWindow(QMainWindow):
             return
         answer = QMessageBox.question(
             self,
-            "安装到 GTFO",
-            "将先备份现有目标 .assets，再覆盖 GTFO_Data 中的同名文件。\n"
-            "原始 .resS 不会修改。是否继续？",
+            "瀹夎鍒?GTFO",
+            "灏嗗厛澶囦唤鐜版湁鐩爣 .assets锛屽啀瑕嗙洊 GTFO_Data 涓殑鍚屽悕鏂囦欢銆俓n"
+            "鍘熷 .resS 涓嶄細淇敼銆傛槸鍚︾户缁紵",
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
             QMessageBox.StandardButton.No,
         )
@@ -2258,7 +2258,7 @@ class MainWindow(QMainWindow):
 
         def task(report):
             try:
-                report("正在生成资产…")
+                report("姝ｅ湪鐢熸垚璧勪骇鈥?)
                 affected = affected_by_asset(
                     self.catalog.values(),
                     [part.asset for part in item.parts if part.id in project.assignments],
@@ -2276,7 +2276,7 @@ class MainWindow(QMainWindow):
                         else None,
                     )
                 )
-                report("正在写入 GTFO_Data…")
+                report("姝ｅ湪鍐欏叆 GTFO_Data鈥?)
                 record = manager.install(
                     game,
                     result,
@@ -2287,24 +2287,24 @@ class MainWindow(QMainWindow):
             finally:
                 shutil.rmtree(temp_root, ignore_errors=True)
 
-        self._start_worker("正在构建并安装…", task, self._install_finished)
+        self._start_worker("姝ｅ湪鏋勫缓骞跺畨瑁呪€?, task, self._install_finished)
 
     def _install_finished(self, value: object) -> None:
         result, record = value
         if record.retained:
-            self._log(f"安装完成，备份目录：{Path(record.backup_dir).name}")
+            self._log(f"瀹夎瀹屾垚锛屽浠界洰褰曪細{Path(record.backup_dir).name}")
         else:
-            self._log("安装完成；自动备份已关闭，本次临时回滚数据已删除。")
+            self._log("瀹夎瀹屾垚锛涜嚜鍔ㄥ浠藉凡鍏抽棴锛屾湰娆′复鏃跺洖婊氭暟鎹凡鍒犻櫎銆?)
         for warning in result.warnings:
-            self._log(f"警告：{warning}")
-        message = f"已安装 {len(result.files)} 个 .assets 文件。"
+            self._log(f"璀﹀憡锛歿warning}")
+        message = f"宸插畨瑁?{len(result.files)} 涓?.assets 鏂囦欢銆?
         if record.retained:
-            message += f"\n备份目录：{Path(record.backup_dir).name}"
+            message += f"\n澶囦唤鐩綍锛歿Path(record.backup_dir).name}"
         else:
-            message += "\n自动备份已关闭，本次安装未保留历史备份。"
+            message += "\n鑷姩澶囦唤宸插叧闂紝鏈瀹夎鏈繚鐣欏巻鍙插浠姐€?
         if result.affected_items:
-            message += "\n\n可能共用这些资产的其他武器：\n" + "、".join(result.affected_items)
-        QMessageBox.information(self, "安装完成", message)
+            message += "\n\n鍙兘鍏辩敤杩欎簺璧勪骇鐨勫叾浠栨鍣細\n" + "銆?.join(result.affected_items)
+        QMessageBox.information(self, "瀹夎瀹屾垚", message)
         self._update_actions()
 
     def _rollback_last(self) -> None:
@@ -2314,14 +2314,14 @@ class MainWindow(QMainWindow):
             return
         records = self.install_manager.list_records()
         if not records:
-            QMessageBox.information(self, "没有备份", "未找到可还原的安装记录。")
+            QMessageBox.information(self, "娌℃湁澶囦唤", "鏈壘鍒板彲杩樺師鐨勫畨瑁呰褰曘€?)
             return
         record = records[0]
         backup_name = Path(record.backup_dir).name
         answer = QMessageBox.question(
             self,
-            "还原上次安装",
-            f"将还原备份目录 {backup_name} 中的 {len(record.files)} 个文件。是否继续？",
+            "杩樺師涓婃瀹夎",
+            f"灏嗚繕鍘熷浠界洰褰?{backup_name} 涓殑 {len(record.files)} 涓枃浠躲€傛槸鍚︾户缁紵",
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
             QMessageBox.StandardButton.No,
         )
@@ -2330,13 +2330,13 @@ class MainWindow(QMainWindow):
         try:
             self.install_manager.restore(record)
         except Exception as exc:
-            QMessageBox.critical(self, "还原失败", f"{type(exc).__name__}: {exc}")
+            QMessageBox.critical(self, "杩樺師澶辫触", f"{type(exc).__name__}: {exc}")
             return
-        self._log(f"已还原备份目录 {backup_name}")
-        QMessageBox.information(self, "还原完成", "目标 .assets 已还原到安装前状态。")
+        self._log(f"宸茶繕鍘熷浠界洰褰?{backup_name}")
+        QMessageBox.information(self, "杩樺師瀹屾垚", "鐩爣 .assets 宸茶繕鍘熷埌瀹夎鍓嶇姸鎬併€?)
 
     def _browse_game(self) -> None:
-        path = QFileDialog.getExistingDirectory(self, "选择 GTFO 安装目录")
+        path = QFileDialog.getExistingDirectory(self, "閫夋嫨 GTFO 瀹夎鐩綍")
         if path:
             self._detect_game(path)
 
@@ -2349,39 +2349,39 @@ class MainWindow(QMainWindow):
         if install:
             self.settings.game_root = str(install.root)
             save_settings(self.settings)
-            self.game_status.setText(f"GTFO 已连接 · {install.data_dir}")
+            self.game_status.setText(f"GTFO 宸茶繛鎺?路 {install.data_dir}")
             self.game_status.setStyleSheet("color: #b7dc55;")
-            self._log(f"检测到 GTFO：{install.root}")
+            self._log(f"妫€娴嬪埌 GTFO锛歿install.root}")
         else:
-            self.game_status.setText("未检测到 GTFO，请手动选择安装目录")
+            self.game_status.setText("鏈娴嬪埌 GTFO锛岃鎵嬪姩閫夋嫨瀹夎鐩綍")
             self.game_status.setStyleSheet("color: #ff8b83;")
-            self._log("未检测到 GTFO，可点击右上角“选择目录”。")
+            self._log("鏈娴嬪埌 GTFO锛屽彲鐐瑰嚮鍙充笂瑙掆€滈€夋嫨鐩綍鈥濄€?)
         self._update_actions()
 
     def _ensure_game(self) -> bool:
         if self.current_game and self.current_game.valid:
             return True
-        QMessageBox.warning(self, "未连接 GTFO", "请先选择包含 GTFO.exe 和 GTFO_Data 的目录。")
+        QMessageBox.warning(self, "鏈繛鎺?GTFO", "璇峰厛閫夋嫨鍖呭惈 GTFO.exe 鍜?GTFO_Data 鐨勭洰褰曘€?)
         return False
 
     def _choose_clean_baseline(self) -> None:
         folder = QFileDialog.getExistingDirectory(
             self,
-            "选择包含干净 sharedassets*.assets 的目录",
+            "閫夋嫨鍖呭惈骞插噣 sharedassets*.assets 鐨勭洰褰?,
         )
         if not folder:
             return
         source = Path(folder)
         if not list(source.glob("sharedassets*.assets")):
-            QMessageBox.warning(self, "目录无效", "该目录中没有 sharedassets*.assets。")
+            QMessageBox.warning(self, "鐩綍鏃犳晥", "璇ョ洰褰曚腑娌℃湁 sharedassets*.assets銆?)
             return
         self.settings.clean_asset_dir = str(source)
         save_settings(self.settings)
-        self._log(f"已记录干净基准目录：{source}；下次构建优先使用。")
+        self._log(f"宸茶褰曞共鍑€鍩哄噯鐩綍锛歿source}锛涗笅娆℃瀯寤轰紭鍏堜娇鐢ㄣ€?)
         QMessageBox.information(
             self,
-            "干净基准已登记",
-            "已记录该目录。程序会优先用这里的同名资产作为构建基准。",
+            "骞插噣鍩哄噯宸茬櫥璁?,
+            "宸茶褰曡鐩綍銆傜▼搴忎細浼樺厛鐢ㄨ繖閲岀殑鍚屽悕璧勪骇浣滀负鏋勫缓鍩哄噯銆?,
         )
 
     def ensure_backup_directory_interactive(self, force: bool = False) -> bool:
@@ -2396,17 +2396,17 @@ class MainWindow(QMainWindow):
                 initial = Path.home()
         selected = QFileDialog.getExistingDirectory(
             self,
-            "选择枪皮资产备份目录",
+            "閫夋嫨鏋毊璧勪骇澶囦唤鐩綍",
             str(initial),
         )
         if not selected:
-            self._log("尚未设置备份目录，安装与还原功能暂不可用。")
+            self._log("灏氭湭璁剧疆澶囦唤鐩綍锛屽畨瑁呬笌杩樺師鍔熻兘鏆備笉鍙敤銆?)
             return False
         candidate = Path(selected).expanduser().resolve()
         try:
             test_directory_writable(candidate)
         except OSError as exc:
-            QMessageBox.critical(self, "备份目录不可写", f"{candidate}\n\n{exc}")
+            QMessageBox.critical(self, "澶囦唤鐩綍涓嶅彲鍐?, f"{candidate}\n\n{exc}")
             return False
 
         legacy_root = ensure_app_dirs()["backups"].resolve()
@@ -2417,22 +2417,22 @@ class MainWindow(QMainWindow):
             except Exception as exc:
                 QMessageBox.critical(
                     self,
-                    "旧备份迁移失败",
-                    f"未更改备份目录。\n\n{type(exc).__name__}: {exc}",
+                    "鏃у浠借縼绉诲け璐?,
+                    f"鏈洿鏀瑰浠界洰褰曘€俓n\n{type(exc).__name__}: {exc}",
                 )
                 return False
         self.settings.backup_dir = str(candidate)
         save_settings(self.settings)
         self._refresh_install_manager()
         self._update_actions()
-        self._log(f"备份目录已设置为：{candidate}")
+        self._log(f"澶囦唤鐩綍宸茶缃负锛歿candidate}")
         if migrated:
-            self._log(f"已从 C 盘迁移 {migrated} 条旧备份记录。")
+            self._log(f"宸蹭粠 C 鐩樿縼绉?{migrated} 鏉℃棫澶囦唤璁板綍銆?)
             QMessageBox.information(
                 self,
-                "备份目录已设置",
-                f"备份将保存到：\n{candidate}\n\n"
-                f"已从 C 盘迁移 {migrated} 条旧安装记录。",
+                "澶囦唤鐩綍宸茶缃?,
+                f"澶囦唤灏嗕繚瀛樺埌锛歕n{candidate}\n\n"
+                f"宸蹭粠 C 鐩樿縼绉?{migrated} 鏉℃棫瀹夎璁板綍銆?,
             )
         return True
 
@@ -2451,13 +2451,13 @@ class MainWindow(QMainWindow):
         try:
             self.install_manager = InstallManager(path)
         except (OSError, ValueError) as exc:
-            self._log(f"备份目录不可用：{exc}")
+            self._log(f"澶囦唤鐩綍涓嶅彲鐢細{exc}")
         self._update_backup_path_label()
 
     def _toggle_persistent_backup(self, enabled: bool) -> None:
         self.settings.persistent_backup = enabled
         save_settings(self.settings)
-        self._log("持久化源资产备份已开启。" if enabled else "持久化源资产备份已关闭。")
+        self._log("鎸佷箙鍖栨簮璧勪骇澶囦唤宸插紑鍚€? if enabled else "鎸佷箙鍖栨簮璧勪骇澶囦唤宸插叧闂€?)
 
     def _toggle_auto_backup(self, enabled: bool) -> None:
         if enabled and self._configured_backup_dir() is None:
@@ -2471,40 +2471,40 @@ class MainWindow(QMainWindow):
                 return
         self.settings.auto_backup = enabled
         save_settings(self.settings)
-        self._log("安装前自动备份已开启。" if enabled else "安装前自动备份已关闭。")
+        self._log("瀹夎鍓嶈嚜鍔ㄥ浠藉凡寮€鍚€? if enabled else "瀹夎鍓嶈嚜鍔ㄥ浠藉凡鍏抽棴銆?)
         self._update_actions()
 
     def _update_backup_path_label(self) -> None:
         path = self._configured_backup_dir()
         if path is None:
-            self.backup_path_label.setText("当前备份目录：未设置")
-            self.backup_path_label.setToolTip("点击选择备份目录")
+            self.backup_path_label.setText("褰撳墠澶囦唤鐩綍锛氭湭璁剧疆")
+            self.backup_path_label.setToolTip("鐐瑰嚮閫夋嫨澶囦唤鐩綍")
         else:
             display = self.backup_path_label.fontMetrics().elidedText(
                 str(path),
                 Qt.TextElideMode.ElideMiddle,
                 360,
             )
-            self.backup_path_label.setText(f"当前备份目录：{display}")
+            self.backup_path_label.setText(f"褰撳墠澶囦唤鐩綍锛歿display}")
             self.backup_path_label.setToolTip(str(path))
 
     def _open_project(self) -> None:
         path, _ = QFileDialog.getOpenFileName(
             self,
-            "打开枪皮工程",
+            "鎵撳紑鏋毊宸ョ▼",
             str(ensure_app_dirs()["projects"]),
-            "GTFO 枪皮工程 (*.gtfoskin);;JSON (*.json)",
+            "GTFO 鏋毊宸ョ▼ (*.gtfoskin);;JSON (*.json)",
         )
         if not path:
             return
         try:
             project = load_project(Path(path))
         except Exception as exc:
-            QMessageBox.critical(self, "无法打开工程", f"{type(exc).__name__}: {exc}")
+            QMessageBox.critical(self, "鏃犳硶鎵撳紑宸ョ▼", f"{type(exc).__name__}: {exc}")
             return
         item = self.catalog.get(project.item_id)
         if item is None:
-            QMessageBox.critical(self, "目录不兼容", f"工程引用了未知武器：{project.item_id}")
+            QMessageBox.critical(self, "鐩綍涓嶅吋瀹?, f"宸ョ▼寮曠敤浜嗘湭鐭ユ鍣細{project.item_id}")
             return
         if project.game_root:
             candidate = validate_game_root(project.game_root)
@@ -2535,7 +2535,7 @@ class MainWindow(QMainWindow):
         self.low_confidence_check.setChecked(
             project.confirmations.get("review_low_confidence", False)
         )
-        self._log(f"已打开工程：{path}")
+        self._log(f"宸叉墦寮€宸ョ▼锛歿path}")
         self._mark_3d_dirty()
         if self.preview_tabs.currentIndex() == 1:
             self._refresh_3d_preview()
@@ -2584,15 +2584,15 @@ class MainWindow(QMainWindow):
 
     def _save_project(self, save_as: bool) -> None:
         if not self.current_project:
-            QMessageBox.information(self, "没有工程", "请先选择武器并导入贴图。")
+            QMessageBox.information(self, "娌℃湁宸ョ▼", "璇峰厛閫夋嫨姝﹀櫒骞跺鍏ヨ创鍥俱€?)
             return
         self._sync_project_from_analysis()
         if save_as or not self.current_project.name:
             path, _ = QFileDialog.getSaveFileName(
                 self,
-                "保存枪皮工程",
+                "淇濆瓨鏋毊宸ョ▼",
                 str(ensure_app_dirs()["projects"] / f"{self.current_project.name}.gtfoskin"),
-                "GTFO 枪皮工程 (*.gtfoskin)",
+                "GTFO 鏋毊宸ョ▼ (*.gtfoskin)",
             )
         else:
             path = str(ensure_app_dirs()["projects"] / f"{self.current_project.name}.gtfoskin")
@@ -2600,9 +2600,9 @@ class MainWindow(QMainWindow):
             return
         try:
             save_project(self.current_project, Path(path))
-            self._log(f"工程已保存：{path}")
+            self._log(f"宸ョ▼宸蹭繚瀛橈細{path}")
         except Exception as exc:
-            QMessageBox.critical(self, "保存失败", f"{type(exc).__name__}: {exc}")
+            QMessageBox.critical(self, "淇濆瓨澶辫触", f"{type(exc).__name__}: {exc}")
 
     def _save_autosave(self, *_) -> None:
         if not self.current_project:
@@ -2621,7 +2621,7 @@ class MainWindow(QMainWindow):
                 running = False
                 self.worker = None
             if running:
-                QMessageBox.information(self, "请稍候", "当前操作尚未完成。")
+                QMessageBox.information(self, "璇风◢鍊?, "褰撳墠鎿嶄綔灏氭湭瀹屾垚銆?)
                 return
             self.worker = None
         self._set_busy(True, label)
@@ -2637,11 +2637,11 @@ class MainWindow(QMainWindow):
     def _worker_finished(self, worker: TaskWorker) -> None:
         if self.worker is worker:
             self.worker = None
-        self._set_busy(False, "完成")
+        self._set_busy(False, "瀹屾垚")
 
     def _worker_failed(self, message: str) -> None:
-        self._log(f"错误：{message}")
-        QMessageBox.critical(self, "操作失败", message)
+        self._log(f"閿欒锛歿message}")
+        QMessageBox.critical(self, "鎿嶄綔澶辫触", message)
 
     def _set_busy(self, busy: bool, label: str) -> None:
         self.progress.setRange(0, 0 if busy else 1)
@@ -2689,10 +2689,10 @@ class MainWindow(QMainWindow):
 
     def _set_folder_label(self, value: str | Path | None) -> None:
         if not value:
-            self.folder_label.setText("贴图目录：未选择")
+            self.folder_label.setText("璐村浘鐩綍锛氭湭閫夋嫨")
             self.folder_label.setToolTip("")
             return
         text = str(value)
         name = Path(text).name or text
-        self.folder_label.setText(f"贴图目录：{name}")
+        self.folder_label.setText(f"璐村浘鐩綍锛歿name}")
         self.folder_label.setToolTip(text)

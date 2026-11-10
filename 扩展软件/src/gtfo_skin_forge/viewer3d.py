@@ -350,6 +350,7 @@ class Weapon3DView(QWidget):
         game: GameInstall,
         item: CatalogItem,
         project: SkinProject | None = None,
+        unit_scale: float = 1.0,
     ) -> None:
         project = project or SkinProject(name=item.name, item_id=item.id)
         assignment_key = tuple(
@@ -374,6 +375,7 @@ class Weapon3DView(QWidget):
             assignment_key,
             lighting_key,
             tuple(project.disabled_parts),
+            round(float(unit_scale), 6),
         )
         if key == self._loaded_key:
             return
@@ -386,6 +388,7 @@ class Weapon3DView(QWidget):
                 item,
                 enabled_parts=enabled_parts,
                 disabled_parts=set(project.disabled_parts),
+                unit_scale=unit_scale,
             )
             materials = prepare_preview_materials(game, item, project)
             self._clear_entities()

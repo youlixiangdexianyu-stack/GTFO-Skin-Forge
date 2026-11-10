@@ -8,7 +8,11 @@ from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any
 
-DLY_SCHEMA_VERSION = 1
+from .assembly import FORGE_SCENE_TO_GAME_SCALE
+
+# v2 stores display anchors in GTFO weapon space (metres) instead of the 0.8x
+# GTFO Forge scene space used by v1 presets.
+DLY_SCHEMA_VERSION = 2
 DLY_PRESET_FILENAME = "hel_ammo_display.gtfdly"
 DLY_PLUGIN_FOLDER = Path("BepInEx") / "plugins" / "Yuyu-HelAmmoDisplay"
 DLY_CONFIG_PATH = Path("BepInEx") / "config" / "Yuyu.HelAmmoDisplay.cfg"
@@ -87,12 +91,27 @@ class DlyDisplayPreset:
     @classmethod
     def from_dict(cls, value: dict[str, Any]) -> "DlyDisplayPreset":
         defaults = cls()
+        try:
+            source_version = int(value.get("schema_version", 1) or 1)
+        except (TypeError, ValueError):
+            source_version = 1
         known = {
             field_name: value[field_name]
             for field_name in cls.__dataclass_fields__
             if field_name in value
         }
         preset = cls(**known)
+        if source_version < 2:
+            # v1 presets were authored against the 0.8x Forge preview model;
+            # v2 uses game weapon space, so scale position-space values once.
+            scale = FORGE_SCENE_TO_GAME_SCALE
+            preset.anchor_local_x = float(preset.anchor_local_x) * scale
+            preset.anchor_local_y = float(preset.anchor_local_y) * scale
+            preset.anchor_local_z = float(preset.anchor_local_z) * scale
+            preset.offset_x = float(preset.offset_x) * scale
+            preset.offset_y = float(preset.offset_y) * scale
+            preset.offset_z = float(preset.offset_z) * scale
+            preset.surface_clearance = float(preset.surface_clearance) * scale
         preset.schema_version = DLY_SCHEMA_VERSION
         preset.target_item_id = str(preset.target_item_id or defaults.target_item_id)
         part = part_by_id(str(preset.anchor_part_id))

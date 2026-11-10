@@ -14,6 +14,7 @@ from PySide6.QtGui import (
     QVector3D,
 )
 
+from .assembly import FORGE_SCENE_TO_GAME_SCALE
 from .dly import DlyDisplayPreset
 from .models import CatalogItem, GameInstall, SkinProject
 from .viewer3d import Weapon3DView
@@ -115,7 +116,15 @@ class DlyPreviewView(Weapon3DView):
         )
         self._pickers.clear()
         self._loaded_key = None
-        self.load_weapon(game, item, project)
+        # Forge preview meshes are 0.8x game weapon space; load the DLY editor at
+        # game scale so the anchor coordinates written to the plugin config are
+        # already in game units.
+        self.load_weapon(
+            game,
+            item,
+            project,
+            unit_scale=FORGE_SCENE_TO_GAME_SCALE,
+        )
         self._install_part_pickers()
         self._preset = preset
         self._transform_tool = preset.last_transform_tool

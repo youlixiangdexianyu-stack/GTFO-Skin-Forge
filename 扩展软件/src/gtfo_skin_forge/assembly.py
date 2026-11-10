@@ -12,6 +12,19 @@ from .models import CatalogItem, PartSpec
 
 Position = tuple[float, float, float]
 
+# GTFO Forge scene space -> in-game GTFO weapon space.
+#
+# The Forge catalog GLB models (and the node translations derived from that
+# scene, which are stored in assembly.json) are authored at 0.8x the space the
+# game uses for the weapon part transforms. Verified by comparing the
+# sharedassets part meshes of every HEL part against the Forge preview meshes:
+# preview = 0.8 * game (same assembly rotation/translation, uniform 0.8 scale).
+#
+# BepInEx plugins (e.g. Yuyu.HelAmmoDisplay) place their screens in game
+# weapon space, so any Forge-space position must be multiplied by this factor
+# before it is written to a plugin config.
+FORGE_SCENE_TO_GAME_SCALE = 1.25
+
 
 def assembly_path() -> Path:
     return Path(__file__).with_name("data") / "assembly.json"

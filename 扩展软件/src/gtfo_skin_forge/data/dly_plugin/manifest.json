@@ -1,6 +1,6 @@
 {
   "name": "HelAmmoDisplay",
-  "version_number": "1.5.1",
+  "version_number": "1.6.0",
   "website_url": "",
   "description": "Adds a visually configurable local first-person live magazine counter to the HEL machine pistol.",
   "dependencies": [

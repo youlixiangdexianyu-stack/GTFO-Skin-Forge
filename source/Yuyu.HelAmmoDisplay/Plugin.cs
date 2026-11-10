@@ -11,7 +11,7 @@ public sealed class HelAmmoDisplayPlugin : BasePlugin
 {
     public const string GUID = "Yuyu.HelAmmoDisplay";
     public const string PluginName = "HEL Ammo Display";
-    public const string PluginVersion = "1.5.1";
+    public const string PluginVersion = "1.6.0";
 
     internal static HelAmmoDisplayPlugin Instance { get; private set; }
     internal static ManualLogSource LogSource { get; private set; }

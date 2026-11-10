@@ -243,11 +243,16 @@ internal static class AmmoDisplayManager
 
         Vector3 worldPosition = modelHolder.TransformPoint(modelPosition);
         Vector3 anchorLocalPosition = anchor.InverseTransformPoint(worldPosition);
+        // The DLY editor builds its panel in the model YZ plane facing +X, while
+        // a Unity quad is built in the XY plane. surfaceBaseRotation maps the
+        // quad onto that plane; the user rotation must then be applied in model
+        // space on top of it (Qt and Unity use the same Euler order), so the
+        // multiplication order matches the editor preview.
         Quaternion surfaceBaseRotation = Quaternion.Euler(0f, -90f, 0f);
-        Quaternion panelRotation = surfaceBaseRotation * Quaternion.Euler(
+        Quaternion panelRotation = Quaternion.Euler(
             DisplayConfig.RotationX.Value,
             DisplayConfig.RotationY.Value,
-            DisplayConfig.RotationZ.Value);
+            DisplayConfig.RotationZ.Value) * surfaceBaseRotation;
         Quaternion desiredWorldRotation = modelHolder.rotation * panelRotation;
         Quaternion anchorLocalRotation =
             Quaternion.Inverse(anchor.rotation) * desiredWorldRotation;
@@ -327,6 +332,14 @@ internal static class AmmoDisplayManager
                 + $"{FormatFloat(anchorLocalRotation.eulerAngles.x)}, "
                 + $"{FormatFloat(anchorLocalRotation.eulerAngles.y)}, "
                 + $"{FormatFloat(anchorLocalRotation.eulerAngles.z)}) "
+                + "modelHolderScale=("
+                + $"{FormatFloat(modelHolder.lossyScale.x)}, "
+                + $"{FormatFloat(modelHolder.lossyScale.y)}, "
+                + $"{FormatFloat(modelHolder.lossyScale.z)}) "
+                + "anchorWorldPosition=("
+                + $"{FormatFloat(anchor.position.x)}, "
+                + $"{FormatFloat(anchor.position.y)}, "
+                + $"{FormatFloat(anchor.position.z)}) "
                 + $"(clip={state.LastText}).");
         }
 

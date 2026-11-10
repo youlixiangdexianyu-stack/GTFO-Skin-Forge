@@ -13,7 +13,7 @@ using System.Reflection;
 [assembly: System.Reflection.AssemblyCompanyAttribute("Yuyu.HelAmmoDisplay")]
 [assembly: System.Reflection.AssemblyConfigurationAttribute("Release")]
 [assembly: System.Reflection.AssemblyFileVersionAttribute("1.0.0.0")]
-[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+ab5bea2c5d54057cfc88ae3f396dda65d6ea380e")]
+[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+91dc9b396edd0962f416d2394b9997096529ca9b")]
 [assembly: System.Reflection.AssemblyProductAttribute("Yuyu.HelAmmoDisplay")]
 [assembly: System.Reflection.AssemblyTitleAttribute("Yuyu.HelAmmoDisplay")]
 [assembly: System.Reflection.AssemblyVersionAttribute("1.0.0.0")]

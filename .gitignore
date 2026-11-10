@@ -1,0 +1,11 @@
+﻿**/__pycache__/
+**/*.pyc
+扩展软件/dist*/
+扩展软件/build*/
+扩展软件/artifacts/
+扩展软件/GTFO_UserData/
+扩展软件/tools/node_modules/
+扩展软件/.pytest_cache/
+BepInEx/
+*.zip
+*.7z

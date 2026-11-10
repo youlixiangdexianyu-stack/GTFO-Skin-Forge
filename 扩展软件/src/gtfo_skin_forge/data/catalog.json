@@ -1,0 +1,477 @@
+{
+  "schema_version": 1,
+  "game": "GTFO",
+  "weapons": [
+    {
+      "id": "hel_left",
+      "name": "HEL 左轮",
+      "category": "左轮",
+      "aliases": ["HEL revolver", "Autorevolver"],
+      "parts": [
+        {"id": "front", "role": "front", "asset": 563, "material": "Front_Revolver_2"},
+        {"id": "receiver", "role": "receiver", "asset": 588, "material": "Receiver_Revolver_2"},
+        {"id": "stock", "role": "stock", "asset": 606, "material": "Stock_Revolver_2"},
+        {"id": "sight", "role": "sight", "asset": 563, "material": "Sight_RedDot_Revolver_2"}
+      ]
+    },
+    {
+      "id": "machinegun_2",
+      "name": "机关枪 2",
+      "category": "机枪",
+      "aliases": ["GEAR_MachineGun_SemiBurst", "MachineGun"],
+      "parts": [
+        {"id": "front", "role": "front", "asset": 577, "material": "Front_MachineGun_1"},
+        {"id": "receiver", "role": "receiver", "asset": 597, "material": "Receiver_SMG_2"},
+        {"id": "stock", "role": "stock", "asset": 615, "material": "Stock_Rifle_2"},
+        {"id": "mag", "role": "mag", "asset": 325, "material": "Mag_762_40rnds_A"},
+        {"id": "sight", "role": "sight", "asset": 322, "material": "Sight_21"}
+      ]
+    },
+    {
+      "id": "smg",
+      "name": "SMG",
+      "category": "冲锋枪",
+      "aliases": ["GEAR_SMG_Auto"],
+      "parts": [
+        {"id": "front", "role": "front", "asset": 577, "material": "Front_SMG_3"},
+        {"id": "receiver", "role": "receiver", "asset": 597, "material": "Receiver_SMG_2"},
+        {"id": "stock", "role": "stock", "asset": 617, "material": "Stock_SMG_1"},
+        {"id": "mag", "role": "mag", "asset": 336, "material": "Mag_9mm_30rdns_A"},
+        {"id": "sight", "role": "sight", "asset": 319, "material": "Sight_14"}
+      ]
+    },
+    {
+      "id": "bullpup",
+      "name": "无托步枪",
+      "category": "步枪",
+      "aliases": ["Bullpup", "GEAR_Bullpup_SemiBurst"],
+      "parts": [
+        {"id": "front", "role": "front", "asset": 569, "material": "Front_Bullpop_1"},
+        {"id": "receiver", "role": "receiver", "asset": 590, "material": "Receiver_UZI_2"},
+        {"id": "stock", "role": "stock", "asset": 608, "material": "Stock_Bullpop_1"},
+        {"id": "mag", "role": "mag", "asset": 336, "material": "Mag_9mm_30rdns_A"},
+        {"id": "sight", "role": "sight", "asset": 318, "material": "Sight_18"}
+      ]
+    },
+    {
+      "id": "heavy_smg",
+      "name": "重冲",
+      "category": "冲锋枪",
+      "aliases": ["Heavy SMG", "GEAR_SMG_Heavy_Auto"],
+      "parts": [
+        {"id": "front", "role": "front", "asset": 576, "material": "Front_SMG_2"},
+        {"id": "receiver", "role": "receiver", "asset": 597, "material": "Receiver_SMG_2"},
+        {"id": "stock", "role": "stock", "asset": 617, "material": "Stock_SMG_1"},
+        {"id": "mag", "role": "mag", "asset": 336, "material": "Mag_9mm_30rdns_A"},
+        {"id": "sight", "role": "sight", "asset": 317, "material": "Sight_2"}
+      ]
+    },
+    {
+      "id": "pdw",
+      "name": "PDW",
+      "category": "冲锋枪",
+      "aliases": ["GEAR_SMG_PDW"],
+      "parts": [
+        {"id": "front", "role": "front", "asset": 575, "material": "Front_SMG_1"},
+        {"id": "receiver", "role": "receiver", "asset": 597, "material": "Receiver_SMG_2"},
+        {"id": "stock", "role": "stock", "asset": 620, "material": "Stock_SMG_2"},
+        {"id": "sight", "role": "sight", "asset": 305, "material": "Sight_19"}
+      ]
+    },
+    {
+      "id": "carbine",
+      "name": "卡宾枪",
+      "category": "步枪",
+      "aliases": ["Carbine", "GEAR_Rifle_SemiBurst"],
+      "parts": [
+        {"id": "front", "role": "front", "asset": 574, "material": "Front_SMG_4"},
+        {"id": "receiver", "role": "receiver", "asset": 597, "material": "Receiver_SMG_2"},
+        {"id": "stock", "role": "stock", "asset": 620, "material": "Stock_SMG_2"},
+        {"id": "mag", "role": "mag", "asset": 336, "material": "Mag_9mm_30rdns_A"},
+        {"id": "sight", "role": "sight", "asset": 321, "material": "Sight_16"}
+      ]
+    },
+    {
+      "id": "dmr",
+      "name": "DMR",
+      "category": "精确射手步枪",
+      "aliases": ["GEAR_DMR_Semi_v2"],
+      "parts": [
+        {"id": "front", "role": "front", "asset": 578, "material": "Front_Rifle_2"},
+        {"id": "receiver", "role": "receiver", "asset": 599, "material": "Receiver_Rifle_1"},
+        {"id": "stock", "role": "stock", "asset": 614, "material": "Stock_Precision_4"},
+        {"id": "mag", "role": "mag", "asset": 332, "material": "Mag_556_40rnds_A"},
+        {"id": "sight", "role": "sight", "asset": 316, "material": "Sight_8"}
+      ]
+    },
+    {
+      "id": "double_dmr",
+      "name": "双发 DMR",
+      "category": "精确射手步枪",
+      "aliases": ["GEAR_DMR_SemiBurst"],
+      "parts": [
+        {"id": "front", "role": "front", "asset": 578, "material": "Front_Rifle_2"},
+        {"id": "receiver", "role": "receiver", "asset": 594, "material": "Receiver_SMG_3"},
+        {"id": "stock", "role": "stock", "asset": 619, "material": "Stock_Rifle_3"},
+        {"id": "mag", "role": "mag", "asset": 332, "material": "Mag_556_40rnds_A"},
+        {"id": "sight", "role": "sight", "asset": 307, "material": "Sight_17"}
+      ]
+    },
+    {
+      "id": "assault_rifle",
+      "name": "突击步枪",
+      "category": "步枪",
+      "aliases": ["Assault Rifle", "GEAR_Rifle_Auto"],
+      "parts": [
+        {"id": "front", "role": "front", "asset": 569, "material": "Front_Rifle_1"},
+        {"id": "receiver", "role": "receiver", "asset": 600, "material": "Receiver_Rifle_2"},
+        {"id": "stock", "role": "stock", "asset": 618, "material": "Stock_Rifle_1"},
+        {"id": "mag", "role": "mag", "asset": 335, "material": "Mag_556_60rnds_A"},
+        {"id": "sight", "role": "sight", "asset": 309, "material": "Sight_6"}
+      ]
+    },
+    {
+      "id": "hel_shotgun",
+      "name": "HEL 霰弹枪",
+      "category": "霰弹枪",
+      "aliases": ["HEL shotgun", "GEAR_HEL_Shotgun_Auto"],
+      "parts": [
+        {"id": "front", "role": "front", "asset": 581, "material": "Front_AutoShotgun_2"},
+        {"id": "receiver", "role": "receiver", "asset": 583, "material": "Receiver_SMG_1"},
+        {"id": "stock", "role": "stock", "asset": 621, "material": "Stock_Shootgun_2"},
+        {"id": "mag", "role": "mag", "asset": 335, "material": "Mag_12G_10rnds"},
+        {"id": "sight", "role": "sight", "asset": 320, "material": "Sight_1"}
+      ]
+    },
+    {
+      "id": "short_shotgun_2",
+      "name": "手喷",
+      "category": "霰弹枪",
+      "aliases": ["Short Shotgun 2", "Sawed-Off Shotgun", "GEAR_Sawed-Off_Shotgun_Semi"],
+      "parts": [
+        {"id": "front", "role": "front", "asset": 566, "material": "Front_Short_Shotgun_2"},
+        {"id": "receiver", "role": "receiver", "asset": 586, "material": "Receiver_Short_Shotgun_2"},
+        {"id": "stock", "role": "stock", "asset": 607, "material": "Stock_Short_Shotgun_2"}
+      ]
+    },
+    {
+      "id": "semi_auto_rifle",
+      "name": "连发步枪",
+      "category": "步枪",
+      "aliases": ["Semi Burst Rifle", "GEAR_Rifle_SemiBurst"],
+      "parts": [
+        {"id": "front", "role": "front", "asset": 568, "material": "Front_Rifle_4"},
+        {"id": "receiver", "role": "receiver", "asset": 600, "material": "Receiver_Rifle_2"},
+        {"id": "stock", "role": "stock", "asset": 619, "material": "Stock_Rifle_3"},
+        {"id": "mag", "role": "mag", "asset": 335, "material": "Mag_556_60rnds_A"},
+        {"id": "sight", "role": "sight", "asset": 310, "material": "Sight_5"}
+      ]
+    },
+    {
+      "id": "heavy_assault",
+      "name": "重突",
+      "category": "步枪",
+      "aliases": ["Heavy Assault Rifle", "GEAR_Rifle_Heavy_Auto"],
+      "parts": [
+        {"id": "front", "role": "front", "asset": 569, "material": "Front_Rifle_1"},
+        {"id": "receiver", "role": "receiver", "asset": 600, "material": "Receiver_Rifle_2"},
+        {"id": "stock", "role": "stock", "asset": 615, "material": "Stock_Rifle_2"},
+        {"id": "mag", "role": "mag", "asset": 332, "material": "Mag_556_40rnds_A"},
+        {"id": "sight", "role": "sight", "asset": 307, "material": "Sight_23"}
+      ]
+    },
+    {
+      "id": "pump_shotgun",
+      "name": "单喷",
+      "category": "霰弹枪",
+      "aliases": ["Pump Shotgun", "GEAR_Shotgun_Semi_v2"],
+      "parts": [
+        {"id": "front", "role": "front", "asset": 572, "material": "Front_Shotgun_1"},
+        {"id": "receiver", "role": "receiver", "asset": 583, "material": "Receiver_SMG_1"},
+        {"id": "stock", "role": "stock", "asset": 604, "material": "Stock_Shootgun_1"},
+        {"id": "sight", "role": "sight", "asset": 317, "material": "IronSights_8"}
+      ]
+    },
+    {
+      "id": "choke_shotgun",
+      "name": "收束霰",
+      "category": "霰弹枪",
+      "aliases": ["Choke Shotgun", "Buckland XDist2", "GEAR_Shotgun_Choke_Mod"],
+      "parts": [
+        {"id": "front", "role": "front", "asset": 571, "material": "Front_Shotgun_3"},
+        {"id": "receiver", "role": "receiver", "asset": 597, "material": "Receiver_SMG_2"},
+        {"id": "stock", "role": "stock", "asset": 603, "material": "Stock_Precision_1"},
+        {"id": "sight", "role": "sight", "asset": 306, "material": "IronSights_10"}
+      ]
+    },
+    {
+      "id": "heavy_revolver",
+      "name": "大左轮",
+      "category": "左轮",
+      "aliases": ["GEAR_Revolver_Semi_v2"],
+      "parts": [
+        {"id": "front", "role": "front", "asset": 564, "material": "Front_Revolver_1"},
+        {"id": "receiver", "role": "receiver", "asset": 587, "material": "Receiver_Revolver_1"},
+        {"id": "stock", "role": "stock", "asset": 605, "material": "Stock_Revolver_1"}
+      ]
+    },
+    {
+      "id": "machinegun",
+      "name": "机关枪",
+      "category": "机枪",
+      "aliases": ["GEAR_MachineGun_Auto_LowRPM"],
+      "parts": [
+        {"id": "front", "role": "front", "asset": 578, "material": "Front_MachineGun_2"},
+        {"id": "receiver", "role": "receiver", "asset": 597, "material": "Receiver_SMG_2"},
+        {"id": "stock", "role": "stock", "asset": 615, "material": "Stock_Rifle_2"},
+        {"id": "mag", "role": "mag", "asset": 338, "material": "Mag_762_100rnds_A"},
+        {"id": "sight", "role": "sight", "asset": 314, "material": "Sight_20"}
+      ]
+    },
+    {
+      "id": "sniper",
+      "name": "大狙",
+      "category": "狙击枪",
+      "aliases": ["Köning PR 11", "GEAR_Precision_Rifle"],
+      "parts": [
+        {"id": "front", "role": "front", "asset": 572, "material": "Front_Precision_1"},
+        {"id": "receiver", "role": "receiver", "asset": 600, "material": "Receiver_Rifle_2"},
+        {"id": "stock", "role": "stock", "asset": 622, "material": "Stock_Precision_3"},
+        {"id": "mag", "role": "mag", "asset": 324, "material": "Mag_50_10rnds_A"},
+        {"id": "sight", "role": "sight", "asset": 311, "material": "Sight_22"}
+      ]
+    },
+    {
+      "id": "infrared_precision",
+      "name": "红外精准",
+      "category": "狙击枪",
+      "aliases": ["Precision Rifle"],
+      "parts": [
+        {"id": "front", "role": "front", "asset": 570, "material": "Front_Precision_3"},
+        {"id": "receiver", "role": "receiver", "asset": 592, "material": "Receiver_Machinegun_1"},
+        {"id": "stock", "role": "stock", "asset": 613, "material": "Stock_Precision_2"},
+        {"id": "mag", "role": "mag", "asset": 323, "material": "Mag_50_20rnds_A"},
+        {"id": "sight", "role": "sight", "asset": 303, "material": "Sight_10"}
+      ]
+    },
+    {
+      "id": "helgun",
+      "name": "HELGUN",
+      "category": "特殊",
+      "aliases": ["HEL Gun", "GEAR_HEL_Gun - Mechinegun_Semi"],
+      "parts": [
+        {"id": "front", "role": "front", "asset": 578, "material": "Front_MachineGun_2"},
+        {"id": "receiver", "role": "receiver", "asset": 601, "material": "Receiver_Machinegun_2"},
+        {"id": "stock", "role": "stock", "asset": 613, "material": "Stock_Precision_2"},
+        {"id": "mag", "role": "mag", "asset": 325, "material": "Mag_762_40rnds_A"},
+        {"id": "sight", "role": "sight", "asset": 313, "material": "Sight_12"}
+      ]
+    },
+    {
+      "id": "large_caliber",
+      "name": "大口径",
+      "category": "手枪",
+      "aliases": ["High Caliber Pistol", "GEAR_HighCal_Pistol"],
+      "description": "套筒、框架和枪管在 sharedassets571 中共用 Front_Pistol_4 材质，按一个贴图组处理。",
+      "parts": [
+        {"id": "body", "role": "front", "asset": 571, "material": "Front_Pistol_4", "name_zh": "套筒 / 框架 / 枪管"},
+        {"id": "stock", "role": "stock", "asset": 609, "material": "Stock_Pistol_1"},
+        {"id": "receiver", "role": "receiver", "asset": 592, "material": "Receiver_Pistol_1"},
+        {"id": "mag", "role": "mag", "asset": 339, "material": "Mag_9mm_20rdns_A"},
+        {"id": "sight", "role": "sight", "asset": 568, "material": "Front_Pistol_Sight_1_E"}
+      ]
+    },
+    {
+      "id": "small_pistol",
+      "name": "小手枪",
+      "category": "手枪",
+      "aliases": ["GEAR_Pistol_Semi_v2"],
+      "parts": [
+        {"id": "front", "role": "front", "asset": 566, "material": "Front_Pistol_1"},
+        {"id": "receiver", "role": "receiver", "asset": 592, "material": "Receiver_Pistol_1"},
+        {"id": "stock", "role": "stock", "asset": 609, "material": "Stock_Pistol_1"},
+        {"id": "mag", "role": "mag", "asset": 339, "material": "Mag_9mm_20rdns_A"},
+        {"id": "sight", "role": "sight", "asset": 566, "material": "Sight_RedDot_Pistol_b"}
+      ]
+    },
+    {
+      "id": "burst_cannon",
+      "name": "连发炮",
+      "category": "特殊",
+      "aliases": ["Burst Cannon", "GEAR_MachineGun_Burst_5"],
+      "parts": [
+        {"id": "front", "role": "front", "asset": 578, "material": "Front_MachineGun_2"},
+        {"id": "receiver", "role": "receiver", "asset": 592, "material": "Receiver_Machinegun_1"},
+        {"id": "stock", "role": "stock", "asset": 619, "material": "Stock_Rifle_3"},
+        {"id": "mag", "role": "mag", "asset": 327, "material": "Mag_762_80rnds_A"},
+        {"id": "sight", "role": "sight", "asset": 313, "material": "Sight_9"}
+      ]
+    },
+    {
+      "id": "helr",
+      "name": "HEL Rifle",
+      "category": "步枪",
+      "aliases": ["HELR", "GEAR_HEL_Rifle_semi"],
+      "parts": [
+        {"id": "front", "role": "front", "asset": 580, "material": "Front_Precision_2"},
+        {"id": "receiver", "role": "receiver", "asset": 601, "material": "Receiver_Machinegun_2"},
+        {"id": "stock", "role": "stock", "asset": 614, "material": "Stock_Precision_4"},
+        {"id": "mag", "role": "mag", "asset": 323, "material": "Mag_50_20rnds_A"},
+        {"id": "sight", "role": "sight", "asset": 308, "material": "Sight_13"}
+      ]
+    },
+    {
+      "id": "combat_shotgun",
+      "name": "战斗喷",
+      "category": "霰弹枪",
+      "aliases": ["Combat Shotgun", "GEAR_Shotgun_Auto"],
+      "parts": [
+        {"id": "front", "role": "front", "asset": 564, "material": "Front_AutoShotgun_1"},
+        {"id": "receiver", "role": "receiver", "asset": 597, "material": "Receiver_SMG_2"},
+        {"id": "stock", "role": "stock", "asset": 621, "material": "Stock_Shootgun_2"},
+        {"id": "mag", "role": "mag", "asset": 335, "material": "Mag_12G_10rnds"},
+        {"id": "sight", "role": "sight", "asset": 306, "material": "IronSights_9"}
+      ]
+    },
+    {
+      "id": "dragon_shotgun",
+      "name": "龙喷",
+      "category": "霰弹枪",
+      "aliases": ["Dragon Shotgun", "GEAR_Shotgun_Auto_Special"],
+      "parts": [
+        {"id": "front", "role": "front", "asset": 563, "material": "Front_AutoShotgun_3"},
+        {"id": "receiver", "role": "receiver", "asset": 600, "material": "Receiver_Rifle_2"},
+        {"id": "stock", "role": "stock", "asset": 604, "material": "Stock_Shootgun_1"},
+        {"id": "mag", "role": "mag", "asset": 324, "material": "Mag_50_10rnds_A"},
+        {"id": "sight", "role": "sight", "asset": 307, "material": "IronSights_4_F"}
+      ]
+    },
+    {
+      "id": "machine_pistol",
+      "name": "冲锋手枪",
+      "category": "手枪",
+      "aliases": ["Machine Pistol", "GEAR_SMG_Burst"],
+      "parts": [
+        {"id": "front", "role": "front", "asset": 568, "material": "Front_UZI_1"},
+        {"id": "receiver", "role": "receiver", "asset": 589, "material": "Receiver_UZI_1"},
+        {"id": "stock", "role": "stock", "asset": 609, "material": "Stock_Pistol_1"},
+        {"id": "mag", "role": "mag", "asset": 336, "material": "Mag_9mm_30rdns_A"},
+        {"id": "sight", "role": "sight", "asset": 568, "material": "Front_Pistol_Sight_1_E"}
+      ]
+    },
+    {
+      "id": "auto_pistol",
+      "name": "自动手枪",
+      "category": "手枪",
+      "aliases": ["Automatic Pistol", "GEAR_Pistol_Auto"],
+      "parts": [
+        {"id": "front", "role": "front", "asset": 567, "material": "Front_UZI_2"},
+        {"id": "receiver", "role": "receiver", "asset": 589, "material": "Receiver_UZI_1"},
+        {"id": "stock", "role": "stock", "asset": 609, "material": "Stock_Pistol_1"},
+        {"id": "mag", "role": "mag", "asset": 328, "material": "Mag_9mm_50rdns_A"},
+        {"id": "sight", "role": "sight", "asset": 567, "material": "Front_Pistol_Sight_2_E"}
+      ]
+    },
+    {
+      "id": "slug_shotgun",
+      "name": "独头霰弹枪",
+      "category": "霰弹枪",
+      "aliases": ["Slug Shotgun", "GEAR_Shotgun_Slug_Semi"],
+      "parts": [
+        {"id": "front", "role": "front", "asset": 582, "material": "Front_Shotgun_2"},
+        {"id": "receiver", "role": "receiver", "asset": 583, "material": "Receiver_SMG_1"},
+        {"id": "stock", "role": "stock", "asset": 603, "material": "Stock_Precision_1"},
+        {"id": "sight", "role": "sight", "asset": 311, "material": "Sight_24_Sight_25_Albedo"}
+      ]
+    },
+    {
+      "id": "battle_rifle",
+      "name": "步枪",
+      "category": "步枪",
+      "aliases": ["Battle Rifle", "GEAR_Rifle_Semi"],
+      "parts": [
+        {"id": "front", "role": "front", "asset": 566, "material": "Front_Rifle_3"},
+        {"id": "receiver", "role": "receiver", "asset": 599, "material": "Receiver_Rifle_1"},
+        {"id": "stock", "role": "stock", "asset": 618, "material": "Stock_Rifle_1"},
+        {"id": "mag", "role": "mag", "asset": 332, "material": "Mag_556_40rnds_A"},
+        {"id": "sight", "role": "sight", "asset": 304, "material": "Sight_15"}
+      ]
+    },
+    {
+      "id": "double_pistol",
+      "name": "双发小手枪",
+      "category": "手枪",
+      "aliases": ["Burst Pistol", "GEAR_Pistol_Burst"],
+      "parts": [
+        {"id": "front", "role": "front", "asset": 570, "material": "Front_Pistol_2"},
+        {"id": "stock", "role": "stock", "asset": 609, "material": "Stock_Pistol_2"}
+      ]
+    },
+    {
+      "id": "drekker_clr",
+      "name": "Drekker CLR",
+      "category": "步枪",
+      "aliases": ["Short Rifle", "GEAR_SMG_Semi"],
+      "parts": [
+        {"id": "front", "role": "front", "asset": 576, "material": "Front_SMG_2"},
+        {"id": "receiver", "role": "receiver", "asset": 598, "material": "Receiver_SMG_4"},
+        {"id": "stock", "role": "stock", "asset": 619, "material": "Stock_Rifle_3"},
+        {"id": "mag", "role": "mag", "asset": 336, "material": "Mag_9mm_30rdns_A"},
+        {"id": "sight", "role": "sight", "asset": 311, "material": "Sight_25"}
+      ]
+    }
+  ],
+  "attachments": [
+    {"id": "sight_10", "name": "Sight 10", "category": "瞄具", "asset": 303, "material": "Sight_10"},
+    {"id": "sight_glass_opaque", "name": "不透明瞄具镜片", "category": "镜片", "asset": 303, "material": "OpaqueSightGlass"},
+    {"id": "sight_15", "name": "Sight 15", "category": "瞄具", "asset": 304, "material": "Sight_15"},
+    {"id": "sight_19", "name": "Sight 19", "category": "瞄具", "asset": 305, "material": "Sight_19"},
+    {"id": "iron_sights_10", "name": "IronSights 10", "category": "瞄具", "asset": 306, "material": "IronSights_10"},
+    {"id": "iron_sights_9", "name": "IronSights 9", "category": "瞄具", "asset": 306, "material": "IronSights_9"},
+    {"id": "sight_7", "name": "Sight 7", "category": "瞄具", "asset": 306, "material": "Sight_7"},
+    {"id": "sight_17", "name": "Sight 17", "category": "瞄具", "asset": 307, "material": "Sight_17"},
+    {"id": "sight_23", "name": "Sight 23", "category": "瞄具", "asset": 307, "material": "Sight_23"},
+    {"id": "iron_sights_4", "name": "IronSights 4", "category": "瞄具", "asset": 307, "material": "IronSights_4_F"},
+    {"id": "sight_13", "name": "Sight 13", "category": "瞄具", "asset": 308, "material": "Sight_13"},
+    {"id": "sight_6", "name": "Sight 6", "category": "瞄具", "asset": 309, "material": "Sight_6"},
+    {"id": "sight_5", "name": "Sight 5", "category": "瞄具", "asset": 310, "material": "Sight_5"},
+    {"id": "sight_22", "name": "Sight 22", "category": "瞄具", "asset": 311, "material": "Sight_22"},
+    {"id": "sight_25", "name": "Sight 25", "category": "瞄具", "asset": 311, "material": "Sight_25"},
+    {"id": "sight_3", "name": "Sight 3", "category": "瞄具", "asset": 311, "material": "Sight_3"},
+    {"id": "sight_4", "name": "Sight 4", "category": "瞄具", "asset": 312, "material": "Sight_4"},
+    {"id": "sight_12", "name": "Sight 12", "category": "瞄具", "asset": 313, "material": "Sight_12"},
+    {"id": "sight_9", "name": "Sight 9", "category": "瞄具", "asset": 313, "material": "Sight_9"},
+    {"id": "sight_20", "name": "Sight 20", "category": "瞄具", "asset": 314, "material": "Sight_20"},
+    {"id": "sight_11", "name": "Sight 11", "category": "瞄具", "asset": 315, "material": "Sight_11"},
+    {"id": "sight_8", "name": "Sight 8", "category": "瞄具", "asset": 316, "material": "Sight_8"},
+    {"id": "sight_2", "name": "Sight 2", "category": "瞄具", "asset": 317, "material": "Sight_2"},
+    {"id": "iron_sights_8", "name": "IronSights 8", "category": "瞄具", "asset": 317, "material": "IronSights_8"},
+    {"id": "sight_18", "name": "Sight 18", "category": "瞄具", "asset": 318, "material": "Sight_18"},
+    {"id": "sight_14", "name": "Sight 14", "category": "瞄具", "asset": 319, "material": "Sight_14"},
+    {"id": "sight_1", "name": "Sight 1", "category": "瞄具", "asset": 320, "material": "Sight_1"},
+    {"id": "sight_16", "name": "Sight 16", "category": "瞄具", "asset": 321, "material": "Sight_16"},
+    {"id": "sight_21", "name": "Sight 21", "category": "瞄具", "asset": 322, "material": "Sight_21"},
+    {"id": "mag_50_20", "name": "Mag 50 / 20 rounds", "category": "弹匣", "asset": 323, "material": "Mag_50_20rnds_A"},
+    {"id": "mag_50_10", "name": "Mag 50 / 10 rounds", "category": "弹匣", "asset": 324, "material": "Mag_50_10rnds_A"},
+    {"id": "mag_762_40", "name": "Mag 7.62 / 40 rounds", "category": "弹匣", "asset": 325, "material": "Mag_762_40rnds_A"},
+    {"id": "mag_762_80", "name": "Mag 7.62 / 80 rounds", "category": "弹匣", "asset": 327, "material": "Mag_762_80rnds_A"},
+    {"id": "mag_9mm_50", "name": "Mag 9mm / 50 rounds", "category": "弹匣", "asset": 328, "material": "Mag_9mm_50rdns_A"},
+    {"id": "mag_12g_20", "name": "Mag 12G / 20 rounds", "category": "弹匣", "asset": 329, "material": "Mag_12G_20rnds"},
+    {"id": "mag_556_40", "name": "Mag 5.56 / 40 rounds", "category": "弹匣", "asset": 332, "material": "Mag_556_40rnds_A"},
+    {"id": "mag_556_30", "name": "Mag 5.56 / 30 rounds", "category": "弹匣", "asset": 333, "material": "Mag_556_30rnds_B"},
+    {"id": "mag_762_20", "name": "Mag 7.62 / 20 rounds", "category": "弹匣", "asset": 334, "material": "Mag_762_20rnds_A"},
+    {"id": "mag_12g_10", "name": "Mag 12G / 10 rounds", "category": "弹匣", "asset": 335, "material": "Mag_12G_10rnds"},
+    {"id": "mag_556_60", "name": "Mag 5.56 / 60 rounds", "category": "弹匣", "asset": 335, "material": "Mag_556_60rnds_A"},
+    {"id": "mag_9mm_30", "name": "Mag 9mm / 30 rounds", "category": "弹匣", "asset": 336, "material": "Mag_9mm_30rdns_A"},
+    {"id": "mag_762_60", "name": "Mag 7.62 / 60 rounds", "category": "弹匣", "asset": 337, "material": "Mag_762_60rnds_A"},
+    {"id": "mag_762_100", "name": "Mag 7.62 / 100 rounds", "category": "弹匣", "asset": 338, "material": "Mag_762_100rnds_A"},
+    {"id": "mag_9mm_20", "name": "Mag 9mm / 20 rounds", "category": "弹匣", "asset": 339, "material": "Mag_9mm_20rdns_A"},
+    {"id": "mag_556_150", "name": "Mag 5.56 / 150 rounds", "category": "弹匣", "asset": 342, "material": "Mag_556_150rnds_A"},
+    {"id": "peq_1_e", "name": "PEQ-1 主体", "category": "枪灯", "asset": 348, "material": "Flashlight_E"},
+    {"id": "peq_1_lens", "name": "PEQ-1 镜片", "category": "枪灯", "asset": 348, "material": "Flashlight_LensA"},
+    {"id": "gun_light_a", "name": "Gun Light A", "category": "枪灯", "asset": 350, "material": "Flashlight_A"},
+    {"id": "gun_light_b", "name": "Gun Light B", "category": "枪灯", "asset": 351, "material": "Flashlight_B"},
+    {"id": "gun_light_c", "name": "Gun Light C", "category": "枪灯", "asset": 352, "material": "Flashlight_C"},
+    {"id": "gun_light_d", "name": "Gun Light D", "category": "枪灯", "asset": 353, "material": "Flashlight_D"}
+  ]
+}

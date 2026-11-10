@@ -1,0 +1,9 @@
+D:\youxi\R2GTFO\GTFO\profiles\dly ceshi\子弹显示测试\BepInEx\plugins\Yuyu-HelAmmoDisplay\Yuyu.HelAmmoDisplay.dll
+D:\youxi\R2GTFO\GTFO\profiles\dly ceshi\子弹显示测试\source\Yuyu.HelAmmoDisplay\obj\Release\Yuyu.HelAmmoDisplay.csproj.AssemblyReference.cache
+D:\youxi\R2GTFO\GTFO\profiles\dly ceshi\子弹显示测试\source\Yuyu.HelAmmoDisplay\obj\Release\Yuyu.HelAmmoDisplay.GeneratedMSBuildEditorConfig.editorconfig
+D:\youxi\R2GTFO\GTFO\profiles\dly ceshi\子弹显示测试\source\Yuyu.HelAmmoDisplay\obj\Release\Yuyu.HelAmmoDisplay.AssemblyInfoInputs.cache
+D:\youxi\R2GTFO\GTFO\profiles\dly ceshi\子弹显示测试\source\Yuyu.HelAmmoDisplay\obj\Release\Yuyu.HelAmmoDisplay.AssemblyInfo.cs
+D:\youxi\R2GTFO\GTFO\profiles\dly ceshi\子弹显示测试\source\Yuyu.HelAmmoDisplay\obj\Release\Yuyu.HelAmmoDisplay.csproj.CoreCompileInputs.cache
+D:\youxi\R2GTFO\GTFO\profiles\dly ceshi\子弹显示测试\source\Yuyu.HelAmmoDisplay\obj\Release\Yuyu.HelAmmoDisplay.dll
+D:\youxi\R2GTFO\GTFO\profiles\dly ceshi\子弹显示测试\source\Yuyu.HelAmmoDisplay\obj\Release\refint\Yuyu.HelAmmoDisplay.dll
+D:\youxi\R2GTFO\GTFO\profiles\dly ceshi\子弹显示测试\source\Yuyu.HelAmmoDisplay\obj\Release\ref\Yuyu.HelAmmoDisplay.dll

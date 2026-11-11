@@ -147,7 +147,7 @@
   "attachInspector.k44": "Attachments & screens",
   "attachInspector.k45": "Add things to the gun",
   "attachInspector.k46": "A screen shows ammo live; a model can be any .glb file. Select a part in the list on the left, then click “Add attachment” at the bottom of the list to mount it there.",
-  "attachInspector.k47": "With an attachment selected:",
+  "attachInspector.k47": "With an attachment selected: ",
   "attachInspector.k48": "move",
   "attachInspector.k49": "rotate",
   "attachInspector.k50": "scale, then",
@@ -212,7 +212,7 @@
   "leftRail.k14": "Duplicate",
   "leftRail.k15": "Delete",
   "leftRail.k16": "Add attachment",
-  "leftRail.k17": "to “{{v0}}”",
+  "leftRail.k17": " to “{{v0}}”",
   "leftRail.k18": "Ammo screen",
   "leftRail.k19": "Import model (.glb)",
   "leftRail.k20": "This part is fitted on the gun",
@@ -273,7 +273,7 @@
   "skinInspector.k48": "All correct",
   "skinInspector.k49": "Click a part in 3D or in the list on the left to replace a single texture or adjust glow. When done, click",
   "skinInspector.k50": "Apply to game",
-  "skinInspector.k51": "at the top right; a running game refreshes too.",
+  "skinInspector.k51": " at the top right; a running game refreshes too.",
   "skinInspector.k52": "Part · {{v0}}",
   "skinInspector.k53": "Part",
   "stage.k1": "Getting ready",
@@ -458,5 +458,9 @@
   "topBar.language": "Language",
   "lang.zh": "中文",
   "lang.en": "English",
-  "actions.pluginUpdate": "The skin plugin needs an update: close the game once, then click “Apply to game” again. Later skin changes work with the game running."
+  "actions.pluginUpdate": "The skin plugin needs an update: close the game once, then click “Apply to game” again. Later skin changes work with the game running.",
+  "trigger.use": "Use",
+  "trigger.takeOut": "Take out",
+  "trigger.putAway": "Put away / drop",
+  "topBar.noProfile": "no profile chosen"
 }

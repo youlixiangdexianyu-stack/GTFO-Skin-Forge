@@ -50,8 +50,17 @@ const MELEE_TRIGGERS = new Set<Trigger>(['always', 'kill', 'hit', 'fire', 'equip
 /** The bio tracker never fires or reloads. */
 const NO_SHOT = new Set<Trigger>(['fire', 'dryFire', 'reloadStart', 'reloadEnd']);
 
+/** Items (packs, consumables, objective items): used (applied, thrown, placed, inserted), taken out, put away or dropped. */
+const ITEM_TRIGGERS: { value: Trigger; label: string; simulate?: boolean }[] = [
+  { value: 'always', get label() { return t('trigger.always'); } },
+  { value: 'fire', get label() { return t('trigger.use'); }, simulate: true },
+  { value: 'equip', get label() { return t('trigger.takeOut'); }, simulate: true },
+  { value: 'unequip', get label() { return t('trigger.putAway'); }, simulate: true },
+];
+
 /** The events that can happen on `item` (all of them when unknown). */
-export function triggersFor(item: { slot: Slot; id: string } | null | undefined) {
+export function triggersFor(item: { slot: Slot; id: string; itemId?: number | null } | null | undefined) {
+  if (item?.itemId != null) return ITEM_TRIGGERS;
   if (item?.slot === 'melee') return TRIGGERS.filter((x) => MELEE_TRIGGERS.has(x.value));
   if (item?.id === 'bio_tracker') return TRIGGERS.filter((x) => !NO_SHOT.has(x.value));
   return TRIGGERS;
@@ -98,6 +107,8 @@ export interface CatalogItem {
   slot: Slot;
   /** PlayerOfflineGearDataBlock id (guns, melee weapons and tools); null for attachments, lenses and ammo. */
   gearId: number | null;
+  /** ItemDataBlock id for items with their own prefab (packs, consumables, objective items, hacking tool); null otherwise. */
+  itemId?: number | null;
   calibre?: string | null;
   parts: CatalogPart[];
 }

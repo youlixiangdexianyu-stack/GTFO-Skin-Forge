@@ -110,7 +110,7 @@ export function WeaponModel({ preview }: { preview: WeaponPreview }) {
         t('weaponModel.k2', {
           v0: useStore.getState().weaponId,
           v1: unmapped.length,
-          v2: unmapped.join('、'),
+          v2: unmapped.join(', '),
         }),
       );
     // Sub-parts: named transforms under each part that carry geometry.

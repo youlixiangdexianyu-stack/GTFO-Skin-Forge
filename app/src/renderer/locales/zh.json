@@ -458,5 +458,9 @@
   "topBar.language": "语言",
   "lang.zh": "中文",
   "lang.en": "English",
-  "actions.pluginUpdate": "皮肤插件需要更新：先关一次游戏，再点「应用到游戏」。之后换皮肤不用再关游戏。"
+  "actions.pluginUpdate": "皮肤插件需要更新：先关一次游戏，再点「应用到游戏」。之后换皮肤不用再关游戏。",
+  "trigger.use": "使用",
+  "trigger.takeOut": "拿出",
+  "trigger.putAway": "收起/放下",
+  "topBar.noProfile": "未选择配置"
 }

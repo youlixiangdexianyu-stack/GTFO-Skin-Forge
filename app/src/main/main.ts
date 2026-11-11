@@ -116,10 +116,7 @@ function registerIpc() {
       kind === 'folder' ? ['openDirectory'] : kind === 'files' ? ['openFile', 'multiSelections'] : ['openFile'];
     const r = await dialog.showOpenDialog(win!, {
       properties: props,
-      filters:
-        kind === 'project'
-          ? [{ name: '皮肤工程', extensions: ['sfproj', 'gtfoskin', 'gtfdyn', 'json'] }]
-          : filters,
+      filters,
     });
     return r.canceled ? [] : r.filePaths;
   });

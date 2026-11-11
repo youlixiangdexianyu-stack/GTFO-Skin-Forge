@@ -4,7 +4,7 @@ import { useHotkeys } from '@mantine/hooks';
 import { IconFileText, IconFolderDown } from '@tabler/icons-react';
 import { useEffect, useState } from 'react';
 import { Group as PanelGroup, Panel, Separator, useDefaultLayout } from 'react-resizable-panels';
-import { applyToGame } from './actions';
+import { applyToGame, openProject } from './actions';
 import { call } from './protocol';
 import { useStore } from './store';
 import { AttachInspector } from './ui/AttachInspector';
@@ -104,7 +104,7 @@ function useShortcuts() {
     ['mod+shift+z', () => s().redoEdit()],
     ['mod+s', () => void s().saveProject()],
     ['mod+shift+s', () => void s().saveProject(true)],
-    ['mod+o', () => void window.forge.openDialog('project').then((p) => void (p[0] && s().loadProject(p[0])))],
+    ['mod+o', () => void openProject()],
     ['mod+Enter', () => void applyToGame()],
     ['f', focusSelection],
     ['numpad1', () => setView('front'), phys],

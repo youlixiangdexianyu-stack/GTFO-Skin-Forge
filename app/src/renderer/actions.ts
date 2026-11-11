@@ -14,7 +14,7 @@ function packDoc(): SkinDocument {
   const off = new Set(item?.parts.filter((p) => ed.enabled[p.id] === false).flatMap((p) => p.materials) ?? []);
   const out = structuredClone(doc);
   out.materials = (out.materials ?? []).filter((m) => m && !off.has(m.material ?? ''));
-  out.target = { ...out.target, weapon: item?.id ?? out.target?.weapon, gearId: item?.gearId ?? null };
+  out.target = { ...out.target, weapon: item?.id ?? out.target?.weapon, gearId: item?.gearId ?? null, itemId: item?.itemId ?? null };
   return out;
 }
 
@@ -26,8 +26,10 @@ function preflight(): string | null {
   const item = currentItem();
   if (!item) return t('actions.k2');
   const hasContent = (doc.materials ?? []).some((m) => m && (Object.keys(m.textures ?? {}).length || m.layers?.length || Object.values(m.params ?? {}).some((v) => v != null)));
-  if (!hasContent && !(doc.attachments ?? []).length) return t('actions.k3');
-  if (!prefs.allowMissing) {
+  // Part layout, attachments and sounds are changes too, not only textures.
+  if (!hasContent && !(doc.attachments ?? []).length && !(doc.parts ?? []).length && !(doc.sounds ?? []).length) return t('actions.k3');
+  // The "every channel of every part" check only applies to a skin that replaces textures.
+  if (!prefs.allowMissing && hasContent) {
     const ed = editorOf(doc);
     for (const p of item.parts) {
       if (ed.enabled[p.id] === false) continue;
@@ -92,6 +94,12 @@ export async function applyToGame(): Promise<void> {
   } finally {
     useStore.setState({ busy: null });
   }
+}
+
+/** Opens a skin project (or an old preset) chosen in the file dialog. */
+export async function openProject(): Promise<void> {
+  const [p] = await window.forge.openDialog('project', [{ name: t('store.k11'), extensions: ['sfproj', 'gtfoskin', 'gtfdyn', 'json'] }]);
+  if (p) await st().loadProject(p);
 }
 
 export async function exportPack(): Promise<void> {

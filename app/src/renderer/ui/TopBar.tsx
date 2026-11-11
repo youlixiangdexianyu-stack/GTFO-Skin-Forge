@@ -17,7 +17,7 @@ import {
   IconX,
 } from '@tabler/icons-react';
 import { useEffect, useState } from 'react';
-import { applyToGame, exportObj, exportPack, profileProblem } from '../actions';
+import { applyToGame, exportObj, exportPack, openProject, profileProblem } from '../actions';
 import { detail, friendly } from '../errors';
 import { call, type BackendError, type InstalledPack, type SizeMode, type VerifyResult } from '../protocol';
 import { useStore, type Mode } from '../store';
@@ -163,7 +163,7 @@ function InstalledModal({ opened, onClose }: { opened: boolean; onClose: () => v
     }
   };
   return (
-    <Modal opened={opened} onClose={onClose} title={t('topBar.k17', { v0: profile?.name ?? '未选择配置' })} size="lg">
+    <Modal opened={opened} onClose={onClose} title={t('topBar.k17', { v0: profile?.name ?? t('topBar.noProfile') })} size="lg">
       {profile && (
         <Stack>
           <Group justify="space-between">
@@ -251,7 +251,7 @@ function VerifyModal({ opened, onClose }: { opened: boolean; onClose: () => void
     return t('topBar.k38', { v0: w.positionMm.toFixed(1), v1: w.rotationDeg.toFixed(1) });
   };
   return (
-    <Modal opened={opened} onClose={onClose} title={t('topBar.k39', { v0: profile?.name ?? '未选择配置' })} size="lg">
+    <Modal opened={opened} onClose={onClose} title={t('topBar.k39', { v0: profile?.name ?? t('topBar.noProfile') })} size="lg">
       {problem && <Text size="sm">{problem}</Text>}
       {!problem && rows === null && <Text c="dimmed">{t('topBar.k40')}</Text>}
       {rows?.length === 0 && <Text c="dimmed">{t('topBar.k41')}</Text>}
@@ -284,7 +284,7 @@ function ApplyButton() {
   const busy = useStore((s) => s.busy);
   const prefs = useStore((s) => s.prefs);
   const setPrefs = useStore((s) => s.setPrefs);
-  const { saveProject, loadProject, newProject, dataDir } = useStore.getState();
+  const { saveProject, newProject, dataDir } = useStore.getState();
   const problem = useStore((s) => profileProblem(s.profiles.find((p) => p.path === s.prefs.profilePath)));
   const [installed, setInstalled] = useState(false);
   const [verify, setVerify] = useState(false);
@@ -338,7 +338,7 @@ function ApplyButton() {
             <Menu.Item
               leftSection={<IconFolderOpen size={14} />}
               rightSection={<Text size="xs" c="dimmed">Ctrl O</Text>}
-              onClick={async () => (await window.forge.openDialog('project')).forEach((p) => void loadProject(p))}
+              onClick={() => void openProject()}
             >
               {t('topBar.k54')}
             </Menu.Item>

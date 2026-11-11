@@ -104,18 +104,22 @@ public static class Install
         return new { id = skinId, active };
     }
 
-    // The plugin build shipped next to the backend (plugin/), or in a development checkout the plugin project's output.
+    // The plugin build shipped next to the backend (plugin/); in a checkout the newest of the plugin project's Release or
+    // Debug output and the committed prebuilt copy (repo plugin/, refreshed by every Release build).
     static string PluginSource()
     {
         var bundled = Path.Combine(AppContext.BaseDirectory, "plugin");
         if (File.Exists(Path.Combine(bundled, PluginFiles[0]))) return bundled;
+        var candidates = new List<string>();
         for (var dir = new DirectoryInfo(AppContext.BaseDirectory); dir != null; dir = dir.Parent)
+        {
+            candidates.Add(Path.Combine(dir.FullName, "plugin"));
             foreach (var config in new[] { "Release", "Debug" })
-            {
-                var candidate = Path.Combine(dir.FullName, "src", "SkinForge.Plugin", "bin", config, "net6.0");
-                if (File.Exists(Path.Combine(candidate, PluginFiles[0]))) return candidate;
-            }
-        throw new BackendException("not-found", "Plugin build not found next to the backend (plugin/SkinForge.Plugin.dll)");
+                candidates.Add(Path.Combine(dir.FullName, "src", "SkinForge.Plugin", "bin", config, "net6.0"));
+        }
+        return candidates.Where(c => PluginFiles.All(f => File.Exists(Path.Combine(c, f))))
+                   .OrderByDescending(c => File.GetLastWriteTimeUtc(Path.Combine(c, PluginFiles[0]))).FirstOrDefault()
+               ?? throw new BackendException("no-plugin", "Plugin build not found: neither plugin/ next to the backend nor in the checkout");
     }
 
     public static bool PluginCurrent(string profile)

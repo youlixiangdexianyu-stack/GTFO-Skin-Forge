@@ -109,7 +109,14 @@ Logs go to stderr and `<dataDir>/logs/backend.log`, never stdout.
 | `export.obj` | `{weaponId, parts, mode: separate/merged, outDir}` → files; folder `YYYY-MM-DD-HHMMSS-<weapon>.OBJ`, MTL + manifest |
 | `schema` | → JSON schema of SkinDocument |
 
-Error codes: `game-not-found`, `game-running`, `bad-request`, `not-found`, plus the format codes in §3.1.
+Error codes: `game-not-found`, `game-running`, `bad-request`, `not-found`, `no-plugin` (no plugin build to install), plus the
+format codes in §3.1.
+
+Plugin source for `plugin.install`: `plugin/` next to the backend exe in a packaged app; in a checkout the newest of the plugin
+project's Release/Debug output and the committed prebuilt copy in the repo's `plugin/` folder. Every Release build of the plugin
+refreshes that folder, so machines that cannot build the plugin (no BepInEx interop assemblies) still install the current one.
+The app checks `pluginCurrent` whenever a profile is chosen or listed and installs or updates the plugin on its own when the
+game is not running.
 
 ### 3.4 Plugin behaviour
 

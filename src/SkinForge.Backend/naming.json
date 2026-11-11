@@ -197,6 +197,114 @@
    "order": 115,
    "nameZh": "HEL步枪",
    "categoryZh": "步枪"
+  },
+  "Kovac Sledgehammer": {
+   "id": "sledgehammer",
+   "order": 201,
+   "nameZh": "大锤",
+   "categoryZh": "锤"
+  },
+  "Santonian HDH": {
+   "id": "heavy_duty_hammer",
+   "order": 202,
+   "nameZh": "重型锤",
+   "categoryZh": "锤"
+  },
+  "Omneco Maul": {
+   "id": "maul",
+   "order": 203,
+   "nameZh": "重锤",
+   "categoryZh": "锤"
+  },
+  "Santonian Mallet": {
+   "id": "mallet",
+   "order": 204,
+   "nameZh": "木槌",
+   "categoryZh": "锤"
+  },
+  "MACO Gavel": {
+   "id": "gavel",
+   "order": 205,
+   "nameZh": "法槌",
+   "categoryZh": "锤"
+  },
+  "Mastaba Fixed Blade": {
+   "id": "knife",
+   "order": 206,
+   "nameZh": "战术刀",
+   "categoryZh": "刀"
+  },
+  "Wox Compact": {
+   "id": "compact_knife",
+   "order": 207,
+   "nameZh": "折叠刀",
+   "categoryZh": "刀"
+  },
+  "Kovac Peacekeeper": {
+   "id": "bat",
+   "order": 208,
+   "nameZh": "球棒",
+   "categoryZh": "棍棒"
+  },
+  "Attroc Titanium": {
+   "id": "titanium_bat",
+   "order": 209,
+   "nameZh": "钛合金球棒",
+   "categoryZh": "棍棒"
+  },
+  "MACO Drillhead": {
+   "id": "spear",
+   "order": 210,
+   "nameZh": "长矛",
+   "categoryZh": "矛"
+  },
+  "IsoCo Stinger": {
+   "id": "stinger_spear",
+   "order": 211,
+   "nameZh": "刺矛",
+   "categoryZh": "矛"
+  },
+  "D-tek Optron IV": {
+   "id": "bio_tracker",
+   "order": 301,
+   "nameZh": "生物追踪器",
+   "categoryZh": "工具"
+  },
+  "Stalwart Flow G2": {
+   "id": "cfoam_launcher",
+   "order": 302,
+   "nameZh": "C泡沫发射器",
+   "categoryZh": "工具"
+  },
+  "Krieger O4": {
+   "id": "mine_deployer",
+   "order": 303,
+   "nameZh": "地雷部署器",
+   "categoryZh": "工具"
+  },
+  "Mechatronic SGB3": {
+   "id": "sentry_burst",
+   "order": 304,
+   "nameZh": "连发哨戒炮",
+   "categoryZh": "工具"
+  },
+  "RAD Labs Meduza": {
+   "id": "sentry_auto",
+   "order": 305,
+   "nameZh": "自动哨戒炮",
+   "categoryZh": "工具"
+  },
+  "Autotek 51 RSG": {
+   "id": "sentry_sniper",
+   "order": 306,
+   "nameZh": "狙击哨戒炮",
+   "categoryZh": "工具"
+  },
+  "Mechatronic B5 LFR": {
+   "id": "sentry_shotgun",
+   "order": 307,
+   "nameZh": "霰弹哨戒炮",
+   "categoryZh": "工具"
   }
  },
  "calibres": {
@@ -243,9 +351,22 @@
   "ammo_bullet": "整颗子弹",
   "ammo_shell": "空弹壳",
   "ammo_speedloader": "快速装弹器",
-  "lens": "镜片"
+  "lens": "镜片",
+  "tool_main": "主体",
+  "tool_main_attachment": "主体附件",
+  "tool_grip": "握把",
+  "tool_delivery": "发射部",
+  "tool_delivery_attachment": "发射部附件",
+  "tool_payload": "载荷",
+  "tool_targeting": "瞄准部",
+  "tool_screen": "屏幕",
+  "melee_head": "头部",
+  "melee_neck": "颈部",
+  "melee_handle": "握柄",
+  "melee_pommel": "柄尾",
+  "body": "主体"
  },
- "_comment": "Naming and official order (from the old tool's catalog). Weapons keyed by GearJSON Name; calibres keyed by WeaponShellCasing ShellCasingType (ShellTypes), 'revolver' for revolver categories. Geometry and positions always come from the game. legacyMaterials: old tool item -> part -> material, for importing .gtfoskin/.gtfdyn/DLY projects.",
+ "_comment": "Naming and official order (from the old tool's catalog). Weapons (guns, melee weapons and tools) keyed by GearJSON Name; calibres keyed by WeaponShellCasing ShellCasingType (ShellTypes), 'revolver' for revolver categories. Geometry and positions always come from the game. legacyMaterials: old tool item -> part -> material, for importing .gtfoskin/.gtfdyn/DLY projects. items: ItemDataBlock name -> id, order, nameZh, categoryZh and an optional English name for items with their own prefabs (packs, consumables, carry items, hacking tool).",
  "legacyMaterials": {
   "hel_left": {
    "front": "Front_Revolver_2",
@@ -748,5 +869,262 @@
   "sight": "瞄具",
   "lens": "镜片",
   "ammo": "子弹"
+ },
+ "items": {
+  "AmmoPackWeapon": {
+   "id": "ammo_pack",
+   "order": 401,
+   "nameZh": "弹药包",
+   "categoryZh": "资源包"
+  },
+  "AmmoPackTool": {
+   "id": "tool_refill_pack",
+   "order": 402,
+   "nameZh": "工具补给包",
+   "categoryZh": "资源包"
+  },
+  "MediPack": {
+   "id": "medipack",
+   "order": 403,
+   "nameZh": "医疗包",
+   "categoryZh": "资源包"
+  },
+  "DisinfectionPack": {
+   "id": "disinfection_pack",
+   "order": 404,
+   "nameZh": "消毒包",
+   "categoryZh": "资源包"
+  },
+  "CONSUMABLE_GlowStick": {
+   "id": "glow_stick",
+   "order": 501,
+   "nameZh": "荧光棒",
+   "categoryZh": "消耗品"
+  },
+  "CONSUMABLE_GlowStick_Christmas": {
+   "id": "glow_stick_red",
+   "order": 502,
+   "nameZh": "红色荧光棒",
+   "categoryZh": "消耗品"
+  },
+  "CONSUMABLE_GlowStick_Halloween": {
+   "id": "glow_stick_orange",
+   "order": 503,
+   "nameZh": "橙色荧光棒",
+   "categoryZh": "消耗品"
+  },
+  "CONSUMABLE_GlowStick_Yellow": {
+   "id": "glow_stick_yellow",
+   "order": 504,
+   "nameZh": "黄色荧光棒",
+   "categoryZh": "消耗品"
+  },
+  "CONSUMABLE_Flare": {
+   "id": "flare",
+   "order": 505,
+   "nameZh": "照明弹",
+   "categoryZh": "消耗品"
+  },
+  "CONSUMABLE_FlashlightMedium": {
+   "id": "long_range_flashlight",
+   "order": 506,
+   "nameZh": "远程手电筒",
+   "categoryZh": "消耗品"
+  },
+  "CONSUMABLE_FogRepeller": {
+   "id": "fog_repeller",
+   "order": 507,
+   "nameZh": "驱雾器",
+   "categoryZh": "消耗品"
+  },
+  "CONSUMABLE_GlueGrenade": {
+   "id": "cfoam_grenade",
+   "order": 508,
+   "nameZh": "C泡沫手雷",
+   "categoryZh": "消耗品"
+  },
+  "CONSUMABLE_Tripmine_Glue": {
+   "id": "cfoam_tripmine",
+   "order": 509,
+   "nameZh": "C泡沫绊雷",
+   "categoryZh": "消耗品"
+  },
+  "CONSUMABLE_Tripmine_Explosive": {
+   "id": "explosive_tripmine",
+   "order": 510,
+   "nameZh": "爆炸绊雷",
+   "categoryZh": "消耗品"
+  },
+  "CONSUMABLE_ShapedMine_Explosive": {
+   "id": "shaped_charge_mine",
+   "order": 511,
+   "nameZh": "聚能爆炸地雷",
+   "categoryZh": "消耗品"
+  },
+  "CONSUMABLE_LockMelter": {
+   "id": "lock_melter",
+   "order": 512,
+   "nameZh": "熔锁器",
+   "categoryZh": "消耗品"
+  },
+  "CONSUMABLE_Syringe_Health": {
+   "id": "health_syringe",
+   "order": 513,
+   "nameZh": "I2-LP 注射器",
+   "categoryZh": "消耗品"
+  },
+  "CONSUMABLE_Syringe_MeleeBuff": {
+   "id": "melee_syringe",
+   "order": 514,
+   "nameZh": "IIx 注射器",
+   "categoryZh": "消耗品"
+  },
+  "CONSUMABLE_Portable_Barrier": {
+   "id": "portable_barrier",
+   "order": 515,
+   "nameZh": "便携屏障",
+   "categoryZh": "消耗品"
+  },
+  "CONSUMABLE_Grenade": {
+   "id": "grenade",
+   "order": 516,
+   "nameZh": "手雷（荧光棒模型）",
+   "categoryZh": "消耗品",
+   "name": "Grenade (glow stick model)"
+  },
+  "Carry_Generator_PowerCell": {
+   "id": "power_cell",
+   "order": 601,
+   "nameZh": "电池",
+   "categoryZh": "大型任务道具"
+  },
+  "Carry_HeavyFogRepeller": {
+   "id": "fog_turbine",
+   "order": 602,
+   "nameZh": "驱雾涡轮",
+   "categoryZh": "大型任务道具"
+  },
+  "Carry_CargoCrate_Generic": {
+   "id": "cargo_crate",
+   "order": 603,
+   "nameZh": "货箱",
+   "categoryZh": "大型任务道具",
+   "name": "Cargo Crate (high security model)"
+  },
+  "Carry_CargoCrate_Generic_R2A1": {
+   "id": "cargo_crate_r2a1",
+   "order": 604,
+   "nameZh": "货箱（R2A1）",
+   "categoryZh": "大型任务道具",
+   "name": "Cargo Crate (R2A1)"
+  },
+  "Carry_CargoCrate_HighSecurity": {
+   "id": "cargo_crate_high_security",
+   "order": 605,
+   "nameZh": "高安全货箱",
+   "categoryZh": "大型任务道具"
+  },
+  "Carry_CargoCrate_HighSecurity_Open": {
+   "id": "cargo_crate_high_security_open",
+   "order": 606,
+   "nameZh": "高安全货箱（已打开）",
+   "categoryZh": "大型任务道具"
+  },
+  "Carry_Cryo_Hardcase": {
+   "id": "cryo_hardcase",
+   "order": 607,
+   "nameZh": "冷冻硬箱",
+   "categoryZh": "大型任务道具"
+  },
+  "Carry_Sedatives_Case": {
+   "id": "collection_case",
+   "order": 608,
+   "nameZh": "收集箱",
+   "categoryZh": "大型任务道具"
+  },
+  "Carry_HSU_Small_Stage_1": {
+   "id": "neonate_hsu_1",
+   "order": 609,
+   "nameZh": "新生体 HSU（阶段 1）",
+   "categoryZh": "大型任务道具",
+   "name": "NEONATE HSU (stage 1)"
+  },
+  "Carry_HSU_Small_Stage_2": {
+   "id": "neonate_hsu_2",
+   "order": 610,
+   "nameZh": "新生体 HSU（阶段 2）",
+   "categoryZh": "大型任务道具",
+   "name": "NEONATE HSU (stage 2)"
+  },
+  "Carry_HSU_Small_Stage_3": {
+   "id": "neonate_hsu_3",
+   "order": 611,
+   "nameZh": "新生体 HSU（阶段 3）",
+   "categoryZh": "大型任务道具",
+   "name": "NEONATE HSU (stage 3)"
+  },
+  "Carry_HSU_Small_Stage_4": {
+   "id": "imprinted_neonate_hsu",
+   "order": 612,
+   "nameZh": "印记新生体 HSU（数据球模型）",
+   "categoryZh": "大型任务道具",
+   "name": "IMPRINTED NEONATE HSU (data sphere model)"
+  },
+  "Carry_HSU_Small_Stage_4_R3D1": {
+   "id": "imprinted_neonate_hsu_r3d1",
+   "order": 613,
+   "nameZh": "印记新生体 HSU（R3D1）",
+   "categoryZh": "大型任务道具",
+   "name": "IMPRINTED NEONATE HSU (R3D1)"
+  },
+  "Carry_HSU_Small_Stage_4_R3D1_Static": {
+   "id": "imprinted_neonate_hsu_static",
+   "order": 614,
+   "nameZh": "印记新生体 HSU（静态）",
+   "categoryZh": "大型任务道具",
+   "name": "IMPRINTED NEONATE HSU (static)"
+  },
+  "Carry_HSU_Small_Stage_5": {
+   "id": "neonate_hsu_5",
+   "order": 615,
+   "nameZh": "新生体 HSU（阶段 5）",
+   "categoryZh": "大型任务道具",
+   "name": "NEONATE HSU (stage 5)"
+  },
+  "Carry_DataSphere": {
+   "id": "data_sphere",
+   "order": 616,
+   "nameZh": "数据球",
+   "categoryZh": "大型任务道具",
+   "name": "Data Sphere"
+  },
+  "Carry_DataSphere_R8B4": {
+   "id": "data_sphere_r8b4",
+   "order": 617,
+   "nameZh": "数据球（R8B4）",
+   "categoryZh": "大型任务道具",
+   "name": "Data Sphere (R8B4)"
+  },
+  "Carry_MWP": {
+   "id": "matter_wave_projector",
+   "order": 618,
+   "nameZh": "物质波投射器",
+   "categoryZh": "大型任务道具",
+   "name": "Matter Wave Projector"
+  },
+  "Carry_PortalKey": {
+   "id": "matter_wave_projector_portal",
+   "order": 619,
+   "nameZh": "物质波投射器（传送门钥匙）",
+   "categoryZh": "大型任务道具",
+   "name": "Matter Wave Projector (portal key)"
+  },
+  "GEAR_HackingTool": {
+   "id": "hacking_tool",
+   "order": 308,
+   "nameZh": "黑客工具",
+   "categoryZh": "工具",
+   "name": "Hacking Tool"
+  }
  }
 }

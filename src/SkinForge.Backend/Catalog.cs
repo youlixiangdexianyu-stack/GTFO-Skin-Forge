@@ -8,10 +8,13 @@ namespace SkinForge.Backend;
 
 public sealed record CatalogPart(string Id, string Role, string Label, List<string> Materials, bool DefaultEnabled);
 
-public sealed record CatalogItem(string Id, string Name, string? NameZh, string Category, string Slot, uint? ArchetypeId,
+public sealed record CatalogItem(string Id, string Name, string? NameZh, string Category, string Slot, uint? GearId,
     string? Calibre, List<CatalogPart> Parts)
 {
     public string? CategoryZh { get; init; }
+    // ItemDataBlock persistentID of an item built from its own first-person prefabs (packs, consumables, carry items,
+    // the hacking tool); null for gear built from parts, which has GearId.
+    public uint? ItemId { get; init; }
     [JsonIgnore] public Recipe Source { get; init; } = null!;
     [JsonIgnore] public int Order { get; init; }
 
@@ -19,11 +22,11 @@ public sealed record CatalogItem(string Id, string Name, string? NameZh, string 
     public Node Build(GameAssets g) => Catalog.Build(g, Source);
 }
 
-// How to spawn an item, stored with the cached catalog: a weapon's gear components (+ ejected shell prefab), one
-// attachment prefab mounted as `Slot`, or the ammo parts of a weapon.
-public sealed record Recipe(Dictionary<int, uint>? Comps = null, string? Shell = null, string? Prefab = null, string? Slot = null, Recipe? AmmoOf = null);
+// How to spawn an item, stored with the cached catalog: a weapon's gear components (+ ejected shell prefab), prefabs
+// spawned together as part `Slot` (an attachment, or an item's first-person prefabs), or the ammo parts of a weapon.
+public sealed record Recipe(Dictionary<int, uint>? Comps = null, string? Shell = null, string[]? Prefabs = null, string? Slot = null, Recipe? AmmoOf = null);
 
-// Weapons and attachments from the game's gear DataBlocks; names and official order from naming.json.
+// Guns, melee weapons, tools and attachments from the game's gear DataBlocks; names and official order from naming.json.
 // Every renderer belongs to exactly one part: the slot it spawned in, or an ammo part (bullets, shells and speed loaders
 // inside slots, plus the weapon's ejected shell casing).
 public static class Catalog
@@ -55,8 +58,6 @@ public static class Catalog
         PreviewCache.Ready(g, items);
         return items;
     }
-
-    public static bool Ready(GameAssets g) => _build == g.BuildId || File.Exists(Path.Combine(g.Cache, "catalog.json"));
 
     public static Node Build(GameAssets g, Recipe r)
     {
@@ -90,9 +91,12 @@ public static class Catalog
         }
         else
         {
-            var part = Unity.LoadPrefab(g, g.Prefab(r.Prefab!));
-            part.ResetRoot(r.Slot!);
-            part.Attach(holder);
+            foreach (var prefab in r.Prefabs!)
+            {
+                var part = Unity.LoadPrefab(g, g.Prefab(prefab));
+                part.ResetRoot(r.Slot!);
+                part.Attach(holder);
+            }
         }
         return holder;
     }
@@ -126,7 +130,7 @@ public static class Catalog
         return Regex.IsMatch(mesh, "shell|emty", RegexOptions.IgnoreCase) ? "ammo_shell" : "ammo_bullet";
     }
 
-    static readonly List<string> PartOrder = Assembly.Slots.Select(s => s.Id).Concat(["ammo_speedloader", "ammo_bullet", "ammo_shell", "lens"]).ToList();
+    static readonly List<string> PartOrder = Assembly.Slots.Select(s => s.Id).Concat(["body", "ammo_speedloader", "ammo_bullet", "ammo_shell", "lens"]).ToList();
 
     static List<CatalogPart> Parts(Node root)
     {
@@ -152,7 +156,6 @@ public static class Catalog
     {
         var items = new List<CatalogItem>();
         var categories = g.Blocks("GearCategory");
-        var archetypes = g.Blocks("Archetype");
         var calibres = new Dictionary<string, (JsonObject Calibre, Recipe Weapon)>();
         var attachments = new SortedSet<(int Order, string Slot, string Block, uint Id)>();
 
@@ -160,10 +163,10 @@ public static class Catalog
         {
             var comps = Assembly.Comps(gear);
             if (!comps.TryGetValue(2, out var catId) || !categories.TryGetValue(catId, out var cat)) continue;
-            int fireMode = comps.TryGetValue(1, out var fm) ? (int)fm : 0;
-            var archetypeId = (uint)cat[new[] { "SemiArchetype", "BurstArchetype", "AutoArchetype", "SemiBurstArchetype" }[Math.Clamp(fireMode, 0, 3)]]!;
-            if (archetypeId == 0 || !archetypes.ContainsKey(archetypeId)) continue;
+            // InventorySlot: guns, the class tool and the melee weapon; the hacking tool is not built from gear parts.
             int slotNo = comps.TryGetValue(3, out var itemId) && g.Blocks("Item").TryGetValue(itemId, out var it) ? (int)it["inventorySlot"]! : 0;
+            var slotName = slotNo switch { 1 => "main", 2 => "special", 3 => "tool", 10 => "melee", _ => null };
+            if (slotName == null) continue;
 
             var english = Assembly.PublicName(gear);
             var naming = Naming["weapons"]![english];
@@ -172,14 +175,34 @@ public static class Catalog
                 : comps.TryGetValue(7, out var shellId) && g.Blocks("WeaponShellCasing").TryGetValue(shellId, out var sc)
                     ? Naming["calibres"]![((int)sc["ShellCasingType"]!).ToString()]?.AsObject() : null;
             var recipe = new Recipe(comps, (string?)calibre?["shellPrefab"]);
+            var parts = Parts(Build(g, recipe));
+            if (parts.Count == 0) continue;
 
             items.Add(new CatalogItem((string?)naming?["id"] ?? Slug((string)gear["name"]!), english, (string?)naming?["nameZh"], catName,
-                slotNo == 1 ? "main" : "special", archetypeId, (string?)calibre?["label"], Parts(Build(g, recipe)))
+                slotName, (uint)gear["persistentID"]!, (string?)calibre?["label"], parts)
             { Source = recipe, Order = (int?)naming?["order"] ?? 500, CategoryZh = (string?)naming?["categoryZh"] });
 
             if (calibre != null) calibres.TryAdd((string)calibre["id"]!, (calibre, recipe));
             foreach (var (comp, slot, block, order) in new[] { (23, "mag", "GearMagPart", 0), (25, "flashlight", "GearFlashlightPart", 1), (21, "sight", "GearSightPart", 2) })
                 if (comps.TryGetValue(comp, out var pid) && pid != 0) attachments.Add((order, slot, block, pid));
+        }
+        // Items with their own prefabs: resource packs, consumables, large carry items and the hacking tool. The first-person
+        // prefabs (the equippable and its model) spawn together as one `body` part. Key items and commodities have no
+        // first-person prefab.
+        foreach (var row in g.Blocks("Item").Values.Where(r => (bool)r["internalEnabled"]!))
+        {
+            var slot = (int)row["inventorySlot"]! switch { 4 => "pack", 5 => "consumable", 8 => "carry", 11 => "tool", _ => null };
+            if (slot == null) continue;
+            var prefabs = row["FirstPersonPrefabs"]!.AsArray().Select(p => (string)p!).Where(p => g.TryPrefab(p, out _)).ToArray();
+            if (prefabs.Length == 0) continue;
+            var recipe = new Recipe(Prefabs: prefabs, Slot: "body");
+            var parts = Parts(Build(g, recipe));
+            if (parts.Count == 0) continue;
+            var name = (string)row["name"]!;
+            var naming = Naming["items"]![name];
+            items.Add(new CatalogItem((string?)naming?["id"] ?? Slug(name), (string?)naming?["name"] ?? (string)row["publicName"]!, (string?)naming?["nameZh"],
+                slot, slot, null, null, parts)
+            { ItemId = (uint)row["persistentID"]!, Source = recipe, Order = (int?)naming?["order"] ?? 900, CategoryZh = (string?)naming?["categoryZh"] });
         }
         items.Sort((a, b) => a.Order != b.Order ? a.Order.CompareTo(b.Order) : string.CompareOrdinal(a.Name, b.Name));
 
@@ -190,7 +213,7 @@ public static class Catalog
             var row = g.Blocks(block)[pid];
             var model = (string?)row["General"]!["Model"];
             if (string.IsNullOrEmpty(model) || !g.TryPrefab(model, out _)) continue;
-            var recipe = new Recipe(Prefab: model, Slot: slot);
+            var recipe = new Recipe(Prefabs: [model], Slot: slot);
             var parts = Parts(Build(g, recipe));
             var name = (string)row["name"]!;
             items.Add(new CatalogItem(Slug(name), name.Replace('_', ' '), null, slot, "attachment", null, null, parts) { Source = recipe, CategoryZh = CategoryZh(slot) });

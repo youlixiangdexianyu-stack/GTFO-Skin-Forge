@@ -17,6 +17,8 @@ public sealed class SkinForgePlugin : BasePlugin
 
     internal static void Info(string message) => _log.LogInfo("[SkinForge] " + message);
     internal static void Fail(string message) => _log.LogWarning("[SkinForge] " + message);
+    // The interop Vector3.ToString(format) calls a Single.ToString overload that does not exist at runtime; format here.
+    internal static string Vec(Vector3 v) => FormattableString.Invariant($"({v.x:0.####}, {v.y:0.####}, {v.z:0.####})");
 
     public override void Load()
     {
@@ -26,9 +28,13 @@ public sealed class SkinForgePlugin : BasePlugin
             Info("disabled in SkinForge.cfg");
             return;
         }
+        if (Config.Bind("General", "Readback", false, "Write each assembled gear's vanilla part poses to BepInEx/SkinForge/readback/<gearId>.json.").Value)
+            Readback.Directory = Path.Combine(Paths.BepInExRootPath, "SkinForge", "readback");
         var skins = Path.Combine(Path.GetDirectoryName(typeof(SkinForgePlugin).Assembly.Location)!, "skins");
         Skins.Watch(skins);
-        new Harmony(Guid).PatchAll(typeof(SkinForgePlugin).Assembly);
+        var harmony = new Harmony(Guid);
+        harmony.PatchAll(typeof(SkinForgePlugin).Assembly);
+        foreach (var method in harmony.GetPatchedMethods()) Info($"hooked {method.DeclaringType?.Name}.{method.Name}");
         AddComponent<Runner>();
         Info($"loaded, skins folder {skins}");
     }
@@ -40,6 +46,4 @@ public sealed class Runner : MonoBehaviour
     public Runner(IntPtr pointer) : base(pointer) { }
 
     public void Update() => SkinnedGear.Tick(Time.unscaledTime, Time.time);
-
-    public void LateUpdate() => SkinnedGear.LateTick();
 }

@@ -25,11 +25,12 @@ public sealed class GameAssets : IDisposable
     {
         DataDir = Path.Combine(gameDir, "GTFO_Data");
         BuildId = ReadBuildId(gameDir);
+        Cache = CacheDir(BuildId);
     }
 
     // Game build identity for cache keys, read without opening asset files: the game's revision.txt (else the Steam
     // appmanifest build id) + the timestamp of resources.assets.
-    static string ReadBuildId(string gameDir)
+    public static string ReadBuildId(string gameDir)
     {
         var revisionFile = Path.Combine(gameDir, "revision.txt");
         var revision = File.Exists(revisionFile) ? File.ReadAllText(revisionFile).Trim() : null;
@@ -41,7 +42,10 @@ public sealed class GameAssets : IDisposable
     }
 
     // Cache folder of this game build; Catalog deletes the other builds' folders once this build's catalog is ready.
-    public string Cache => Path.Combine(Paths.Cache, "game", BuildId);
+    public readonly string Cache;
+    // Bump when the catalog or preview output changes, so caches written by older backends are rebuilt.
+    const int CacheVersion = 6;
+    public static string CacheDir(string buildId) => Path.Combine(Paths.Cache, "game", $"{buildId}-v{CacheVersion}");
 
     public AssetsFileInstance Load(string name)
     {

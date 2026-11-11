@@ -10,7 +10,7 @@ public sealed record InstalledSkin(string Id, string Name, string File, string? 
 // so they work while the game runs; only replacing the plugin DLL needs the game closed.
 public static class Install
 {
-    static readonly string[] PluginFiles = ["SkinForge.Plugin.dll", "SkinForge.Format.dll"];
+    static readonly string[] PluginFiles = ["SkinForge.Plugin.dll", "SkinForge.Format.dll", "NVorbis.dll"];
 
     static string Skins(string profile) => Path.Combine(Game.PluginDir(profile), "skins");
     static string ActiveFile(string profile) => Path.Combine(Skins(profile), "active.json");
@@ -20,7 +20,7 @@ public static class Install
         var path = ActiveFile(profile);
         var json = File.Exists(path) ? JsonNode.Parse(File.ReadAllText(path)) as JsonObject : null;
         json ??= new JsonObject();
-        if (json["weapons"] is not JsonObject) json["weapons"] = new JsonObject();
+        if (json["targets"] is not JsonObject) json["targets"] = new JsonObject();
         if (json["global"] is not JsonArray) json["global"] = new JsonArray();
         return json;
     }
@@ -35,13 +35,13 @@ public static class Install
     static void SetActive(string profile, SkinDocument doc, bool active)
     {
         var json = ReadActive(profile);
-        var weapons = json["weapons"]!.AsObject();
+        var targets = json["targets"]!.AsObject();
         var global = json["global"]!.AsArray();
-        foreach (var key in weapons.Where(kv => (string?)kv.Value == doc.Id).Select(kv => kv.Key).ToList()) weapons.Remove(key);
+        foreach (var key in targets.Where(kv => (string?)kv.Value == doc.Id).Select(kv => kv.Key).ToList()) targets.Remove(key);
         foreach (var node in global.Where(n => (string?)n == doc.Id).ToList()) global.Remove(node);
         if (active)
         {
-            if (doc.Target.ArchetypeId is { } archetype) weapons[archetype.ToString()] = doc.Id;
+            if (doc.Target.Key() is { } key) targets[key] = doc.Id;
             else global.Add(doc.Id);
         }
         WriteActive(profile, json);
@@ -71,7 +71,7 @@ public static class Install
         var dir = Skins(profile);
         if (!Directory.Exists(dir)) return new();
         var json = ReadActive(profile);
-        var active = json["weapons"]!.AsObject().Select(kv => (string?)kv.Value).Concat(json["global"]!.AsArray().Select(n => (string?)n)).ToHashSet();
+        var active = json["targets"]!.AsObject().Select(kv => (string?)kv.Value).Concat(json["global"]!.AsArray().Select(n => (string?)n)).ToHashSet();
         return Directory.GetFiles(dir, "*" + SkinPack.Extension).Order().Select(file =>
         {
             try
@@ -118,6 +118,15 @@ public static class Install
         throw new BackendException("not-found", "Plugin build not found next to the backend (plugin/SkinForge.Plugin.dll)");
     }
 
+    public static bool PluginCurrent(string profile)
+    {
+        string source;
+        try { source = PluginSource(); } catch (BackendException) { return false; }
+        var dir = Game.PluginDir(profile);
+        return PluginFiles.All(f => File.Exists(Path.Combine(dir, f)) && Hash(Path.Combine(dir, f)) == Hash(Path.Combine(source, f)));
+        static string Hash(string file) { using var s = File.OpenRead(file); return Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(s)); }
+    }
+
     // Refuses while GTFO runs and holds the DLL.
     static void RequireUnlocked(string dll)
     {
@@ -142,7 +151,7 @@ public static class Install
     {
         var dir = Game.PluginDir(profile);
         foreach (var f in PluginFiles) RequireUnlocked(Path.Combine(dir, f));
-        foreach (var f in PluginFiles) File.Delete(Path.Combine(dir, f));
+        foreach (var f in PluginFiles.Select(f => Path.Combine(dir, f)).Where(File.Exists)) File.Delete(f);
         return new { removed = dir };
     }
 }

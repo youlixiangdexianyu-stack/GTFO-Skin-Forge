@@ -5,28 +5,46 @@ import type Konva from 'konva';
 import { useEffect, useRef, useState, type ComponentType } from 'react';
 import { Image as KImage, Layer, Stage, Transformer } from 'react-konva';
 import { baseTexturePath, LayerSource, loadImage, naturalSort, sourceSize } from '../frames';
-import { baseName, CHANNELS, type DynamicLayer, type LayerKind, type TextureChannel } from '../protocol';
+import { baseName, CHANNELS, triggersFor, type DynamicLayer, type LayerKind, type PlayMode, type TextureChannel, type Trigger } from '../protocol';
 import { materialOf, useItem, useStore } from '../store';
 import { Color, Field, Num, Slider, Vec } from './fields';
 import { SelectionLayout } from './SelectionLayout';
 import { CHANNEL_LABEL } from './SkinInspector';
+import { partLabel, t } from '../i18n';
 
 const KINDS: { id: LayerKind; label: string; icon: ComponentType<{ size?: number }> }[] = [
-  { id: 'image', label: '图片', icon: IconPhoto },
-  { id: 'sequence', label: '序列帧', icon: IconStack2 },
-  { id: 'video', label: '视频', icon: IconMovie },
-  { id: 'text', label: '文字', icon: IconLetterT },
+  { id: 'image', get label() { return t('dynamicInspector.k1'); }, icon: IconPhoto },
+  { id: 'sequence', get label() { return t('dynamicInspector.k2'); }, icon: IconStack2 },
+  { id: 'video', get label() { return t('dynamicInspector.k3'); }, icon: IconMovie },
+  { id: 'text', get label() { return t('dynamicInspector.k4'); }, icon: IconLetterT },
 ];
-const IMAGES = [{ name: '图片', extensions: ['png', 'jpg', 'jpeg', 'webp', 'gif', 'bmp'] }];
-const VIDEOS = [{ name: '视频', extensions: ['mp4', 'webm', 'mov', 'm4v'] }];
+const PLAY_MODES: { value: PlayMode; label: string }[] = [
+  { value: 'loop', get label() { return t('dynamicInspector.k5'); } },
+  { value: 'once', get label() { return t('dynamicInspector.k6'); } },
+  { value: 'loopFor', get label() { return t('dynamicInspector.k7'); } },
+];
+const IMAGES = [{ get name() { return t('dynamicInspector.k1'); }, extensions: ['png', 'jpg', 'jpeg', 'webp', 'gif', 'bmp'] }];
+const VIDEOS = [{ get name() { return t('dynamicInspector.k3'); }, extensions: ['mp4', 'webm', 'mov', 'm4v'] }];
 
 async function addLayer(material: string, part: string, kind: LayerKind) {
   const { addLayer } = useStore.getState();
-  if (kind === 'text') return addLayer(material, part, { kind, name: '文字', text: { content: 'GTFO', sizePx: 96, color: [1, 1, 1, 1] }, uvSize: [0.3, 0.12] });
+  if (kind === 'text') return addLayer(material, part, { kind, get name() { return t('dynamicInspector.k4'); }, text: { content: 'GTFO', sizePx: 96, color: [1, 1, 1, 1] }, uvSize: [0.3, 0.12] });
   const files = await window.forge.openDialog('files', kind === 'video' ? VIDEOS : IMAGES);
-  if (!files.length) return;
-  const sources = kind === 'sequence' ? naturalSort(files) : files.slice(0, 1);
-  addLayer(material, part, { kind, name: baseName(sources[0]).replace(/\.[^.]+$/, ''), sources });
+  if (files.length) layerFromFiles(material, part, kind === 'sequence' ? files : files.slice(0, 1));
+}
+
+const isVideo = (p: string) => VIDEOS[0].extensions.some((e) => p.toLowerCase().endsWith(`.${e}`));
+const isImage = (p: string) => IMAGES[0].extensions.some((e) => p.toLowerCase().endsWith(`.${e}`));
+
+/** New layer from files: a video, one image, or several images as a sequence (natural order). False when none fit. */
+export function layerFromFiles(material: string, part: string, paths: string[]): boolean {
+  const video = paths.find(isVideo);
+  const images = naturalSort(paths.filter(isImage));
+  const sources = video ? [video] : images;
+  if (!sources.length) return false;
+  const kind: LayerKind = video ? 'video' : images.length > 1 ? 'sequence' : 'image';
+  useStore.getState().addLayer(material, part, { kind, name: baseName(sources[0]).replace(/\.[^.]+$/, ''), sources });
+  return true;
 }
 
 /** 2D UV canvas (Konva): the target texture with the playing layer; drag to move, Transformer to resize and rotate. */
@@ -53,7 +71,7 @@ function UvCanvas({ material, layer }: { material: string; layer: DynamicLayer }
     const t0 = performance.now();
     let raf = 0;
     const tick = () => {
-      const f = src.at((performance.now() - t0) / 1000);
+      const f = src.at(((performance.now() - t0) / 1000) % src.duration);
       if (f) {
         const [sw, sh] = sourceSize(f);
         const [cx, cy, cw, ch] = layer.crop ?? [0, 0, 1, 1];
@@ -69,7 +87,7 @@ function UvCanvas({ material, layer }: { material: string; layer: DynamicLayer }
       cancelAnimationFrame(raf);
       src.dispose();
     };
-  }, [layer.sources, layer.kind, layer.text, layer.fps, layer.loop, layer.crop]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [layer.sources, layer.kind, layer.text, layer.fps, layer.crop]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     if (node.current && tr.current) tr.current.nodes([node.current]);
@@ -122,6 +140,7 @@ function UvCanvas({ material, layer }: { material: string; layer: DynamicLayer }
 }
 
 function LayerPanel({ material, layer }: { material: string; layer: DynamicLayer }) {
+  const triggers = triggersFor(useItem());
   const { updateLayer, removeLayer, select } = useStore.getState();
   const up = (fn: (l: DynamicLayer) => void, key?: string) => updateLayer(material, layer.id!, fn, key && `${layer.id}-${key}`);
   const kind = KINDS.find((k) => k.id === layer.kind);
@@ -129,7 +148,7 @@ function LayerPanel({ material, layer }: { material: string; layer: DynamicLayer
     <>
       <div className="insp-head">
         <UnstyledButton className="kind" onClick={() => select({ kind: 'part', id: materialOf(useStore.getState().doc, material)?.part ?? '' })}>
-          ← 图层 · {kind?.label}
+          {t('dynamicInspector.k8')} {kind?.label}
         </UnstyledButton>
         <TextInput mt={4} size="sm" value={layer.name ?? ''} onChange={(e) => {
           const n = e.currentTarget.value;
@@ -139,61 +158,77 @@ function LayerPanel({ material, layer }: { material: string; layer: DynamicLayer
       <div className="section">
         <UvCanvas material={material} layer={layer} />
         <p className="hint" style={{ marginTop: 6 }}>
-          拖动移动，拖边角缩放，拖上方圆点旋转。3D 视图里会同步播放。
+          {t('dynamicInspector.k9')}
         </p>
       </div>
       <div className="section">
-        <h3>放置</h3>
-        <Field label="贴到通道">
+        <h3>{t('dynamicInspector.k10')}</h3>
+        <Field label={t('dynamicInspector.k11')}>
           <Select value={layer.channel ?? 'albedo'} onChange={(c) => c && up((l) => void (l.channel = c as TextureChannel))} data={CHANNELS.map((c) => ({ value: c, label: CHANNEL_LABEL[c] }))} />
         </Field>
-        <Field label="UV 位置">
+        <Field label={t('dynamicInspector.k12')}>
           <Vec value={layer.uvCenter ?? [0.5, 0.5]} labels={['U', 'V']} step={0.01} decimalScale={3} onChange={(v) => up((l) => void (l.uvCenter = v), 'uvc')} />
         </Field>
-        <Field label="大小">
+        <Field label={t('dynamicInspector.k13')}>
           <Vec value={layer.uvSize ?? [0.25, 0.25]} labels={['U', 'V']} step={0.01} decimalScale={3} min={0.001} onChange={(v) => up((l) => void (l.uvSize = v), 'uvs')} />
         </Field>
-        <Field label="旋转 °">
+        <Field label={t('dynamicInspector.k14')}>
           <Num value={layer.rotation ?? 0} step={1} decimalScale={1} onChange={(v) => up((l) => void (l.rotation = v), 'rot')} />
         </Field>
-        <Field label="不透明度">
+        <Field label={t('dynamicInspector.k15')}>
           <Slider value={layer.opacity ?? 1} onChange={(v) => up((l) => void (l.opacity = v), 'op')} />
         </Field>
-        <Field label="裁剪">
+        <Field label={t('dynamicInspector.k16')}>
           <Vec value={layer.crop ?? [0, 0, 1, 1]} labels={['X', 'Y', 'W', 'H']} step={0.01} min={0} max={1} hideControls onChange={(v) => up((l) => void (l.crop = v), 'crop')} />
         </Field>
       </div>
-      {layer.kind !== 'image' && layer.kind !== 'text' && (
-        <div className="section">
-          <h3>播放</h3>
-          <Field label="帧率">
+      <div className="section">
+        <h3>{t('dynamicInspector.k17')}</h3>
+        <Field label={t('dynamicInspector.k18')}>
+          <Select value={layer.trigger ?? 'always'} onChange={(v) => v && up((l) => void (l.trigger = v as Trigger))} data={triggers} allowDeselect={false} />
+        </Field>
+        <Field label={t('dynamicInspector.k19')}>
+          <Group gap="xs" wrap="nowrap">
+            <Select style={{ flex: 1 }} value={layer.play ?? 'loop'} onChange={(v) => v && up((l) => void (l.play = v as PlayMode))} data={PLAY_MODES} allowDeselect={false} />
+            {layer.play === 'loopFor' && <Num w={86} value={layer.playSeconds ?? 3} step={0.5} decimalScale={1} min={0.1} rightSection={t('dynamicInspector.k20')} onChange={(v) => up((l) => void (l.playSeconds = v), 'ps')} />}
+          </Group>
+        </Field>
+        {layer.trigger === 'lowAmmo' && (
+          <Field label={t('dynamicInspector.k21')}>
+            <Slider value={layer.lowAmmoFraction ?? 0.2} min={0.05} max={0.9} onChange={(v) => up((l) => void (l.lowAmmoFraction = v), 'laf')} />
+          </Field>
+        )}
+        {layer.kind !== 'image' && layer.kind !== 'text' && (
+          <Field label={t('dynamicInspector.k22')}>
             <Num value={layer.fps ?? 12} step={1} decimalScale={0} min={1} max={60} onChange={(v) => up((l) => void (l.fps = v), 'fps')} />
           </Field>
-          <Switch mt="xs" label="循环播放" checked={layer.loop !== false} onChange={(e) => {
-            const on = e.currentTarget.checked;
-            up((l) => void (l.loop = on));
-          }} />
-          <p className="hint" style={{ marginTop: 8 }}>
-            {layer.kind === 'video' ? '视频会按这个帧率拆成图片，最多 240 帧。' : `${layer.sources?.length ?? 0} 帧，按文件名中的数字排序。`}
-          </p>
-        </div>
-      )}
+        )}
+        <p className="hint" style={{ marginTop: 8 }}>
+          {layer.trigger && layer.trigger !== 'always'
+            ? t('dynamicInspector.k23')
+            : layer.kind === 'video'
+              ? t('dynamicInspector.k24')
+              : layer.kind === 'sequence'
+                ? t('dynamicInspector.k25', { v0: layer.sources?.length ?? 0 })
+                : t('dynamicInspector.k26')}
+        </p>
+      </div>
       {layer.kind === 'text' && (
         <div className="section">
-          <h3>文字</h3>
+          <h3>{t('dynamicInspector.k4')}</h3>
           <Textarea autosize minRows={2} value={layer.text?.content ?? ''} onChange={(e) => {
             const t = e.currentTarget.value;
             up((l) => void (l.text = { ...l.text, content: t }), 'tx');
           }} />
           <div style={{ height: 8 }} />
-          <Field label="字号 px">
+          <Field label={t('dynamicInspector.k27')}>
             <Num value={layer.text?.sizePx ?? 64} step={2} decimalScale={0} min={8} onChange={(v) => up((l) => void (l.text = { ...l.text, sizePx: v }), 'tsz')} />
           </Field>
-          <Field label="颜色">
+          <Field label={t('dynamicInspector.k28')}>
             <Color alpha value={layer.text?.color ?? [1, 1, 1, 1]} onChange={(c) => up((l) => void (l.text = { ...l.text, color: c }), 'tcol')} />
           </Field>
-          <Field label="字体">
-            <TextInput value={layer.text?.font ?? ''} placeholder="系统字体名，如 微软雅黑" onChange={(e) => {
+          <Field label={t('dynamicInspector.k29')}>
+            <TextInput value={layer.text?.font ?? ''} placeholder={t('dynamicInspector.k30')} onChange={(e) => {
               const f = e.currentTarget.value;
               up((l) => void (l.text = { ...l.text, font: f || null }), 'tf');
             }} />
@@ -202,12 +237,12 @@ function LayerPanel({ material, layer }: { material: string; layer: DynamicLayer
       )}
       <div className="section">
         <Group justify="space-between">
-          <Switch label="显示" checked={layer.visible !== false} onChange={(e) => {
+          <Switch label={t('dynamicInspector.k31')} checked={layer.visible !== false} onChange={(e) => {
             const on = e.currentTarget.checked;
             up((l) => void (l.visible = on));
           }} />
           <Button variant="default" color="red" leftSection={<IconTrash size={14} />} onClick={() => removeLayer(material, layer.id!)}>
-            删除图层
+            {t('dynamicInspector.k32')}
           </Button>
         </Group>
       </div>
@@ -224,9 +259,9 @@ function PartLayers({ partId }: { partId: string }) {
   return (
     <>
       <div className="insp-head">
-        <div className="kind">动态贴图</div>
-        <div className="title">{part.label}</div>
-        <div className="meta">在这个部件的贴图上叠加会动的图片、视频或文字。</div>
+        <div className="kind">{t('dynamicInspector.k33')}</div>
+        <div className="title">{partLabel(part)}</div>
+        <div className="meta">{t('dynamicInspector.k34')}</div>
       </div>
       {part.materials.map((mat) => {
         const layers = (materialOf(doc, mat)?.layers ?? []).filter(Boolean) as DynamicLayer[];
@@ -263,7 +298,7 @@ function PartLayers({ partId }: { partId: string }) {
                   </UnstyledButton>
                 );
               })}
-              {!layers.length && <p className="hint">还没有图层。</p>}
+              {!layers.length && <p className="hint">{t('dynamicInspector.k35')}</p>}
             </div>
           </div>
         );
@@ -286,13 +321,13 @@ export function DynamicInspector() {
   return (
     <>
       <div className="insp-head">
-        <div className="kind">动态贴图</div>
-        <div className="title">先选一个部件</div>
-        <div className="meta">在 3D 里点一下要加动画的部件，或在左边列表里选。</div>
+        <div className="kind">{t('dynamicInspector.k33')}</div>
+        <div className="title">{t('dynamicInspector.k36')}</div>
+        <div className="meta">{t('dynamicInspector.k37')}</div>
       </div>
       <div className="section">
         <p className="hint">
-          支持图片、按文件名排序的序列帧、MP4 视频和文字。改好后点 <b>应用到游戏</b>，帧会自动生成并打包。
+          {t('dynamicInspector.k38')} <b>{t('dynamicInspector.k39')}</b>{t('dynamicInspector.k40')}
         </p>
       </div>
     </>

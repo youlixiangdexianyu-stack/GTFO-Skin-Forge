@@ -2,7 +2,9 @@
 // Contract with the backend/plugin: each frame in <projectDir>/.frames/<layerId>/NNNN.png is the final pixels of the
 // target region (base texture + layer, opacity baked; the plugin copies without blending); rect.json gives the region in
 // base-texture pixels with a top-left origin. The glyph strip is "0123456789 -" in 12 equal cells, white on transparent.
+import { cssFont, loadFont } from './fonts';
 import { dirName, fileUrl, type DynamicLayer, type Screen, type SkinDocument, type WeaponPreview } from './protocol';
+import { t } from './i18n';
 
 export const GLYPHS = '0123456789 -';
 const MAX_FRAMES = 240;
@@ -63,7 +65,7 @@ export class LayerSource {
       const v = document.createElement('video');
       v.src = fileUrl(sources[0]);
       v.muted = true;
-      v.loop = l.loop ?? true;
+      v.loop = true;
       v.crossOrigin = 'anonymous';
       v.playsInline = true;
       await v.play().catch(() => undefined);
@@ -72,13 +74,20 @@ export class LayerSource {
     else if (sources[0]) this.frames = [await loadImage(sources[0])];
   }
 
+  /** Length of one pass in seconds; a still image counts as one second. */
+  get duration(): number {
+    if (this.video) return this.video.duration || 1;
+    return this.frames.length > 1 ? this.frames.length / (this.layer.fps || 12) : 1;
+  }
+
+  /** Frame at a playback time within one pass (see `playTime`). */
   at(time: number): CanvasImageSource | null {
-    if (this.video) return this.video.readyState >= 2 ? this.video : null;
+    if (this.video) {
+      if (Math.abs(this.video.currentTime - time) > 0.25) this.video.currentTime = time;
+      return this.video.readyState >= 2 ? this.video : null;
+    }
     if (!this.frames.length) return null;
-    const n = this.frames.length;
-    let i = Math.floor(time * (this.layer.fps || 12));
-    i = this.layer.loop === false ? Math.min(i, n - 1) : i % n;
-    return this.frames[i];
+    return this.frames[Math.min(Math.floor(time * (this.layer.fps || 12)), this.frames.length - 1)];
   }
 
   dispose() {
@@ -192,7 +201,7 @@ export async function bakeLayers(
         await window.forge.writeFile(`${dir}\\${String(i).padStart(4, '0')}.png`, await toPng(canvas));
         written++;
       };
-      onProgress(`正在生成「${l.name}」的帧`);
+      onProgress(t('frames.k1', { v0: l.name }));
       const sources = (l.sources ?? []).filter(Boolean) as string[];
       if (l.kind === 'video') await videoFrames(sources[0], l.fps || 12, writeFrame);
       else if (l.kind === 'text') await writeFrame(textCanvas(l), 0);
@@ -215,7 +224,11 @@ export function glyphCanvas(font: string | null | undefined, cellW = 64, cellH =
   ctx.fillStyle = '#fff';
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
-  ctx.font = `700 ${Math.round(cellH * 0.82)}px ${font ? `"${font}", ` : ''}"JetBrains Mono", monospace`;
+  // Wide fonts are shrunk until every glyph fits its cell.
+  const px = Math.round(cellH * 0.82);
+  ctx.font = cssFont(font, px);
+  const widest = Math.max(...[...GLYPHS].map((g) => ctx.measureText(g).width));
+  if (widest > cellW * 0.92) ctx.font = cssFont(font, Math.floor((px * cellW * 0.92) / widest));
   [...GLYPHS].forEach((g, i) => ctx.fillText(g, i * cellW + cellW / 2, cellH / 2 + cellH * 0.04));
   return c;
 }
@@ -223,6 +236,7 @@ export function glyphCanvas(font: string | null | undefined, cellW = 64, cellH =
 export async function bakeGlyphs(doc: SkinDocument, projectPath: string): Promise<void> {
   for (const a of doc.attachments ?? []) {
     if (!a?.screen) continue;
+    await loadFont(a.screen.font);
     await window.forge.writeFile(`${dirName(projectPath)}\\.frames\\${a.id}-glyphs.png`, await toPng(glyphCanvas(a.screen.font)));
   }
 }

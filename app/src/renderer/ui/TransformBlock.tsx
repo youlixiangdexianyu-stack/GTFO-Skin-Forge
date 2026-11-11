@@ -6,12 +6,13 @@ import { IconEye, IconEyeOff, IconLink, IconLinkOff, IconRestore } from '@tabler
 import { useEffect, useRef, useState } from 'react';
 import type { UnityPose, Vec3 } from '../space';
 import { newGesture } from '../viewport/ModalTransform';
+import { t } from '../i18n';
 
 type Row = 'position' | 'rotation' | 'scale';
 const ROWS: { row: Row; label: string; factor: number; step: number; snap: number; digits: number }[] = [
-  { row: 'position', label: '位置 mm', factor: 1000, step: 0.5, snap: 1, digits: 2 },
-  { row: 'rotation', label: '旋转 °', factor: 1, step: 0.5, snap: 5, digits: 2 },
-  { row: 'scale', label: '缩放 ×', factor: 1, step: 0.005, snap: 0.1, digits: 3 },
+  { row: 'position', get label() { return t('transformBlock.k1'); }, factor: 1000, step: 0.5, snap: 1, digits: 2 },
+  { row: 'rotation', get label() { return t('transformBlock.k2'); }, factor: 1, step: 0.5, snap: 5, digits: 2 },
+  { row: 'scale', get label() { return t('transformBlock.k3'); }, factor: 1, step: 0.005, snap: 0.1, digits: 3 },
 ];
 const AXES = [
   { l: 'X', c: 'var(--x)' },
@@ -86,7 +87,7 @@ function AxisField({
       }}
       leftSectionWidth={20}
       leftSection={
-        <Tooltip label="左右拖动调整（Shift 精细，Ctrl 吸附）" openDelay={700}>
+        <Tooltip label={t('transformBlock.k4')} openDelay={700}>
           <Text component="span" size="xs" fw={700} ff="monospace" onPointerDown={scrub} style={{ color: AXES[axis].c, cursor: 'ew-resize', padding: '0 4px' }}>
             {AXES[axis].l}
           </Text>
@@ -129,13 +130,13 @@ export function TransformBlock({
     <div className="section">
       <h3>
         <span className="grow">{title}</span>
-        <Tooltip label={visible ? '隐藏（游戏里也隐藏）' : '显示'}>
+        <Tooltip label={visible ? t('transformBlock.k5') : t('transformBlock.k6')}>
           <ActionIcon variant="subtle" color={visible ? 'gray' : 'flare'} size="sm" onClick={() => onVisible(!visible)}>
             {visible ? <IconEye size={14} /> : <IconEyeOff size={14} />}
           </ActionIcon>
         </Tooltip>
         <Button size="compact-xs" variant="subtle" color="gray" leftSection={<IconRestore size={12} />} onClick={() => onReset()}>
-          重置全部
+          {t('transformBlock.k7')}
         </Button>
       </h3>
       {ROWS.map(({ row, label, factor, step, snap, digits }) => (
@@ -150,7 +151,7 @@ export function TransformBlock({
           </div>
           <Group gap={0} wrap="nowrap">
             {row === 'scale' ? (
-              <Tooltip label={uniform ? '等比缩放（点击解锁）' : '分轴缩放（点击锁定等比）'}>
+              <Tooltip label={uniform ? t('transformBlock.k8') : t('transformBlock.k9')}>
                 <ActionIcon variant="subtle" color={uniform ? 'flare' : 'gray'} size="sm" onClick={() => setUniform(!uniform)}>
                   {uniform ? <IconLink size={13} /> : <IconLinkOff size={13} />}
                 </ActionIcon>
@@ -158,7 +159,7 @@ export function TransformBlock({
             ) : (
               <span style={{ width: 22 }} />
             )}
-            <Tooltip label="恢复原版">
+            <Tooltip label={t('transformBlock.k10')}>
               <ActionIcon variant="subtle" color="gray" size="sm" onClick={() => onReset(row)}>
                 <IconRestore size={13} />
               </ActionIcon>
@@ -168,7 +169,7 @@ export function TransformBlock({
       ))}
       <Group justify="space-between" mt={8}>
         <Text size="xs" c="dimmed">
-          拖动 3D 里的控制柄，或选中后按 G 移动 / R 旋转 / S 缩放
+          {t('transformBlock.k11')}
         </Text>
       </Group>
     </div>

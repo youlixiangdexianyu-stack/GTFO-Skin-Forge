@@ -1,12 +1,15 @@
 using System.Diagnostics;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using System.Text.RegularExpressions;
 using Microsoft.Win32;
 
 namespace SkinForge.Backend;
 
 public sealed record GameInfo(string? GameDir, string? DataDir, bool Found, bool Running);
-public sealed record ProfileInfo(string Name, string Path, bool HasBepInEx, string? PluginVersion);
+// Reason: why HasBepInEx is false. Modified: last time the profile changed or the game ran from it (BepInEx log).
+// PluginCurrent: every plugin file in the profile has the same SHA-256 as the build the app ships; false when missing or different.
+public sealed record ProfileInfo(string Name, string Path, bool HasBepInEx, string? PluginVersion, bool PluginCurrent, string? Reason, bool Custom, DateTime Modified);
 
 // Finds the GTFO install (saved choice, then Steam registry + libraryfolders.vdf + common dirs) and BepInEx profiles.
 public static class Game
@@ -29,7 +32,9 @@ public static class Game
         if (Path.GetFileName(dir).Equals("GTFO_Data", StringComparison.OrdinalIgnoreCase)) dir = Path.GetDirectoryName(dir)!;
         if (!Valid(dir)) throw new BackendException("game-not-found", $"{dir} is not a GTFO install (GTFO.exe and GTFO_Data expected)");
         _chosen = dir;
-        File.WriteAllText(Paths.Settings, JsonSerializer.Serialize(new { gameDir = dir }));
+        var settings = ReadSettings();
+        settings["gameDir"] = dir;
+        WriteSettings(settings);
         return Locate();
     }
 
@@ -38,10 +43,19 @@ public static class Game
     static bool Valid(string? dir) =>
         dir != null && File.Exists(Path.Combine(dir, "GTFO.exe")) && File.Exists(Path.Combine(dir, "GTFO_Data", "resources.assets"));
 
-    static string? ReadSetting()
+    static string? ReadSetting() => (string?)ReadSettings()["gameDir"];
+
+    static JsonObject ReadSettings()
     {
-        try { return JsonDocument.Parse(File.ReadAllText(Paths.Settings)).RootElement.GetProperty("gameDir").GetString(); }
-        catch (Exception e) when (e is IOException or JsonException or KeyNotFoundException) { return null; }
+        try { return JsonNode.Parse(File.ReadAllText(Paths.Settings)) as JsonObject ?? new(); }
+        catch (Exception e) when (e is IOException or JsonException) { return new(); }
+    }
+
+    static void WriteSettings(JsonObject settings)
+    {
+        Directory.CreateDirectory(Paths.Data);
+        File.WriteAllText(Paths.Settings + ".tmp", settings.ToJsonString(new JsonSerializerOptions { WriteIndented = true }));
+        File.Move(Paths.Settings + ".tmp", Paths.Settings, true);
     }
 
     static IEnumerable<string> Candidates()
@@ -75,25 +89,90 @@ public static class Game
         }
     }
 
-    // r2modman and Thunderstore Mod Manager profiles of GTFO, plus the game dir itself.
-    public static List<ProfileInfo> Profiles()
+    // Mod manager data folders: the defaults plus any custom `dataDirectory` r2modman or Thunderstore Mod Manager keep in
+    // their settings (IndexedDB LevelDB files, searched as text), and Gale's data dir from its prefs.
+    static IEnumerable<string> ProfileRoots()
     {
         var appData = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
-        var list = new List<ProfileInfo>();
-        foreach (var root in new[] {
-            Path.Combine(appData, "r2modmanPlus-local", "GTFO", "profiles"),
-            Path.Combine(appData, "Thunderstore Mod Manager", "DataFolder", "GTFO", "profiles") })
-            if (Directory.Exists(root))
-                list.AddRange(Directory.GetDirectories(root).Select(Profile));
-        if (Locate().GameDir is { } game) list.Add(Profile(game) with { Name = "GTFO (game folder)" });
-        return list;
+        var local = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+        var dataDirs = new List<string> { Path.Combine(appData, "r2modmanPlus-local"), Path.Combine(appData, "Thunderstore Mod Manager", "DataFolder") };
+        var options = new EnumerationOptions { RecurseSubdirectories = true, IgnoreInaccessible = true, MaxRecursionDepth = 6 };
+        foreach (var store in new[] { Path.Combine(appData, "r2modman"), Path.Combine(appData, "Thunderstore Mod Manager"), Path.Combine(local, "Overwolf"), Path.Combine(appData, "Overwolf") }
+                     .Where(Directory.Exists))
+            foreach (var db in Directory.EnumerateDirectories(store, "*indexeddb.leveldb", options))
+                foreach (var file in Directory.EnumerateFiles(db).Where(f => f.EndsWith(".ldb") || f.EndsWith(".log")))
+                {
+                    string text;
+                    try { text = File.ReadAllText(file, System.Text.Encoding.Latin1); }
+                    catch (IOException) { continue; }
+                    foreach (Match m in Regex.Matches(text, @"""dataDirectory"":""((?:[^""\\]|\\.)+)"""))
+                        dataDirs.Add(Regex.Unescape(m.Groups[1].Value));
+                }
+        var gale = Path.Combine(appData, "com.kesomannen.gale");
+        yield return Path.Combine(gale, "gtfo", "profiles");
+        if (File.Exists(Path.Combine(gale, "prefs.json"))
+            && Regex.Match(File.ReadAllText(Path.Combine(gale, "prefs.json")), @"""data_?[dD]ir""\s*:\s*""((?:[^""\\]|\\.)+)""") is { Success: true } g)
+            yield return Path.Combine(Regex.Unescape(g.Groups[1].Value), "gtfo", "profiles");
+        foreach (var dir in dataDirs) yield return Path.Combine(dir, "GTFO", "profiles");
     }
 
-    static ProfileInfo Profile(string dir)
+    // Mod manager profiles of GTFO, the game folder and the profiles the user added.
+    public static List<ProfileInfo> Profiles()
+    {
+        var list = ProfileRoots().Where(Directory.Exists).SelectMany(Directory.GetDirectories).Select(d => Profile(d, false)).ToList();
+        if (Locate().GameDir is { } game) list.Add(Profile(game, false) with { Name = "GTFO (game folder)" });
+        foreach (var path in CustomProfiles()) list.Add(Profile(path, true));
+        return list.DistinctBy(p => Path.GetFullPath(p.Path).TrimEnd('\\'), StringComparer.OrdinalIgnoreCase).ToList();
+    }
+
+    static List<string> CustomProfiles() => ReadSettings()["profiles"] is JsonArray a ? a.Select(n => (string)n!).ToList() : new();
+
+    // Why a folder is not a BepInEx 6 profile, or null when it is.
+    static string? NotProfile(string dir)
+    {
+        var core = Path.Combine(dir, "BepInEx", "core");
+        if (!Directory.Exists(Path.Combine(dir, "BepInEx"))) return "BepInEx folder missing";
+        if (!Directory.Exists(core)) return "BepInEx/core missing";
+        if (!File.Exists(Path.Combine(core, "BepInEx.Core.dll")) && !File.Exists(Path.Combine(core, "BepInEx.Unity.IL2CPP.dll")))
+            return "BepInEx/core has neither BepInEx.Core.dll nor BepInEx.Unity.IL2CPP.dll";
+        return null;
+    }
+
+    static ProfileInfo Profile(string dir, bool custom)
     {
         var dll = Path.Combine(PluginDir(dir), "SkinForge.Plugin.dll");
-        return new ProfileInfo(Path.GetFileName(dir), dir, Directory.Exists(Path.Combine(dir, "BepInEx", "core")),
-            File.Exists(dll) ? FileVersionInfo.GetVersionInfo(dll).FileVersion : null);
+        var reason = NotProfile(dir);
+        var modified = new[] { dir, Path.Combine(dir, "BepInEx"), Path.Combine(dir, "BepInEx", "plugins"), Path.Combine(dir, "BepInEx", "LogOutput.log") }
+            .Where(p => Directory.Exists(p) || File.Exists(p)).Select(File.GetLastWriteTimeUtc).Max();
+        return new ProfileInfo(Path.GetFileName(dir.TrimEnd('\\', '/')), dir, reason == null,
+            File.Exists(dll) ? FileVersionInfo.GetVersionInfo(dll).FileVersion : null, File.Exists(dll) && Install.PluginCurrent(dir), reason, custom, modified);
+    }
+
+    // Accepts a profile root, its BepInEx folder or a game folder holding BepInEx.
+    public static ProfileInfo AddProfile(string path)
+    {
+        var dir = Path.GetFullPath(path).TrimEnd('\\', '/');
+        if (Path.GetFileName(dir).Equals("BepInEx", StringComparison.OrdinalIgnoreCase)) dir = Path.GetDirectoryName(dir)!;
+        if (!Directory.Exists(dir)) throw new BackendException("not-a-profile", $"{dir} does not exist");
+        if (NotProfile(dir) is { } reason) throw new BackendException("not-a-profile", $"{dir}: {reason}");
+        var settings = ReadSettings();
+        var list = CustomProfiles();
+        if (!list.Contains(dir, StringComparer.OrdinalIgnoreCase)) list.Add(dir);
+        settings["profiles"] = new JsonArray(list.Select(p => (JsonNode)p).ToArray());
+        WriteSettings(settings);
+        return Profile(dir, true);
+    }
+
+    public static object RemoveProfile(string path)
+    {
+        var dir = Path.GetFullPath(path).TrimEnd('\\', '/');
+        var list = CustomProfiles();
+        if (list.RemoveAll(p => p.Equals(dir, StringComparison.OrdinalIgnoreCase)) == 0)
+            throw new BackendException("not-found", $"{dir} is not an added profile");
+        var settings = ReadSettings();
+        settings["profiles"] = new JsonArray(list.Select(p => (JsonNode)p).ToArray());
+        WriteSettings(settings);
+        return new { removed = dir };
     }
 
     public static string PluginDir(string profile) => Path.Combine(profile, "BepInEx", "plugins", PluginFolder);

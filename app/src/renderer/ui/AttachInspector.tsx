@@ -1,16 +1,116 @@
-import { Button, Checkbox, Group, Kbd, Select, Switch, TextInput } from '@mantine/core';
-import { IconTrash } from '@tabler/icons-react';
-import type { Attachment, Screen, ScreenSource } from '../protocol';
+import { ActionIcon, Button, Checkbox, Group, Kbd, SegmentedControl, Select, Switch, TextInput } from '@mantine/core';
+import { useState } from 'react';
+import { cssFont, DEFAULT_FONT, FONT_GROUPS, isFontFile, loadFont, systemFonts } from '../fonts';
+import { IconPlus, IconTrash, IconX } from '@tabler/icons-react';
+import { baseName, triggersFor, type Attachment, type Screen, type ScreenSource, type Trigger, type TriggerEffect } from '../protocol';
 import { useItem, useStore } from '../store';
 import { Color, Field, Num, Slider, Vec } from './fields';
 import { SelectionLayout } from './SelectionLayout';
+import { partLabel, t } from '../i18n';
 
 const SOURCES: { value: ScreenSource; label: string }[] = [
-  { value: 'ammoClip', label: '弹匣内子弹' },
-  { value: 'ammoReserve', label: '备弹' },
-  { value: 'ammoTotal', label: '总弹药' },
-  { value: 'static', label: '固定文字' },
+  { value: 'ammoClip', get label() { return t('attachInspector.k1'); } },
+  { value: 'ammoReserve', get label() { return t('attachInspector.k2'); } },
+  { value: 'ammoTotal', get label() { return t('attachInspector.k3'); } },
+  { value: 'kills', get label() { return t('attachInspector.k4'); } },
+  { value: 'static', get label() { return t('attachInspector.k5'); } },
 ];
+
+const PICK_FILE = '~file';
+const DIGITS = '0123456789';
+
+/** Screen font: bundled fonts by group, installed fonts, or a font file; each option shows the digits in its own font. */
+function FontPicker({ value, onChange }: { value: string | null; onChange: (font: string | null) => void }) {
+  const [system, setSystem] = useState<string[] | null>(null);
+  const current = value ?? DEFAULT_FONT;
+  const files = isFontFile(current) ? [{ value: current, label: baseName(current) }] : [];
+  const bundled = new Set(FONT_GROUPS.flatMap((g) => g.fonts.map((f) => f.family)));
+  const sys = (system ?? []).filter((f) => !bundled.has(f));
+  if (!isFontFile(current) && !bundled.has(current) && !sys.includes(current)) sys.unshift(current);
+  const data = [
+    ...FONT_GROUPS.map((g) => ({ group: g.group, items: g.fonts.map((f) => f.family) })),
+    { get group() { return t('attachInspector.k6'); }, items: system ? sys : [...sys, { value: '~loading', get label() { return t('attachInspector.k7'); }, disabled: true }] },
+    { get group() { return t('attachInspector.k8'); }, items: [...files, { value: PICK_FILE, get label() { return t('attachInspector.k9'); } }] },
+  ];
+  // Options use their own font once it has loaded; system and file fonts load when shown.
+  const style = (font: string) => {
+    void loadFont(font).catch(() => undefined);
+    return { font: cssFont(font, 15) };
+  };
+  return (
+    <Select
+      searchable
+      value={current}
+      data={data}
+      maxDropdownHeight={360}
+      comboboxProps={{ width: 340, position: 'bottom-end' }}
+      onDropdownOpen={() => void (system ?? systemFonts().then(setSystem))}
+      onChange={async (v) => {
+        if (v === PICK_FILE) {
+          const [f] = await window.forge.openDialog('files', [{ get name() { return t('attachInspector.k10'); }, extensions: ['ttf', 'otf', 'woff', 'woff2'] }]);
+          if (f) onChange(f);
+          return;
+        }
+        if (v) onChange(v === DEFAULT_FONT ? null : v);
+      }}
+      renderOption={({ option }) =>
+        option.value.startsWith('~') ? (
+          option.label
+        ) : (
+          <Group gap={10} wrap="nowrap" justify="space-between" w="100%">
+            <span>{option.label}</span>
+            <span style={style(option.value)}>{DIGITS}</span>
+          </Group>
+        )
+      }
+    />
+  );
+}
+
+/** Attachment effects: flash the emission or show the attachment for a few seconds when a game event happens. */
+function Effects({ a }: { a: Attachment }) {
+  const triggers = triggersFor(useItem()).filter((x) => x.value !== 'always');
+  const { updateAttachment } = useStore.getState();
+  const effects = (a.effects ?? []).filter((e): e is TriggerEffect => !!e);
+  const up = (i: number, fn: (e: TriggerEffect) => void, key?: string) =>
+    updateAttachment(a.id!, (x) => void fn(x.effects![i]!), key && `${a.id}-fx${i}-${key}`);
+  return (
+    <div className="section">
+      <h3>
+        <span className="grow">{t('attachInspector.k11')}</span>
+        <Button
+          size="compact-xs"
+          variant="subtle"
+          leftSection={<IconPlus size={12} />}
+          onClick={() => updateAttachment(a.id!, (x) => void (x.effects = [...(x.effects ?? []), { trigger: 'kill', action: 'flash', color: [1, 0.3, 0.2, 1], intensity: 4, seconds: 0.4 }]))}
+        >
+          {t('attachInspector.k12')}
+        </Button>
+      </h3>
+      {!effects.length && <p className="hint">{t('attachInspector.k13')}</p>}
+      {effects.map((e, i) => (
+        <div key={i} className="effect">
+          <Group gap="xs" wrap="nowrap">
+            <Select size="xs" w={96} value={e.trigger ?? 'kill'} data={triggers} allowDeselect={false} onChange={(v) => v && up(i, (x) => void (x.trigger = v as Trigger))} />
+            <SegmentedControl size="xs" value={e.action ?? 'flash'} data={[{ value: 'flash', get label() { return t('attachInspector.k14'); } }, { value: 'show', get label() { return t('attachInspector.k15'); } }]} onChange={(v) => up(i, (x) => void (x.action = v as 'flash' | 'show'))} />
+            <Num w={78} value={e.seconds ?? 0.4} step={0.1} decimalScale={2} min={0.05} rightSection={t('attachInspector.k16')} onChange={(v) => up(i, (x) => void (x.seconds = v), 's')} />
+            <ActionIcon variant="subtle" color="gray" size="sm" ml="auto" aria-label={t('attachInspector.k17')} onClick={() => updateAttachment(a.id!, (x) => void x.effects!.splice(i, 1))}>
+              <IconX size={13} />
+            </ActionIcon>
+          </Group>
+          {e.action !== 'show' && (
+            <Group gap="xs" mt={6} wrap="nowrap">
+              <div style={{ flex: 1 }}>
+                <Color value={e.color ?? [1, 1, 1, 1]} onChange={(c) => up(i, (x) => void (x.color = [c[0], c[1], c[2], 1]), 'c')} />
+              </div>
+              <Num w={92} value={e.intensity ?? 4} step={0.5} decimalScale={1} min={0} leftSection={t('attachInspector.k18')} leftSectionWidth={38} onChange={(v) => up(i, (x) => void (x.intensity = v), 'k')} />
+            </Group>
+          )}
+        </div>
+      ))}
+    </div>
+  );
+}
 
 const MM = 1000;
 
@@ -23,29 +123,29 @@ function AttachmentPanel({ a }: { a: Attachment }) {
   return (
     <>
       <div className="insp-head">
-        <div className="kind">{s ? '屏幕' : '模型挂件'}</div>
+        <div className="kind">{s ? t('attachInspector.k19') : t('attachInspector.k20')}</div>
         <TextInput mt={4} size="sm" fw={650} value={a.name ?? ''} onChange={(e) => up((x) => void (x.name = e.currentTarget.value), 'name')} />
       </div>
       <div className="section">
-        <h3>挂载</h3>
-        <Field label="挂在部件">
-          <Select value={a.part ?? ''} onChange={(v) => v && up((x) => void (x.part = v))} data={item?.parts.map((p) => ({ value: p.id, label: p.label })) ?? []} />
+        <h3>{t('attachInspector.k21')}</h3>
+        <Field label={t('attachInspector.k22')}>
+          <Select value={a.part ?? ''} onChange={(v) => v && up((x) => void (x.part = v))} data={item?.parts.map((p) => ({ value: p.id, label: partLabel(p) })) ?? []} />
         </Field>
-        <Switch mt="sm" label="始终朝向镜头" checked={!!a.faceCamera} onChange={(e) => up((x) => void (x.faceCamera = e.currentTarget.checked))} />
+        <Switch mt="sm" label={t('attachInspector.k23')} checked={!!a.faceCamera} onChange={(e) => up((x) => void (x.faceCamera = e.currentTarget.checked))} />
       </div>
       <SelectionLayout />
       {s && (
         <div className="section">
-          <h3>屏幕</h3>
-          <Field label="显示">
+          <h3>{t('attachInspector.k19')}</h3>
+          <Field label={t('attachInspector.k15')}>
             <Select value={s.source ?? 'ammoClip'} onChange={(v) => v && upScreen((x) => void (x.source = v as ScreenSource))} data={SOURCES} />
           </Field>
           {s.source === 'static' ? (
-            <Field label="文字">
+            <Field label={t('attachInspector.k24')}>
               <TextInput
                 value={s.staticText ?? ''}
                 maxLength={8}
-                placeholder="只支持数字、空格和 -"
+                placeholder={t('attachInspector.k25')}
                 onChange={(e) => {
                   const t = e.currentTarget.value.replace(/[^0-9 -]/g, '');
                   upScreen((x) => void (x.staticText = t), 'text');
@@ -53,49 +153,46 @@ function AttachmentPanel({ a }: { a: Attachment }) {
               />
             </Field>
           ) : (
-            <Field label="位数">
+            <Field label={t('attachInspector.k26')}>
               <Group gap="sm" wrap="nowrap">
                 <Num w={90} value={s.digits ?? 2} step={1} decimalScale={0} min={1} max={4} onChange={(v) => upScreen((x) => void (x.digits = Math.round(v)), 'digits')} />
-                <Checkbox size="xs" label="补零" checked={s.padZero !== false} onChange={(e) => upScreen((x) => void (x.padZero = e.currentTarget.checked))} />
+                <Checkbox size="xs" label={t('attachInspector.k27')} checked={s.padZero !== false} onChange={(e) => upScreen((x) => void (x.padZero = e.currentTarget.checked))} />
               </Group>
             </Field>
           )}
-          <Field label="尺寸 mm">
-            <Vec value={s.size ?? [0.03, 0.015]} labels={['宽', '高']} scale={MM} step={0.5} decimalScale={1} min={0.5} onChange={(v) => upScreen((x) => void (x.size = v), 'size')} />
+          <Field label={t('attachInspector.k28')}>
+            <Vec value={s.size ?? [0.03, 0.015]} labels={[t('attachInspector.k29'), t('attachInspector.k30')]} scale={MM} step={0.5} decimalScale={1} min={0.5} onChange={(v) => upScreen((x) => void (x.size = v), 'size')} />
           </Field>
-          <Field label="离表面 mm">
+          <Field label={t('attachInspector.k31')}>
             <Num value={s.surfaceGap ?? 0.0005} scale={MM} step={0.1} min={0} onChange={(v) => upScreen((x) => void (x.surfaceGap = v), 'gap')} />
           </Field>
-          <Field label="字号">
+          <Field label={t('attachInspector.k32')}>
             <Slider value={s.textScale ?? 0.8} min={0.2} max={1} onChange={(v) => upScreen((x) => void (x.textScale = v), 'ts')} />
           </Field>
-          <Field label="辉光">
+          <Field label={t('attachInspector.k33')}>
             <Slider value={s.glow ?? 1.5} min={0} max={5} step={0.05} onChange={(v) => upScreen((x) => void (x.glow = v), 'glow')} />
           </Field>
-          <Field label="字体">
-            <TextInput value={s.font ?? ''} placeholder="默认等宽字体" onChange={(e) => {
-              const f = e.currentTarget.value;
-              upScreen((x) => void (x.font = f || null), 'font');
-            }} />
+          <Field label={t('attachInspector.k10')}>
+            <FontPicker value={s.font ?? null} onChange={(f) => upScreen((x) => void (x.font = f))} />
           </Field>
         </div>
       )}
       {s && (
         <div className="section">
-          <h3>颜色</h3>
-          <Field label="文字">
+          <h3>{t('attachInspector.k34')}</h3>
+          <Field label={t('attachInspector.k24')}>
             <Color value={s.textColor ?? [1, 1, 1, 1]} onChange={(c) => upScreen((x) => void (x.textColor = [c[0], c[1], c[2], 1]), 'tc')} />
           </Field>
-          <Field label="底板">
+          <Field label={t('attachInspector.k35')}>
             <Color alpha value={s.panelColor ?? [0, 0, 0, 0.85]} onChange={(c) => upScreen((x) => void (x.panelColor = c), 'pc')} />
           </Field>
-          <Field label="边框">
+          <Field label={t('attachInspector.k36')}>
             <Color alpha value={s.borderColor ?? [1, 1, 1, 1]} onChange={(c) => upScreen((x) => void (x.borderColor = c), 'bc')} />
           </Field>
-          <Field label="边框粗 mm">
+          <Field label={t('attachInspector.k37')}>
             <Num value={s.borderWidth ?? 0.0008} scale={MM} step={0.1} min={0} onChange={(v) => upScreen((x) => void (x.borderWidth = v), 'bw')} />
           </Field>
-          <Field label="低弹药变色">
+          <Field label={t('attachInspector.k38')}>
             <Group gap="sm" wrap="nowrap">
               <Switch checked={!!s.lowAmmoColor} onChange={(e) => {
                 const on = e.currentTarget.checked;
@@ -109,22 +206,23 @@ function AttachmentPanel({ a }: { a: Attachment }) {
             </Group>
           </Field>
           {s.lowAmmoColor && (
-            <Field label="低于">
+            <Field label={t('attachInspector.k39')}>
               <Slider value={s.lowAmmoFraction ?? 0.2} min={0.05} max={0.9} onChange={(v) => upScreen((x) => void (x.lowAmmoFraction = v), 'lf')} />
             </Field>
           )}
           <p className="hint" style={{ marginTop: 8 }}>
-            游戏里底板和边框只有显示和隐藏两种：透明度低于 1% 会隐藏。
+            {t('attachInspector.k40')}
           </p>
         </div>
       )}
+      <Effects a={a} />
       {a.material && (
         <div className="section">
-          <h3>模型外观</h3>
-          <Field label="颜色">
+          <h3>{t('attachInspector.k41')}</h3>
+          <Field label={t('attachInspector.k34')}>
             <Color value={a.material.color ?? [1, 1, 1, 1]} onChange={(c) => up((x) => void (x.material && (x.material.color = [c[0], c[1], c[2], 1])), 'mc')} />
           </Field>
-          <Switch mt="xs" label="不受光照（自身发亮）" checked={!!a.material.unlit} onChange={(e) => {
+          <Switch mt="xs" label={t('attachInspector.k42')} checked={!!a.material.unlit} onChange={(e) => {
             const on = e.currentTarget.checked;
             up((x) => void (x.material && (x.material.unlit = on)));
           }} />
@@ -132,7 +230,7 @@ function AttachmentPanel({ a }: { a: Attachment }) {
       )}
       <div className="section">
         <Button variant="default" color="red" leftSection={<IconTrash size={14} />} onClick={() => removeAttachment(a.id!)}>
-          删除这个挂件
+          {t('attachInspector.k43')}
         </Button>
       </div>
     </>
@@ -143,13 +241,13 @@ function Overview() {
   return (
     <>
       <div className="insp-head">
-        <div className="kind">挂件与屏幕</div>
-        <div className="title">给枪加东西</div>
-        <div className="meta">屏幕会实时显示弹药数；模型可以是任何 .glb 文件。在左边列表选中部件，再点列表底部的「添加挂件」，挂件就挂在那个部件上。</div>
+        <div className="kind">{t('attachInspector.k44')}</div>
+        <div className="title">{t('attachInspector.k45')}</div>
+        <div className="meta">{t('attachInspector.k46')}</div>
       </div>
       <div className="section">
         <p className="hint">
-          选中挂件后：<Kbd>G</Kbd> 移动 <Kbd>R</Kbd> 旋转 <Kbd>S</Kbd> 缩放，再按 <Kbd>X</Kbd>/<Kbd>Y</Kbd>/<Kbd>Z</Kbd> 锁定到部件的轴；单击或 <Kbd>Enter</Kbd> 确认，右键或 <Kbd>Esc</Kbd> 取消。打开工具条上的 <b>贴到表面</b> 后，点枪身就能把挂件贴上去。
+          {t('attachInspector.k47')}<Kbd>G</Kbd> {t('attachInspector.k48')} <Kbd>R</Kbd> {t('attachInspector.k49')} <Kbd>S</Kbd> {t('attachInspector.k50')} <Kbd>X</Kbd>/<Kbd>Y</Kbd>/<Kbd>Z</Kbd> {t('attachInspector.k51')} <Kbd>Enter</Kbd> {t('attachInspector.k52')} <Kbd>Esc</Kbd> {t('attachInspector.k53')} <b>{t('attachInspector.k54')}</b> {t('attachInspector.k55')}
         </p>
       </div>
     </>

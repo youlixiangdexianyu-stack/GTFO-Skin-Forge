@@ -16,13 +16,14 @@ public sealed class SkinDocument
     public string Author { get; set; } = "";
     public string Version { get; set; } = "1.0.0";
 
-    // Which weapon this skin is for. Null weapon = applies to every gear that uses the listed materials
+    // Which gear (gun, melee weapon or tool) this skin is for. Null weapon = applies to every gear that uses the listed materials
     // (attachment skins: mags, sights, lights, ammo).
     public SkinTarget Target { get; set; } = new();
 
     public List<MaterialOverride> Materials { get; set; } = new();
     public List<Attachment> Attachments { get; set; } = new();
     public List<PartTransform> Parts { get; set; } = new();
+    public List<SkinSound> Sounds { get; set; } = new();
 
     // Editor-only state (camera, selection, light settings). Never read by the plugin; dropped when packing.
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
@@ -31,22 +32,31 @@ public sealed class SkinDocument
 
 public sealed class SkinTarget
 {
-    // Catalog weapon id (e.g. "auto_pistol"); null for attachment skins.
+    // Catalog gear id (e.g. "auto_pistol", "sledgehammer", "bio_tracker"); null for attachment skins.
     public string? Weapon { get; set; }
-    // ArchetypeDataBlock persistentID the plugin matches on; filled from the catalog when packing.
-    public uint? ArchetypeId { get; set; }
+    // What the plugin matches on, filled from the catalog when packing; exactly one is set for a gear skin. GearId: the
+    // PlayerOfflineGearDataBlock persistentID of a gear built from parts (guns, melee weapons, tools). ItemId: the
+    // ItemDataBlock persistentID of an item with its own prefabs (resource packs, consumables, carry items, hacking tool).
+    public uint? GearId { get; set; }
+    public uint? ItemId { get; set; }
+
+    // The key in active.json: "gear:<GearId>" or "item:<ItemId>"; null for attachment skins.
+    public string? Key() => GearId is { } gear ? GearKey(gear) : ItemId is { } item ? ItemKey(item) : null;
+    public static string GearKey(uint id) => "gear:" + id;
+    public static string ItemKey(uint id) => "item:" + id;
 }
 
-// Layout delta on a vanilla part (or a named sub-transform under it): localPosition = vanilla + Position,
-// localRotation = vanilla * Euler(Rotation), localScale = vanilla * Scale (component-wise). Hidden = renderers disabled.
+// Layout of a vanilla part root or a child under it, as absolute local values (Unity space, metres, Euler degrees).
+// Every value is optional: null keeps what the game built. Written once when the gear finishes assembling, so applying
+// it again changes nothing. Visible = false disables the renderers at and under the transform.
 public sealed class PartTransform
 {
     public string Part { get; set; } = "";       // same fixed ids as Attachment.Part
-    public string? Transform { get; set; }       // sub-transform name under the part; null = the part root
-    public float[] Position { get; set; } = { 0, 0, 0 };
-    public float[] Rotation { get; set; } = { 0, 0, 0 };
-    public float[] Scale { get; set; } = { 1, 1, 1 };
-    public bool Visible { get; set; } = true;
+    public string? Path { get; set; }            // child path under the part root as Transform.Find takes it; null = the part root
+    public float[]? Position { get; set; }       // localPosition
+    public float[]? Rotation { get; set; }       // localEulerAngles
+    public float[]? Scale { get; set; }          // localScale
+    public bool? Visible { get; set; }
 }
 
 public enum TextureChannel { Albedo, Normal, MetallicSmoothness, Emissive }
@@ -90,7 +100,11 @@ public sealed class DynamicLayer
     public List<string> Sources { get; set; } = new();
     public TextStyle? Text { get; set; }
     public float Fps { get; set; } = 12;
-    public bool Loop { get; set; } = true;
+    // Always plays from the start; any other trigger shows the base texture until its event, then plays (a repeat event restarts it).
+    public Trigger Trigger { get; set; } = Trigger.Always;
+    public PlayMode Play { get; set; } = PlayMode.Loop;
+    public float PlaySeconds { get; set; }          // LoopFor: how long it loops after the event
+    public float LowAmmoFraction { get; set; } = 0.2f; // LowAmmo: fires when clip / clip size falls below this
     public float Opacity { get; set; } = 1;
     public float[] Crop { get; set; } = { 0, 0, 1, 1 }; // normalized x, y, w, h of the source
     public float[] UvCenter { get; set; } = { 0.5f, 0.5f };
@@ -101,6 +115,26 @@ public sealed class DynamicLayer
     // Each frame replaces the target pixels (no blending in game): crop, rotation, opacity and the base texture are baked in.
     public LayerAtlas? Atlas { get; set; }
 }
+
+// A sound only the local player hears when the trigger fires (PLAN §3.4). Plain audio played by the plugin through Unity,
+// not the game's Wwise, and never sent over the network. The editor converts any audio file to Ogg Vorbis before saving.
+public sealed class SkinSound
+{
+    public string Id { get; set; } = "";
+    public string Name { get; set; } = "";
+    public Trigger Trigger { get; set; } = Trigger.Kill;
+    public string File { get; set; } = "";             // Ogg Vorbis, mono or stereo, at most 10 seconds
+    public float Volume { get; set; } = 1;              // 0-1
+    public float LowAmmoFraction { get; set; } = 0.2f;  // LowAmmo: plays when clip / clip size falls below this
+}
+
+// Events of the local player's own gear (PLAN §3.4).
+public enum Trigger
+{
+    Always, Kill, Hit, Fire, DryFire, ReloadStart, ReloadEnd, Equip, Unequip, Aim, AimEnd, LowAmmo, Empty, AmmoPickup,
+    FlashlightOn, FlashlightOff,
+}
+public enum PlayMode { Loop, Once, LoopFor }
 
 public sealed class TextStyle
 {
@@ -143,6 +177,20 @@ public sealed class Attachment
     public string? Mesh { get; set; }
     public AttachmentMaterial? Material { get; set; }
     public Screen? Screen { get; set; }
+    public List<AttachmentEffect> Effects { get; set; } = new();
+}
+
+public enum EffectAction { Flash, Show }
+
+// On Trigger: Flash lights the attachment's emission with Color x Intensity for Seconds; Show makes a hidden attachment
+// visible for Seconds. A repeat event restarts it.
+public sealed class AttachmentEffect
+{
+    public Trigger Trigger { get; set; } = Trigger.Kill;
+    public EffectAction Action { get; set; } = EffectAction.Flash;
+    public float[] Color { get; set; } = { 1, 1, 1 }; // linear RGB
+    public float Intensity { get; set; } = 1;
+    public float Seconds { get; set; } = 0.3f;
 }
 
 public sealed class AttachmentMaterial
@@ -153,7 +201,8 @@ public sealed class AttachmentMaterial
     public MaterialParams Params { get; set; } = new();
 }
 
-public enum ScreenSource { AmmoClip, AmmoReserve, AmmoTotal, Static }
+// Kills: the local player's kills with this weapon this level.
+public enum ScreenSource { AmmoClip, AmmoReserve, AmmoTotal, Static, Kills }
 
 // A quad in the attachment's local XY plane, `Size` wide/high, visible face toward local -Z. The surface gap is already
 // baked into Attachment.Position (the plugin does not add it); the border is drawn inside the quad edges.

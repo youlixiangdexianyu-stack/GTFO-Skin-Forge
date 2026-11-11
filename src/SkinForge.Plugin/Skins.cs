@@ -14,11 +14,13 @@ sealed class Skin
     public readonly DateTime Stamp;
     readonly Dictionary<string, Texture2D> _textures = new();
     readonly Dictionary<string, Mesh> _meshes = new();
+    readonly Dictionary<string, AudioClip> _sounds = new();
 
     Skin(SkinDocument doc, DateTime stamp) { Doc = doc; Stamp = stamp; }
 
     public Texture2D Texture(string path, bool linear) => _textures[(linear ? "L:" : "S:") + path];
     public Mesh Mesh(string path) => _meshes[path];
+    public AudioClip Sound(string path) => _sounds[path];
 
     public static bool Linear(TextureChannel channel) => channel is TextureChannel.Normal or TextureChannel.MetallicSmoothness;
 
@@ -39,6 +41,8 @@ sealed class Skin
                 if (a.Material != null) foreach (var (channel, path) in a.Material.Textures) skin.Decode(pack, path, Linear(channel), true);
                 if (a.Screen?.GlyphAtlas is { } glyphs) skin.Decode(pack, glyphs, false, true);
             }
+            foreach (var s in skin.Doc.Sounds)
+                if (!skin._sounds.ContainsKey(s.File)) skin._sounds[s.File] = SoundOut.Decode(pack.ReadBytes(s.File), s.File);
             return skin;
         }
         catch
@@ -98,6 +102,7 @@ sealed class Skin
     {
         foreach (var t in _textures.Values) Object.Destroy(t);
         foreach (var m in _meshes.Values) Object.Destroy(m);
+        foreach (var c in _sounds.Values) Object.Destroy(c);
     }
 }
 
@@ -105,7 +110,7 @@ sealed class Skin
 static class Skins
 {
     public static readonly Dictionary<string, Skin> ById = new();
-    public static readonly Dictionary<uint, string> Weapons = new();
+    public static readonly Dictionary<string, string> Targets = new(); // SkinTarget.Key() -> skin id
     public static readonly List<string> Globals = new();
 
     static readonly Dictionary<string, Skin> ByFile = new(StringComparer.OrdinalIgnoreCase);
@@ -168,7 +173,7 @@ static class Skins
             old?.Destroy();
             ByFile[file] = skin;
             Rejected.Remove(file);
-            SkinForgePlugin.Info($"loaded {Path.GetFileName(file)}: id {skin.Doc.Id}, {skin.Doc.Materials.Count} materials, {skin.Doc.Attachments.Count} attachments");
+            SkinForgePlugin.Info($"loaded {Path.GetFileName(file)}: id {skin.Doc.Id}, {skin.Doc.Materials.Count} materials, {skin.Doc.Attachments.Count} attachments, {skin.Doc.Sounds.Count} sounds");
         }
         _busyRetries = 0;
 
@@ -176,18 +181,18 @@ static class Skins
         foreach (var skin in ByFile.Values)
             if (!ById.TryAdd(skin.Doc.Id, skin)) SkinForgePlugin.Fail($"two packs share id {skin.Doc.Id}; one is ignored");
 
-        Weapons.Clear();
+        Targets.Clear();
         Globals.Clear();
         var active = Path.Combine(_dir, "active.json");
         if (!File.Exists(active)) return;
         using var json = JsonDocument.Parse(File.ReadAllText(active));
-        if (json.RootElement.TryGetProperty("weapons", out var weapons))
-            foreach (var entry in weapons.EnumerateObject())
-                if (uint.TryParse(entry.Name, out var archetype) && entry.Value.ValueKind == JsonValueKind.String) Weapons[archetype] = entry.Value.GetString()!;
-                else SkinForgePlugin.Fail($"active.json: bad weapon entry {entry.Name}");
+        if (json.RootElement.TryGetProperty("targets", out var targets))
+            foreach (var entry in targets.EnumerateObject())
+                if (entry.Value.ValueKind == JsonValueKind.String) Targets[entry.Name] = entry.Value.GetString()!;
+                else SkinForgePlugin.Fail($"active.json: bad target entry {entry.Name}");
         if (json.RootElement.TryGetProperty("global", out var global))
             foreach (var id in global.EnumerateArray())
                 if (id.ValueKind == JsonValueKind.String) Globals.Add(id.GetString()!);
-        SkinForgePlugin.Info($"active: {Weapons.Count} weapon skins, {Globals.Count} global skins");
+        SkinForgePlugin.Info($"active: {Targets.Count} target skins, {Globals.Count} global skins");
     }
 }

@@ -62,6 +62,7 @@ public sealed class MaterialData
     public Dictionary<string, float> Floats = new();
     public Dictionary<string, float[]> Colors = new();
     public List<string> Keywords = new();
+    public int RenderQueue = -1; // m_CustomRenderQueue; -1 = the shader's own queue
 }
 
 public sealed record TexRef(AssetsFileInstance File, long PathId, float[] Scale, float[] Offset);
@@ -128,6 +129,7 @@ public static class Unity
         var data = new MaterialData { Name = f["m_Name"].AsString };
         var shader = g.Resolve(m.File, f["m_Shader"]);
         if (shader.PathId != 0) data.Shader = g.Field(shader)["m_ParsedForm.m_Name"].AsString;
+        data.RenderQueue = f["m_CustomRenderQueue"].AsInt;
         data.Keywords = f["m_ShaderKeywords"].AsString.Split(' ', StringSplitOptions.RemoveEmptyEntries).ToList();
         var props = f["m_SavedProperties"];
         foreach (var e in props["m_TexEnvs.Array"].Children)

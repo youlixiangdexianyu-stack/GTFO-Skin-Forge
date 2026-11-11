@@ -94,6 +94,8 @@ public static class Matching
         else if (key != "" && b.StartsWith(key)) score = 0.90;
         else if (ContainsTokens(baseTokens, Tokens(material))) score = 0.90;
         else if (key != "" && hay.Contains(key)) score = 0.72;
+        // The part id as its own words in the name ("BucklandAF6_receiver_BaseColor", Substance-style exports) names the part.
+        if (ContainsTokens(Tokens(Path.GetFileNameWithoutExtension(file)), Tokens(part.Id))) score = Math.Max(score, 0.88);
         var partKey = Normalized(part.Id);
         if (partKey.Length >= 3 && hay.Contains(partKey)) score = Math.Max(score, 0.52);
         if (RoleTokens.TryGetValue(part.Role, out var tokens) && tokens.Any(t => hay.Contains(Normalized(t)))) score = Math.Max(score, 0.36);

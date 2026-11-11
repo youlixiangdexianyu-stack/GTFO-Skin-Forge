@@ -4,18 +4,26 @@ import { useHotkeys } from '@mantine/hooks';
 import { useThree } from '@react-three/fiber';
 import { useEffect, useRef } from 'react';
 import { Matrix3, Quaternion, Vector2, Vector3, type Intersection, type Object3D, type PerspectiveCamera } from 'three';
-import { deltaFrom, quaternionFacing, threeToUnity, unityDirToThree, type Vec3 } from '../space';
+import { overridesFor, quaternionFacing, threeToUnity, unityDirToThree, type UnityPose, type Vec3 } from '../space';
 import { useStore } from '../store';
-import { partTargets, viewRefs } from './refs';
+import { displayOffset, layoutTarget, viewRefs } from './refs';
+import { t } from '../i18n';
 
 type Tool = 'move' | 'rotate' | 'scale';
 type Axis = 'x' | 'y' | 'z' | null;
 
-const AXES: Record<'x' | 'y' | 'z', Vec3> = { x: [1, 0, 0], y: [0, 1, 0], z: [0, 0, 1] };
+const AXES: Record<'x' | 'y' | 'z', Vec3> = {
+  x: [1, 0, 0],
+  y: [0, 1, 0],
+  z: [0, 0, 1],
+};
 
-export const modalState = { tool: null as Tool | null, axis: null as Axis, listeners: new Set<() => void>() };
+export const modalState = {
+  tool: null as Tool | null,
+  axis: null as Axis,
+  listeners: new Set<() => void>(),
+};
 const notify = () => modalState.listeners.forEach((f) => f());
-
 
 export interface Target {
   obj: Object3D;
@@ -33,31 +41,49 @@ export function selectedTarget(): Target | null {
       obj: g,
       commit: (key) => {
         const p = threeToUnity(g.position, g.quaternion, g.scale);
-        useStore.getState().updateAttachment(sel.id, (a) => {
-          a.position = p.position;
-          a.rotation = p.rotation;
-          a.scale = p.scale;
-        }, key);
+        if (!finitePose(p, t('modalTransform.k1', { v0: sel.id }))) return;
+        useStore.getState().updateAttachment(
+          sel.id,
+          (a) => {
+            a.position = p.position;
+            a.rotation = p.rotation;
+            a.scale = p.scale;
+          },
+          key,
+        );
       },
     };
   }
   if (sel?.kind === 'part') {
-    const obj = partTargets(sel.id, sel.sub)[0];
-    const base = obj && viewRefs.display.get(obj);
-    if (!obj || !base) return null;
+    const target = layoutTarget(sel.id, sel.sub);
+    const obj = target?.obj;
+    const vanilla = obj && viewRefs.vanilla.get(obj);
+    if (!target || !obj || !vanilla) return null;
     return {
       obj,
       commit: (key) => {
-        const d = deltaFrom(base, obj);
-        useStore.getState().setPartTransform(sel.id, sel.sub, (t) => {
-          t.position = d.position;
-          t.rotation = d.rotation;
-          t.scale = d.scale;
-        }, key);
+        const pose = threeToUnity(obj.position.clone().sub(displayOffset(obj)), obj.quaternion, obj.scale);
+        if (!finitePose(pose, t('modalTransform.k2', { v0: target.part, v1: target.path ?? '' }))) return;
+        useStore.getState().setPartTransform(target.part, target.path, (t) => void Object.assign(t, overridesFor(vanilla, pose)), key);
       },
     };
   }
   return null;
+}
+
+/** A pose with NaN/Infinity is never stored (the backend rejects the whole document); it is logged with where it came from. */
+function finitePose(p: UnityPose, what: string): boolean {
+  const ok = [...p.position, ...p.rotation, ...p.scale].every(Number.isFinite);
+  if (!ok) {
+    const text = t('modalTransform.k3', { v0: what, v1: JSON.stringify(p) });
+    useStore.getState().log(text);
+    window.forge.appLog(
+      'invalid pose',
+      `${text}
+${new Error().stack}`,
+    );
+  }
+  return ok;
 }
 
 export const newGesture = () => `gesture:${Math.random().toString(36).slice(2)}`;
@@ -65,7 +91,12 @@ export const newGesture = () => `gesture:${Math.random().toString(36).slice(2)}`
 export function ModalTransform() {
   const { camera, gl, size } = useThree();
   const mouse = useRef(new Vector2());
-  const keys = useRef<{ begin(t: Tool): void; axis(a: 'x' | 'y' | 'z'): void; confirm(): void; cancel(): void } | null>(null);
+  const keys = useRef<{
+    begin(t: Tool): void;
+    axis(a: 'x' | 'y' | 'z'): void;
+    confirm(): void;
+    cancel(): void;
+  } | null>(null);
   const k = (fn: () => void) => () => fn();
   useHotkeys([
     ['g', k(() => keys.current?.begin('move'))],
@@ -112,9 +143,8 @@ export function ModalTransform() {
         const persp = (camera as PerspectiveCamera).isPerspectiveCamera;
         const unitsPerPx = persp
           ? (2 * dist * Math.tan(((camera as PerspectiveCamera).fov * Math.PI) / 360)) / size.height
-          : (((camera as unknown as { top: number; bottom: number; zoom: number }).top -
-              (camera as unknown as { bottom: number }).bottom) /
-              (camera as unknown as { zoom: number }).zoom) /
+          : ((camera as unknown as { top: number; bottom: number; zoom: number }).top - (camera as unknown as { bottom: number }).bottom) /
+            (camera as unknown as { zoom: number }).zoom /
             size.height;
         const right = new Vector3().setFromMatrixColumn(camera.matrixWorld, 0);
         const up = new Vector3().setFromMatrixColumn(camera.matrixWorld, 1);
@@ -153,7 +183,11 @@ export function ModalTransform() {
         target,
         group: g,
         tool,
-        start: { p: g.position.clone(), q: g.quaternion.clone(), s: g.scale.clone() },
+        start: {
+          p: g.position.clone(),
+          q: g.quaternion.clone(),
+          s: g.scale.clone(),
+        },
         mouse0: mouse.current.clone(),
         center: toScreen(g),
       };

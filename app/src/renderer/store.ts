@@ -1,7 +1,11 @@
 import { applyPatches, current, enablePatches, produceWithPatches, type Patch } from 'immer';
 import { create } from 'zustand';
+import { AudioError, transcodeToOgg } from './audio';
 import {
+  baseName,
   call,
+  dirName,
+  fileUrl,
   type Attachment,
   type CatalogItem,
   type DynamicLayer,
@@ -14,12 +18,14 @@ import {
   type Profile,
   type SizeMode,
   type SkinDocument,
+  type SkinSound,
   type TextureChannel,
   type WeaponPreview,
 } from './protocol';
 import { detail, friendly } from './errors';
 import { fillThumbnails } from './viewport/thumbnails';
 import { notify, type NotifyAction, type NotifyKind } from './ui/notify';
+import { localName, setLang, systemLang, t, type Lang } from './i18n';
 
 enablePatches();
 
@@ -39,8 +45,8 @@ export interface Prefs {
   sizeMode: SizeMode;
   allowMissing: boolean;
   profilePath: string | null;
-  /** True once the user picked a profile themselves. */
-  profileChosen: boolean;
+  /** UI language; null follows the system. */
+  lang: Lang | null;
 }
 
 /** Editor-only state persisted in the project's `editor` field. */
@@ -64,7 +70,7 @@ const DEFAULT_PREFS: Prefs = {
   sizeMode: 'keep',
   allowMissing: true,
   profilePath: null,
-  profileChosen: false,
+  lang: null,
 };
 
 function loadPrefs(): Prefs {
@@ -87,13 +93,17 @@ function normalize(doc: SkinDocument): SkinDocument {
   doc.materials ??= [];
   doc.attachments ??= [];
   doc.parts ??= [];
+  doc.sounds ??= [];
   doc.target ??= {};
+  // The skin id is made once with the project and kept, so applying again overwrites the same pack in game.
+  doc.id ||= newSkinId(doc);
   doc.editor = { ...editorOf(doc) } as unknown as SkinDocument['editor'];
   return doc;
 }
 
-export function partTransformOf(doc: SkinDocument, part: string, sub?: string | null): PartTransform | undefined {
-  return doc.parts?.find((t) => t?.part === part && (t.transform ?? null) === (sub ?? null)) ?? undefined;
+/** Layout entry of a part root (`path` null) or of the child at `path`. */
+export function partTransformOf(doc: SkinDocument, part: string, path?: string | null): PartTransform | undefined {
+  return doc.parts?.find((t) => t?.part === part && (t.path ?? null) === (path ?? null)) ?? undefined;
 }
 
 export function materialOf(doc: SkinDocument, material: string): MaterialOverride | undefined {
@@ -113,6 +123,7 @@ function ensureMaterial(doc: SkinDocument, material: string, part?: string): Mat
 }
 
 const uid = () => Math.random().toString(36).slice(2, 10);
+const newSkinId = (doc: SkinDocument) => `${doc.target?.weapon ?? 'skin'}-${uid()}`;
 
 interface State {
   ready: boolean;
@@ -135,10 +146,17 @@ interface State {
   prefs: Prefs;
   logs: string[];
   progress: { text: string; done: number; total: number } | null;
+  /** Background preparation of every weapon preview (first run after a game update). */
+  cache: { done: number; total: number } | null;
+  /** Plain message when the last autosave failed; null when it worked. */
+  autosaveError: string | null;
+  /** Files the last texture match could not place, shown in the 换皮 overview. */
+  unmatched: string[];
   busy: string | null;
   snapToSurface: boolean;
   /** Sub-transforms of each part from the preview model, in tree order. */
-  subParts: Record<string, { name: string; depth: number }[]>;
+  /** Child transforms of each part that carry geometry: Transform.Find path under the part root, display name, depth. */
+  subParts: Record<string, { path: string; name: string; depth: number }[]>;
 
   init(): Promise<void>;
   log(line: string): void;
@@ -173,6 +191,10 @@ interface State {
   addAttachment(kind: 'screen' | 'mesh', mesh?: { sfmesh: string; glb: string }): void;
   updateAttachment(id: string, fn: (a: Attachment) => void, coalesceKey?: string): void;
   removeAttachment(id: string): void;
+  /** Converts the picked audio file to Ogg next to the project and adds it as a sound (one undo step). */
+  addSound(file: string): Promise<void>;
+  updateSound(id: string, fn: (s: SkinSound) => void, coalesceKey?: string): void;
+  removeSound(id: string): void;
   duplicateAttachment(id: string): void;
 
   // layers
@@ -181,8 +203,8 @@ interface State {
   removeLayer(material: string, id: string): void;
 
   // part layout
-  setPartTransform(part: string, sub: string | null | undefined, fn: (t: PartTransform) => void, coalesceKey?: string): void;
-  resetPartTransform(part: string, sub: string | null | undefined, row?: 'position' | 'rotation' | 'scale'): void;
+  setPartTransform(part: string, path: string | null | undefined, fn: (t: PartTransform) => void, coalesceKey?: string): void;
+  resetPartTransform(part: string, path: string | null | undefined, row?: 'position' | 'rotation' | 'scale'): void;
 }
 
 let initialised = false;
@@ -195,12 +217,16 @@ function subscribe(f: Window['forge'], set: Set, get: () => State) {
       const p = data as { done: number; total: number; text: string };
       set({ progress: p.done >= p.total ? null : p });
     }
+    if (event === 'cache-progress') {
+      const p = data as { done: number; total: number };
+      set({ cache: p.done >= p.total ? null : { done: p.done, total: p.total } });
+    }
   });
   f.onStatus((s) => {
     set({ backendDown: s !== 'ready' });
     // The backend came back after a crash before anything loaded: load again.
     if (s === 'ready' && !get().catalog.length) setTimeout(() => void get().init(), 500);
-    if (s === 'down') get().toast('error', '后台服务启动不了。重新打开软件试试；还不行的话，打开日志把内容发给作者。');
+    if (s === 'down') get().toast('error', t('store.k1'));
   });
 }
 let autosaveTimer: ReturnType<typeof setTimeout> | undefined;
@@ -226,6 +252,9 @@ export const useStore = create<State>((set, get) => ({
   prefs: loadPrefs(),
   logs: [],
   progress: null,
+  cache: null,
+  autosaveError: null,
+  unmatched: [],
   busy: null,
   snapToSurface: false,
   subParts: {},
@@ -259,7 +288,7 @@ export const useStore = create<State>((set, get) => ({
     notify(kind, text, action);
   },
   fail(e, fallback) {
-    get().log(`错误 ${detail(e)}`);
+    get().log(t('store.k2', { v0: detail(e) }));
     get().toast('error', friendly(e, fallback));
   },
 
@@ -267,6 +296,7 @@ export const useStore = create<State>((set, get) => ({
     const prefs = { ...get().prefs, ...p };
     localStorage.setItem(PREFS_KEY, JSON.stringify(prefs));
     set({ prefs });
+    setLang(prefs.lang ?? systemLang());
   },
   setMode(mode) {
     set({ mode, selection: null });
@@ -279,7 +309,7 @@ export const useStore = create<State>((set, get) => ({
     try {
       const game = await call('game.locate', {});
       set({ game });
-      if (game.found) get().log(`检测到 GTFO：${game.gameDir}`);
+      if (game.found) get().log(t('store.k3', { v0: game.gameDir }));
     } catch (e) {
       get().log(`game.locate: ${detail(e)}`);
       set({ game: { found: false, running: false, gameDir: null, dataDir: null } });
@@ -291,9 +321,9 @@ export const useStore = create<State>((set, get) => ({
     try {
       const game = await call('game.setDir', { dir });
       set({ game });
-      if (!game.found) get().toast('error', '这个文件夹里没有 GTFO。选择装有 GTFO.exe 的文件夹。');
+      if (!game.found) get().toast('error', t('store.k4'));
       else {
-        get().toast('ok', '已连接到 GTFO');
+        get().toast('ok', t('store.k5'));
         set({ catalog: (await call('catalog.get', {})).items });
         await get().refreshProfiles();
       }
@@ -305,12 +335,12 @@ export const useStore = create<State>((set, get) => ({
     try {
       const profiles = await call('profiles.list', {});
       set({ profiles });
-      // Keep the profile the user picked; otherwise prefer the test profile, then any profile with BepInEx.
-      const { profilePath, profileChosen } = get().prefs;
-      if (!profileChosen || !profiles.some((p) => p.path === profilePath)) {
-        const pick = profiles.find((p) => p.name === 'SkinTest') ?? profiles.find((p) => p.hasBepInEx) ?? profiles[0];
-        get().setPrefs({ profilePath: pick?.path ?? null, profileChosen: false });
-      }
+      // The last one used while it still has BepInEx; else the test profile; else the most recently changed one with
+      // BepInEx; else none (the top bar then says what to do).
+      const last = profiles.find((p) => p.path === get().prefs.profilePath && p.hasBepInEx);
+      const ready = profiles.filter((p) => p.hasBepInEx).sort((a, b) => (b.modified ?? '').localeCompare(a.modified ?? ''));
+      const pick = last ?? profiles.find((p) => p.name === 'SkinTest') ?? ready[0];
+      get().setPrefs({ profilePath: pick?.path ?? null });
     } catch (e) {
       get().log(`profiles.list: ${detail(e)}`);
     }
@@ -321,7 +351,7 @@ export const useStore = create<State>((set, get) => ({
     if (s.weaponId === id) return;
     if (s.weaponId) await persistAutosave();
     localStorage.setItem('sf.weapon', id);
-    set({ weaponId: id, preview: null, previewLoading: true, selection: null, undo: [], redo: [] });
+    set({ weaponId: id, preview: null, previewLoading: true, selection: null, undo: [], redo: [], unmatched: [] });
     const item = s.catalog.find((c) => c.id === id);
     // Each weapon keeps its own autosaved project.
     const auto = autosavePath(id);
@@ -335,20 +365,22 @@ export const useStore = create<State>((set, get) => ({
         get().log(`project.new: ${detail(e)}`);
       }
     }
-    doc ??= { name: `${item?.nameZh || item?.name || id} 皮肤`, materials: [], attachments: [], target: { weapon: id } };
+    doc ??= { name: t('store.k6', { v0: item ? localName(item) : id }), materials: [], attachments: [], target: { weapon: id } };
+    doc.target = { ...doc.target, weapon: id };
+    const hadId = !!doc.id;
     doc = normalize(doc);
-    doc.target!.weapon = id;
-    if (!doc.name) doc.name = `${item?.nameZh || item?.name || id} 皮肤`;
+    if (!doc.name) doc.name = t('store.k6', { v0: item ? localName(item) : id });
     const ed = editorOf(doc);
     for (const p of item?.parts ?? []) if (ed.enabled[p.id] === undefined) ed.enabled[p.id] = p.defaultEnabled;
     doc.editor = ed as unknown as SkinDocument['editor'];
     set({ doc, projectPath: null });
+    if (!hadId) get().autosave();
     try {
       const preview = await call('preview.weapon', { id });
       if (get().weaponId === id) set({ preview, previewLoading: false, progress: null });
     } catch (e) {
       if (get().weaponId === id) set({ previewLoading: false, progress: null });
-      get().fail(e, '这把武器的 3D 预览没加载出来。确认游戏已连接后再选一次。');
+      get().fail(e, t('store.k7'));
     }
   },
 
@@ -393,7 +425,7 @@ export const useStore = create<State>((set, get) => ({
       d.editor = { ...editorOf(d), pending: {} } as unknown as SkinDocument['editor'];
     });
     set({ projectPath: null, selection: null });
-    get().toast('info', '已清空，可以用 Ctrl+Z 撤销');
+    get().toast('info', t('store.k8'));
   },
   async loadProject(path) {
     try {
@@ -406,23 +438,25 @@ export const useStore = create<State>((set, get) => ({
       }
       set({ doc, projectPath: path.endsWith('.sfproj') ? path : null, undo: [], redo: [] });
       get().autosave();
-      get().toast('ok', `已打开「${doc.name}」`);
+      get().toast('ok', t('store.k9', { v0: doc.name }));
     } catch (e) {
-      get().fail(e, '这个文件打不开。确认它是皮肤工程或旧版预设文件。');
+      get().fail(e, t('store.k10'));
     }
   },
   async saveProject(saveAs) {
     let path = get().projectPath;
     if (!path || saveAs) {
-      path = await window.forge.saveDialog(`${get().doc.name || 'skin'}.sfproj`, [{ name: '皮肤工程', extensions: ['sfproj'] }]);
+      path = await window.forge.saveDialog(`${get().doc.name || 'skin'}.sfproj`, [{ name: t('store.k11'), extensions: ['sfproj'] }]);
       if (!path) return;
     }
+    // Saving as a new skin is the one way to get a new skin id (a second pack in game instead of overwriting).
+    if (saveAs) get().edit((d) => void (d.id = newSkinId(d)));
     try {
       await call('project.save', { path, project: get().doc });
       set({ projectPath: path });
-      get().toast('ok', '工程已保存');
+      get().toast('ok', t('store.k12'));
     } catch (e) {
-      get().fail(e, '保存失败。换一个文件夹再试。');
+      get().fail(e, t('store.k13'));
     }
   },
   autosave() {
@@ -437,8 +471,11 @@ export const useStore = create<State>((set, get) => ({
     get().edit((d) => {
       const ed = editorOf(d);
       for (const p of r.parts) {
+        // Slots the folder had no image for come back with no file; they keep what they have.
+        const found = (Object.entries(p.channels) as [TextureChannel, MatchCell][]).filter(([, c]) => c?.file);
+        if (!found.length) continue;
         const m = ensureMaterial(d, p.material, p.partId);
-        for (const [ch, cell] of Object.entries(p.channels) as [TextureChannel, MatchCell][]) {
+        for (const [ch, cell] of found) {
           m.textures![ch] = cell.file;
           const key = pendingKey(p.material, ch);
           if (cell.confidence < CONFIDENT) {
@@ -453,21 +490,21 @@ export const useStore = create<State>((set, get) => ({
       }
       d.editor = ed as unknown as SkinDocument['editor'];
     });
-    const parts = new Set(r.parts.map((p) => p.partId)).size;
+    const parts = new Set(r.parts.filter((p) => Object.values(p.channels).some((c) => c?.file)).map((p) => p.partId)).size;
     const total = item?.parts.length ?? parts;
-    let text = `识别出 ${auto + unsure} 张贴图，覆盖 ${parts}/${total} 个部件`;
-    if (unsure) text += `，其中 ${unsure} 张需要你确认（已标黄）`;
-    if (r.unmatched.length) text += `；${r.unmatched.length} 个文件没认出来`;
+    let text = t('store.k14', { v0: auto + unsure, v1: parts, v2: total });
+    if (unsure) text += t('store.k15', { v0: unsure });
+    if (r.unmatched.length) text += t('store.k16', { v0: r.unmatched.length });
     get().toast(unsure ? 'info' : 'ok', text);
-    for (const f of r.unmatched) get().log(`未识别：${f}`);
+    set({ unmatched: r.unmatched });
   },
   async matchPaths(paths) {
     const weaponId = get().weaponId;
     if (!weaponId) {
-      get().toast('info', '先在左边选一把武器，再拖入贴图。');
+      get().toast('info', t('store.k17'));
       return;
     }
-    set({ busy: '正在识别贴图…' });
+    set({ busy: t('store.k18') });
     try {
       const single = paths.length === 1 && !/\.(png|jpe?g|tga|tiff?|bmp|exr|webp)$/i.test(paths[0]);
       const r = single
@@ -475,7 +512,7 @@ export const useStore = create<State>((set, get) => ({
         : await call('match.files', { weaponId, files: paths });
       get().applyMatch(r);
     } catch (e) {
-      get().fail(e, '贴图没识别成功。确认拖进来的是图片或装有图片的文件夹。');
+      get().fail(e, t('store.k19'));
     } finally {
       set({ busy: null });
     }
@@ -523,7 +560,7 @@ export const useStore = create<State>((set, get) => ({
           if (src.textures!.emissive && !m.textures!.emissive) m.textures!.emissive = src.textures!.emissive;
         }
     });
-    get().toast('ok', '发光设置已应用到全部部件');
+    get().toast('ok', t('store.k20'));
   },
   setPartEnabled(partId, on) {
     get().edit((d) => {
@@ -543,7 +580,7 @@ export const useStore = create<State>((set, get) => ({
       const n = (d.attachments?.length ?? 0) + 1;
       d.attachments!.push({
         id,
-        name: kind === 'screen' ? `弹药屏 ${n}` : `模型 ${n}`,
+        name: kind === 'screen' ? t('store.k21', { v0: n }) : t('store.k22', { v0: n }),
         visible: true,
         part: anchor,
         transform,
@@ -591,12 +628,39 @@ export const useStore = create<State>((set, get) => ({
     });
     set({ selection: null });
   },
+  async addSound(file) {
+    const s = get();
+    const id = uid();
+    set({ busy: t('store.k23') });
+    try {
+      const ogg = await transcodeToOgg(await (await fetch(fileUrl(file))).arrayBuffer());
+      const out = `${dirName(s.projectPath ?? autosavePath(s.weaponId!))}\\sounds\\${id}.ogg`;
+      await window.forge.writeFile(out, ogg);
+      get().edit((d) => {
+        d.sounds = [...(d.sounds ?? []), { id, name: baseName(file).replace(/\.[^.]+$/, ''), trigger: 'kill', file: out, volume: 1, lowAmmoFraction: 0.2 }];
+      });
+    } catch (e) {
+      if (e instanceof AudioError) get().toast('error', e.message);
+      else get().fail(e, t('store.k24'));
+    } finally {
+      set({ busy: null });
+    }
+  },
+  updateSound(id, fn, coalesceKey) {
+    get().edit((d) => {
+      const x = d.sounds?.find((v) => v?.id === id);
+      if (x) fn(x);
+    }, coalesceKey && `sound-${id}-${coalesceKey}`);
+  },
+  removeSound(id) {
+    get().edit((d) => void (d.sounds = (d.sounds ?? []).filter((v) => v?.id !== id)));
+  },
   duplicateAttachment(id) {
     const copy = uid();
     get().edit((d) => {
       const a = d.attachments!.find((x) => x?.id === id);
       if (!a) return;
-      d.attachments!.push({ ...structuredClone(current(a)), id: copy, name: `${a.name ?? ''} 副本` });
+      d.attachments!.push({ ...structuredClone(current(a)), id: copy, name: t('store.k25', { v0: a.name ?? '' }) });
       const previews = (d.editor as Record<string, Record<string, string> | undefined>).meshPreviews;
       if (previews?.[id]) previews[copy] = previews[id];
     });
@@ -609,14 +673,15 @@ export const useStore = create<State>((set, get) => ({
       const m = ensureMaterial(d, material, part);
       m.layers!.push({
         id,
-        name: layer.name ?? '图层',
+        name: layer.name ?? t('store.k26'),
         kind: layer.kind ?? 'image',
         channel: 'albedo',
         visible: true,
         sources: layer.sources ?? [],
         text: layer.text ?? null,
         fps: 12,
-        loop: true,
+        trigger: 'always',
+        play: 'loop',
         opacity: 1,
         crop: [0, 0, 1, 1],
         uvCenter: [0.5, 0.5],
@@ -641,39 +706,48 @@ export const useStore = create<State>((set, get) => ({
     set({ selection: null });
   },
 
-  setPartTransform(part, sub, fn, coalesceKey) {
+  setPartTransform(part, path, fn, coalesceKey) {
     get().edit((d) => {
-      let t = partTransformOf(d, part, sub);
+      let t = partTransformOf(d, part, path);
       if (!t) {
-        t = { part, transform: sub ?? null, position: [0, 0, 0], rotation: [0, 0, 0], scale: [1, 1, 1], visible: true };
+        t = { part, path: path ?? null, position: null, rotation: null, scale: null, visible: null };
         d.parts!.push(t);
       }
       fn(t);
+      dropEmptyParts(d);
     }, coalesceKey);
   },
-  resetPartTransform(part, sub, row) {
+  resetPartTransform(part, path, row) {
     get().edit((d) => {
-      const t = partTransformOf(d, part, sub);
+      const t = partTransformOf(d, part, path);
       if (!t) return;
-      if (row === 'position') t.position = [0, 0, 0];
-      else if (row === 'rotation') t.rotation = [0, 0, 0];
-      else if (row === 'scale') t.scale = [1, 1, 1];
-      else d.parts = d.parts!.filter((x) => x !== t);
+      if (row) t[row] = null;
+      else t.position = t.rotation = t.scale = null;
+      dropEmptyParts(d);
     });
   },
 }));
+
+setLang(useStore.getState().prefs.lang ?? systemLang());
+
+/** An entry that keeps every game value says nothing; leave it out. */
+function dropEmptyParts(d: SkinDocument) {
+  d.parts = d.parts!.filter((t) => t && (t.position != null || t.rotation != null || t.scale != null || t.visible != null));
+}
 
 export function autosavePath(weaponId: string): string {
   return `${useStore.getState().dataDir}\\autosave\\${weaponId}.sfproj`;
 }
 
-async function persistAutosave() {
+export async function persistAutosave() {
   const { weaponId, doc } = useStore.getState();
   if (!weaponId) return;
   try {
     await call('project.save', { path: autosavePath(weaponId), project: doc });
+    useStore.setState({ autosaveError: null });
   } catch (e) {
-    useStore.getState().log(`自动保存失败 ${detail(e)}`);
+    useStore.getState().log(t('store.k27', { v0: detail(e) }));
+    useStore.setState({ autosaveError: friendly(e, t('store.k28')) });
   }
 }
 

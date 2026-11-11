@@ -25,11 +25,14 @@ sealed class AmmoScreen
     readonly AmmoType _ammoType;
     readonly int _clipSize;
     int _value = int.MinValue;
+    readonly string _label;
+    public readonly List<Material> Surfaces = new(); // border and panel, for attachment Flash
     bool _low;
 
     public AmmoScreen(SkinnedGear gear, Skin skin, Format.Screen s, Material template, GameObject root)
     {
         _source = s.Source;
+        _label = gear.Label;
         _pad = s.PadZero;
         float w = s.Size[0], h = s.Size[1], bw = s.BorderWidth;
         if (s.BorderColor[3] > 0.01f)
@@ -55,7 +58,7 @@ sealed class AmmoScreen
             _text.EnableKeyword("_ALPHATEST_ON");
         }
         _normal = Emission(s.TextColor, s.Glow);
-        _hasLow = s.LowAmmoColor != null && s.Source != ScreenSource.Static;
+        _hasLow = s.LowAmmoColor != null && s.Source is not (ScreenSource.Static or ScreenSource.Kills);
         _lowColor = _hasLow ? Emission(s.LowAmmoColor!, s.Glow) : _normal;
         _lowFraction = s.LowAmmoFraction;
         SkinnedGear.SetEmission(_text, _normal);
@@ -73,15 +76,16 @@ sealed class AmmoScreen
             for (int i = 0; i < _cells.Length && i < text.Length; i++)
                 _cells[i].sharedMesh = _glyphs[text[i] is >= '0' and <= '9' ? text[i] - '0' : text[i] == '-' ? Minus : Blank];
         }
-        else _storage = gear.Storage(out _ammoType, out _clipSize);
+        else if (s.Source != ScreenSource.Kills) _storage = gear.Storage(out _ammoType, out _clipSize);
     }
 
     static Color Emission(float[] c, float glow) => new Color(c[0], c[1], c[2]) * (glow * SkinnedGear.EmissionUnit);
 
     // Opaque gear-shader quad lit by its own colour.
-    static Material Flat(SkinnedGear gear, Material template, float[] c, float glow)
+    Material Flat(SkinnedGear gear, Material template, float[] c, float glow)
     {
         var m = gear.Own(new Material(template) { name = "SkinForge screen panel" });
+        Surfaces.Add(m);
         m.SetTexture(SkinnedGear.MainTex, Texture2D.blackTexture);
         m.SetTexture(SkinnedGear.MetallicGlossMap, Texture2D.blackTexture);
         m.SetTexture(SkinnedGear.BumpMap, null);
@@ -103,12 +107,19 @@ sealed class AmmoScreen
         return mesh;
     }
 
-    public void Update(int clip)
+    public void Update(int clip, int kills)
     {
-        if (_storage == null || _cells.Length == 0) return;
-        int reserve = _source == ScreenSource.AmmoClip ? 0 : _storage.GetBulletsInPack(_ammoType);
-        int value = _source switch { ScreenSource.AmmoClip => clip, ScreenSource.AmmoReserve => reserve, _ => clip + reserve };
+        if (_cells.Length == 0 || _source == ScreenSource.Static) return;
+        int value;
+        if (_source == ScreenSource.Kills) value = kills;
+        else if (_storage == null) return;
+        else
+        {
+            int reserve = _source == ScreenSource.AmmoClip ? 0 : _storage.GetBulletsInPack(_ammoType);
+            value = _source switch { ScreenSource.AmmoClip => clip, ScreenSource.AmmoReserve => reserve, _ => clip + reserve };
+        }
         if (value == _value) return;
+        if (_value == int.MinValue) SkinForgePlugin.Info($"{_label}: screen {_source} first value {value}");
         _value = value;
 
         int v = Math.Min(Math.Max(0, value), Pow10[_cells.Length] - 1);
@@ -120,7 +131,7 @@ sealed class AmmoScreen
             _cells[i].sharedMesh = _glyphs[blank ? Blank : digit];
         }
 
-        if (!_hasLow) return;
+        if (!_hasLow || _storage == null) return;
         int max = _source switch
         {
             ScreenSource.AmmoClip => _clipSize,

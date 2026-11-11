@@ -25,8 +25,8 @@ public static class PackBuilder
         if (doc.Target.Weapon is { } weapon)
         {
             var item = Catalog.Item(catalog, weapon);
-            doc.Target.ArchetypeId = item.ArchetypeId;
-            if (item.ArchetypeId == null) doc.Target.Weapon = null; // attachment, lens or ammo skin: applies wherever its materials are used
+            (doc.Target.GearId, doc.Target.ItemId) = (item.GearId, item.ItemId);
+            if (item.GearId == null && item.ItemId == null) doc.Target.Weapon = null; // attachment, lens or ammo skin: applies wherever its materials are used
         }
         if (string.IsNullOrWhiteSpace(doc.Id)) doc.Id = "skin-" + Guid.NewGuid().ToString("N")[..12];
 
@@ -135,6 +135,13 @@ public static class PackBuilder
                     }
                     else a.Screen.GlyphAtlas = null; // Validate reports no-glyphs for live screens
                 }
+            }
+
+            foreach (var sound in doc.Sounds)
+            {
+                var name = $"sounds/{Preview.Safe(sound.Id)}.ogg";
+                Copy(name, Abs(sound.File));
+                sound.File = name;
             }
 
             using (var s = new StreamWriter(zip.CreateEntry(SkinPack.ManifestName).Open()))

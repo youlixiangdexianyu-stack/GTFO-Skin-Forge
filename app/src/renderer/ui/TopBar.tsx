@@ -2,31 +2,36 @@ import { ActionIcon, Badge, Button, Checkbox, Group, Menu, Modal, SegmentedContr
 import {
   IconBolt,
   IconBox,
+  IconChecklist,
   IconChevronDown,
   IconDeviceFloppy,
   IconEraser,
   IconFolder,
   IconFolderOpen,
+  IconFolderPlus,
   IconPackage,
   IconPackageExport,
   IconRefresh,
   IconStack2,
   IconTrash,
+  IconX,
 } from '@tabler/icons-react';
 import { useEffect, useState } from 'react';
-import { applyToGame, exportObj, exportPack } from '../actions';
-import { call, type InstalledPack, type SizeMode } from '../protocol';
+import { applyToGame, exportObj, exportPack, profileProblem } from '../actions';
+import { detail, friendly } from '../errors';
+import { call, type BackendError, type InstalledPack, type SizeMode, type VerifyResult } from '../protocol';
 import { useStore, type Mode } from '../store';
+import { localName, t, useLang, type Lang } from '../i18n';
 
 const MODES: { value: Mode; label: string }[] = [
-  { value: 'skin', label: '换皮' },
-  { value: 'attach', label: '挂件与屏幕' },
-  { value: 'dynamic', label: '动态贴图' },
+  { value: 'skin', get label() { return t('topBar.k1'); } },
+  { value: 'attach', get label() { return t('topBar.k2'); } },
+  { value: 'dynamic', get label() { return t('topBar.k3'); } },
 ];
 
 const SIZES: { value: SizeMode; label: string }[] = [
-  { value: 'keep', label: '保持' },
-  { value: 'original', label: '原版' },
+  { value: 'keep', get label() { return t('topBar.k4'); } },
+  { value: 'original', get label() { return t('topBar.k5'); } },
   { value: '1k', label: '1K' },
   { value: '2k', label: '2K' },
   { value: '4k', label: '4K' },
@@ -35,7 +40,7 @@ const SIZES: { value: SizeMode; label: string }[] = [
 function GamePill() {
   const game = useStore((s) => s.game);
   const { refreshGame, chooseGameDir } = useStore.getState();
-  const state = !game ? '正在查找游戏…' : !game.found ? '未找到游戏' : game.running ? '游戏运行中' : '已连接游戏';
+  const state = !game ? t('topBar.k6') : !game.found ? t('topBar.k7') : game.running ? t('topBar.k8') : t('topBar.k9');
   const dot = !game ? '' : !game.found ? 'bad' : game.running ? 'live' : 'ok';
   return (
     <Menu position="bottom-end" width={300}>
@@ -47,28 +52,84 @@ function GamePill() {
       <Menu.Dropdown>
         {game?.gameDir && <Menu.Label style={{ userSelect: 'text' }}>{game.gameDir}</Menu.Label>}
         <Menu.Item leftSection={<IconRefresh size={14} />} onClick={() => void refreshGame()}>
-          重新检测
+          {t('topBar.k10')}
         </Menu.Item>
         <Menu.Item leftSection={<IconFolder size={14} />} onClick={() => void chooseGameDir()}>
-          选择游戏文件夹…
+          {t('topBar.k11')}
         </Menu.Item>
       </Menu.Dropdown>
     </Menu>
   );
 }
 
+const ADD_FOLDER = '__add__';
+
+async function addProfileFolder() {
+  const [folder] = await window.forge.openDialog('folder');
+  if (!folder) return;
+  const s = useStore.getState();
+  try {
+    const p = await call('profiles.add', { path: folder });
+    await s.refreshProfiles();
+    s.setPrefs({ profilePath: p.path });
+  } catch (e) {
+    s.fail(e);
+  }
+}
+
+async function removeProfileFolder(path: string) {
+  const s = useStore.getState();
+  try {
+    await call('profiles.remove', { path });
+    await s.refreshProfiles();
+  } catch (e) {
+    s.fail(e);
+  }
+}
+
 function ProfileSelect() {
   const profiles = useStore((s) => s.profiles);
   const path = useStore((s) => s.prefs.profilePath);
   const setPrefs = useStore((s) => s.setPrefs);
-  if (!profiles.length) return null;
+  const current = profiles.find((p) => p.path === path);
+  const problem = profileProblem(current);
   return (
-    <Tooltip label="皮肤装到哪个游戏配置">
+    <Tooltip label={problem ?? t('topBar.k12')} multiline w={problem ? 300 : undefined}>
       <Select
-        w={200}
-        value={path}
-        onChange={(v) => v && setPrefs({ profilePath: v, profileChosen: true })}
-        data={profiles.map((p) => ({ value: p.path, label: p.hasBepInEx ? p.name : `${p.name}（未装 BepInEx）` }))}
+        w={210}
+        value={current ? path : null}
+        placeholder={t('topBar.k13')}
+        error={!!problem}
+        onChange={(v) => {
+          if (v === ADD_FOLDER) void addProfileFolder();
+          else if (v) setPrefs({ profilePath: v });
+        }}
+        data={[
+          ...profiles.map((p) => ({ value: p.path, label: p.hasBepInEx ? p.name : t('topBar.k14', { v0: p.name }) })),
+          { value: ADD_FOLDER, get label() { return t('topBar.k15'); } },
+        ]}
+        renderOption={({ option }) => {
+          const p = profiles.find((x) => x.path === option.value);
+          return (
+            <Group gap={6} wrap="nowrap" w="100%">
+              {option.value === ADD_FOLDER && <IconFolderPlus size={14} />}
+              <Text size="sm" style={{ flex: 1 }} c={p && !p.hasBepInEx ? 'dimmed' : undefined}>
+                {option.label}
+              </Text>
+              {p?.custom && (
+                <ActionIcon
+                  size="xs"
+                  variant="subtle"
+                  color="gray"
+                  aria-label={t('topBar.k16')}
+                  onMouseDown={(e) => (e.stopPropagation(), e.preventDefault(), void removeProfileFolder(p.path))}
+                >
+                  <IconX size={12} />
+                </ActionIcon>
+              )}
+            </Group>
+          );
+        }}
       />
     </Tooltip>
   );
@@ -102,25 +163,25 @@ function InstalledModal({ opened, onClose }: { opened: boolean; onClose: () => v
     }
   };
   return (
-    <Modal opened={opened} onClose={onClose} title={`已安装的皮肤 · ${profile?.name ?? '未选择配置'}`} size="lg">
+    <Modal opened={opened} onClose={onClose} title={t('topBar.k17', { v0: profile?.name ?? '未选择配置' })} size="lg">
       {profile && (
         <Stack>
           <Group justify="space-between">
             <Text c="dimmed" size="sm">
-              皮肤插件：{profile.pluginVersion ? `已安装 ${profile.pluginVersion}` : '未安装'}
+              {t('topBar.k18')}{profile.pluginVersion ? t('topBar.k19', { v0: profile.pluginVersion }) : t('topBar.k20')}
             </Text>
             {profile.pluginVersion ? (
-              <Button variant="default" color="red" onClick={() => act(() => call('plugin.uninstall', { profile: profile.path }), '插件已卸载，游戏里的武器恢复原样')}>
-                卸载插件
+              <Button variant="default" color="red" onClick={() => act(() => call('plugin.uninstall', { profile: profile.path }), t('topBar.k21'))}>
+                {t('topBar.k22')}
               </Button>
             ) : (
-              <Button variant="default" onClick={() => act(() => call('plugin.install', { profile: profile.path }), '插件已安装')}>
-                安装插件
+              <Button variant="default" onClick={() => act(() => call('plugin.install', { profile: profile.path }), t('topBar.k23'))}>
+                {t('topBar.k24')}
               </Button>
             )}
           </Group>
-          {packs === null && <Text c="dimmed">正在读取…</Text>}
-          {packs?.length === 0 && <Text c="dimmed">这个配置里还没有皮肤。做好后点「应用到游戏」就会出现在这里。</Text>}
+          {packs === null && <Text c="dimmed">{t('topBar.k25')}</Text>}
+          {packs?.length === 0 && <Text c="dimmed">{t('topBar.k26')}</Text>}
           {!!packs?.length && (
             <Table verticalSpacing="xs">
               <Table.Tbody>
@@ -129,21 +190,21 @@ function InstalledModal({ opened, onClose }: { opened: boolean; onClose: () => v
                   return (
                     <Table.Tr key={p.id}>
                       <Table.Td w={30}>
-                        <Tooltip label="启用">
+                        <Tooltip label={t('topBar.k27')}>
                           <Checkbox
                             checked={p.active}
-                            onChange={(e) => act(() => call('pack.activate', { profile: profile.path, skinId: p.id, active: e.currentTarget.checked }), e.currentTarget.checked ? '已启用' : '已停用')}
+                            onChange={(e) => act(() => call('pack.activate', { profile: profile.path, skinId: p.id, active: e.currentTarget.checked }), e.currentTarget.checked ? t('topBar.k28') : t('topBar.k29'))}
                           />
                         </Tooltip>
                       </Table.Td>
                       <Table.Td>
                         <Text size="sm">{p.name}</Text>
                         <Text size="xs" c="dimmed">
-                          {w ? w.nameZh || w.name : p.weapon || '通用配件皮肤'}
+                          {w ? localName(w) : p.weapon || t('topBar.k30')}
                         </Text>
                       </Table.Td>
                       <Table.Td w={40}>
-                        <ActionIcon variant="subtle" color="red" onClick={() => act(() => call('pack.remove', { profile: profile.path, skinId: p.id }), '已删除这个皮肤')} aria-label="删除">
+                        <ActionIcon variant="subtle" color="red" onClick={() => act(() => call('pack.remove', { profile: profile.path, skinId: p.id }), t('topBar.k31'))} aria-label={t('topBar.k32')}>
                           <IconTrash size={16} />
                         </ActionIcon>
                       </Table.Td>
@@ -159,47 +220,119 @@ function InstalledModal({ opened, onClose }: { opened: boolean; onClose: () => v
   );
 }
 
+/** Compares the game's own weapon assembly (read back by the plugin) with this app's preview, per weapon. */
+function VerifyModal({ opened, onClose }: { opened: boolean; onClose: () => void }) {
+  const profile = useStore((s) => s.profiles.find((p) => p.path === s.prefs.profilePath));
+  const catalog = useStore((s) => s.catalog);
+  const [rows, setRows] = useState<VerifyResult[] | null>(null);
+  const [problem, setProblem] = useState<string | null>(null);
+  useEffect(() => {
+    if (!opened || !profile) return;
+    setRows(null);
+    setProblem(null);
+    call('assembly.verify', { profile: profile.path }).then(setRows, (e: BackendError) => {
+      useStore.getState().log(`assembly.verify ${detail(e)}`);
+      setProblem(
+        e?.code === 'not-found'
+          ? t('topBar.k33')
+          : friendly(e),
+      );
+    });
+  }, [opened, profile?.path]); // eslint-disable-line react-hooks/exhaustive-deps
+  const name = (r: VerifyResult) => {
+    const w = catalog.find((c) => c.id === r.weapon);
+    return w ? localName(w) : t('topBar.k34', { v0: r.gearId });
+  };
+  const why = (r: VerifyResult) => {
+    if (r.pass) return t('topBar.k35', { v0: r.compared });
+    const w = r.worst[0];
+    if (!w) return t('topBar.k36');
+    if (w.problem) return t('topBar.k37');
+    return t('topBar.k38', { v0: w.positionMm.toFixed(1), v1: w.rotationDeg.toFixed(1) });
+  };
+  return (
+    <Modal opened={opened} onClose={onClose} title={t('topBar.k39', { v0: profile?.name ?? '未选择配置' })} size="lg">
+      {problem && <Text size="sm">{problem}</Text>}
+      {!problem && rows === null && <Text c="dimmed">{t('topBar.k40')}</Text>}
+      {rows?.length === 0 && <Text c="dimmed">{t('topBar.k41')}</Text>}
+      {!!rows?.length && (
+        <Table verticalSpacing="xs">
+          <Table.Tbody>
+            {rows.map((r) => (
+              <Table.Tr key={r.file}>
+                <Table.Td w={88}>
+                  <Badge color={r.pass ? 'teal' : 'red'} variant="light" style={{ overflow: 'visible' }} miw={64}>
+                    {r.pass ? t('topBar.k42') : t('topBar.k43')}
+                  </Badge>
+                </Table.Td>
+                <Table.Td>
+                  <Text size="sm">{name(r)}</Text>
+                  <Text size="xs" c="dimmed">
+                    {why(r)}
+                  </Text>
+                </Table.Td>
+              </Table.Tr>
+            ))}
+          </Table.Tbody>
+        </Table>
+      )}
+    </Modal>
+  );
+}
+
 function ApplyButton() {
   const busy = useStore((s) => s.busy);
   const prefs = useStore((s) => s.prefs);
   const setPrefs = useStore((s) => s.setPrefs);
   const { saveProject, loadProject, newProject, dataDir } = useStore.getState();
+  const problem = useStore((s) => profileProblem(s.profiles.find((p) => p.path === s.prefs.profilePath)));
   const [installed, setInstalled] = useState(false);
+  const [verify, setVerify] = useState(false);
   return (
     <>
       <Group gap={0} className="primary">
-        <Tooltip label="安装插件（如需要）、打包并装进游戏；游戏开着也会自动刷新 · Ctrl+Enter">
-          <Button size="sm" loading={!!busy} leftSection={<IconBolt size={16} />} onClick={() => void applyToGame()} style={{ borderTopRightRadius: 0, borderBottomRightRadius: 0 }}>
-            应用到游戏
+        <Tooltip label={problem ?? t('topBar.k44')} multiline w={problem ? 300 : undefined}>
+          <Button
+            size="sm"
+            loading={!!busy}
+            disabled={!!problem}
+            leftSection={<IconBolt size={16} />}
+            onClick={() => void applyToGame()}
+            style={{ borderTopRightRadius: 0, borderBottomRightRadius: 0 }}
+          >
+            {t('topBar.k45')}
           </Button>
         </Tooltip>
         <Menu position="bottom-end" width={290} closeOnItemClick>
           <Menu.Target>
-            <Button size="sm" px={8} aria-label="更多" style={{ borderTopLeftRadius: 0, borderBottomLeftRadius: 0, borderLeft: '1px solid rgba(0,0,0,.2)' }}>
+            <Button size="sm" px={8} aria-label={t('topBar.k46')} style={{ borderTopLeftRadius: 0, borderBottomLeftRadius: 0, borderLeft: '1px solid rgba(0,0,0,.2)' }}>
               <IconChevronDown size={16} />
             </Button>
           </Menu.Target>
           <Menu.Dropdown>
             <Menu.Item leftSection={<IconStack2 size={14} />} onClick={() => setInstalled(true)}>
-              已安装的皮肤…
+              {t('topBar.k47')}
+            </Menu.Item>
+            <Menu.Item leftSection={<IconChecklist size={14} />} onClick={() => setVerify(true)}>
+              {t('topBar.k48')}
             </Menu.Item>
             <Menu.Divider />
             <Menu.Item leftSection={<IconPackageExport size={14} />} onClick={() => void exportPack()}>
-              导出皮肤包…
+              {t('topBar.k49')}
             </Menu.Item>
             <Menu.Item leftSection={<IconBox size={14} />} onClick={() => void exportObj('separate')}>
-              导出 OBJ 模型（分部件）…
+              {t('topBar.k50')}
             </Menu.Item>
             <Menu.Item leftSection={<IconPackage size={14} />} onClick={() => void exportObj('merged')}>
-              导出 OBJ 模型（合并）…
+              {t('topBar.k51')}
             </Menu.Item>
             <Menu.Divider />
-            <Menu.Label>输出贴图尺寸（始终保持比例）</Menu.Label>
+            <Menu.Label>{t('topBar.k52')}</Menu.Label>
             <div style={{ padding: '0 8px 8px' }}>
               <SegmentedControl fullWidth value={prefs.sizeMode} onChange={(v) => setPrefs({ sizeMode: v as SizeMode })} data={SIZES} />
             </div>
             <div style={{ padding: '2px 12px 10px' }}>
-              <Checkbox size="xs" label="缺失的部件和通道保持原样" checked={prefs.allowMissing} onChange={(e) => setPrefs({ allowMissing: e.currentTarget.checked })} />
+              <Checkbox size="xs" label={t('topBar.k53')} checked={prefs.allowMissing} onChange={(e) => setPrefs({ allowMissing: e.currentTarget.checked })} />
             </div>
             <Menu.Divider />
             <Menu.Item
@@ -207,26 +340,45 @@ function ApplyButton() {
               rightSection={<Text size="xs" c="dimmed">Ctrl O</Text>}
               onClick={async () => (await window.forge.openDialog('project')).forEach((p) => void loadProject(p))}
             >
-              打开工程或旧版预设…
+              {t('topBar.k54')}
             </Menu.Item>
             <Menu.Item leftSection={<IconDeviceFloppy size={14} />} rightSection={<Text size="xs" c="dimmed">Ctrl S</Text>} onClick={() => void saveProject()}>
-              保存工程
+              {t('topBar.k55')}
             </Menu.Item>
             <Menu.Item leftSection={<IconDeviceFloppy size={14} />} onClick={() => void saveProject(true)}>
-              另存为…
+              {t('topBar.k56')}
             </Menu.Item>
             <Menu.Item leftSection={<IconEraser size={14} />} onClick={() => void newProject()}>
-              清空当前改动
+              {t('topBar.k57')}
             </Menu.Item>
             <Menu.Divider />
             <Menu.Item leftSection={<IconFolder size={14} />} onClick={() => void window.forge.openPath(dataDir)}>
-              打开数据文件夹
+              {t('topBar.k58')}
             </Menu.Item>
           </Menu.Dropdown>
         </Menu>
       </Group>
       <InstalledModal opened={installed} onClose={() => setInstalled(false)} />
+      <VerifyModal opened={verify} onClose={() => setVerify(false)} />
     </>
+  );
+}
+
+/** 中文 / English; remembered in the settings, the first start follows the system. */
+function LangSwitch() {
+  const lang = useLang();
+  const setPrefs = useStore((s) => s.setPrefs);
+  return (
+    <SegmentedControl
+      size="xs"
+      aria-label={t('topBar.language')}
+      value={lang}
+      onChange={(v) => setPrefs({ lang: v as Lang })}
+      data={[
+        { value: 'zh', label: t('lang.zh') },
+        { value: 'en', label: t('lang.en') },
+      ]}
+    />
   );
 }
 
@@ -238,15 +390,16 @@ export function TopBar() {
     <header className="topbar">
       <div className="brand">
         <b>SKIN FORGE</b>
-        <span>GTFO 枪皮工坊</span>
+        <span>{t('topBar.k59')}</span>
       </div>
       <SegmentedControl value={mode} onChange={(v) => setMode(v as Mode)} data={MODES} size="sm" />
       <div className="spacer" />
       {game?.running && (
         <Badge color="flare" variant="light">
-          改动会热更新到游戏里
+          {t('topBar.k60')}
         </Badge>
       )}
+      <LangSwitch />
       <GamePill />
       <ProfileSelect />
       <ApplyButton />

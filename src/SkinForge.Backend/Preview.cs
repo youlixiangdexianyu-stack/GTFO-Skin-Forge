@@ -7,12 +7,22 @@ using SkinForge.Format;
 namespace SkinForge.Backend;
 
 // A transform of a part (its root and every sub-transform, not descending into other parts mounted on it): Unity
-// name, the GLB node that is it, its parent's GLB node, vanilla local pose in Unity space (rotation as quaternion
-// x, y, z, w) and the renderer nodes at or under it.
-public sealed record PreviewTransform(string Name, string Node, string? Parent, float[] Position, float[] Rotation, float[] Scale, List<string> Meshes);
+// name, child path from the part root as Transform.Find takes it (null for the root, as PartTransform.Path), the GLB node
+// that is it, its parent's GLB node, vanilla local pose in Unity space (rotation as quaternion x, y, z, w) and the
+// renderer nodes at or under it.
+public sealed record PreviewTransform(string Name, string? Path, string Node, string? Parent, float[] Position, float[] Rotation, float[] Scale, List<string> Meshes);
 public sealed record PreviewPart(string Id, List<string> Nodes, List<PreviewTransform> Transforms);
 public sealed record PreviewResult(string Glb, List<PreviewPart> Parts, Dictionary<string, Dictionary<TextureChannel, string>> Textures,
-    Dictionary<string, MaterialParams> Params);
+    Dictionary<string, PreviewMaterial> Params);
+
+// How the game draws a material. Kind: opaque; cutout (alpha test); glass (alpha-blended lens: Tint alpha is its opacity,
+// albedo if any is lens dirt); reticle (holographic sight surface: invisible except its reticle layers, drawn additively as
+// texture x colour). Colours are the material's values (Tint = _Color RGBA, EmissiveColor = _EmissiveColor or _EmissionColor RGB).
+public sealed record PreviewMaterial(string Shader, int RenderQueue, string Kind, bool? EmissiveEnabled, float[]? EmissiveColor,
+    float? Metallic, float? Smoothness, float[]? Tint, List<PreviewReticle> Reticles);
+
+// One reticle layer of a holographic sight (_ReticuleA/B/C): PNG, colour (RGBA, linear), scale and offset as the shader takes them.
+public sealed record PreviewReticle(string Layer, string Texture, float[] Color, float Scale, float Offset);
 
 // Assembled item -> GLB (full transform tree, Unity -> glTF) + game textures as PNG + material parameters, cached per game build.
 public static class Preview
@@ -77,27 +87,39 @@ public static class Preview
         glb.Save(glbPath, rootIndex);
 
         var textures = new Dictionary<string, Dictionary<TextureChannel, string>>();
-        var parameters = new Dictionary<string, MaterialParams>();
+        var parameters = new Dictionary<string, PreviewMaterial>();
         var written = new Dictionary<(string, long), string>();
         int done = 0;
         foreach (var (name, m) in materials)
         {
             Program.Progress(requestId, done++, materials.Count, name);
             var data = Unity.ReadMaterial(g, m);
-            parameters[name] = Params(data);
             var channels = new Dictionary<TextureChannel, string>();
-            foreach (var (prop, channel) in ChannelProps)
+            string Export(TexRef t, TextureChannel channel, string suffix)
             {
-                if (!data.Textures.TryGetValue(prop, out var t)) continue;
                 if (!written.TryGetValue((t.File.path, t.PathId), out var png))
                 {
-                    png = Path.Combine(dir, "tex", $"{Safe(name)}_{channel}.png");
+                    png = Path.Combine(dir, "tex", $"{Safe(name)}_{suffix}.png");
                     SaveTexture(g, t, channel, png);
                     written[(t.File.path, t.PathId)] = png;
                 }
-                channels[channel] = png;
+                return png;
             }
-            if (!channels.ContainsKey(TextureChannel.Albedo))
+            var reticles = new List<PreviewReticle>();
+            if (data.Shader.Contains("HolographicSight"))
+                foreach (var layer in new[] { "A", "B", "C" })
+                    if (data.Textures.TryGetValue("_Reticule" + layer, out var rt) && (!data.Floats.TryGetValue("_Fade" + layer, out var fade) || fade > 0)
+                        && Export(rt, TextureChannel.Emissive, "Reticle" + layer) is var png && !Blank(png))
+                        reticles.Add(new PreviewReticle(layer, png,
+                            data.Colors.GetValueOrDefault("_ReticuleColor" + layer) ?? [1, 1, 1, 1],
+                            data.Floats.GetValueOrDefault("_ReticuleScale" + layer, 1), data.Floats.GetValueOrDefault("_ReticuleOffset" + layer)));
+            var info = Params(data, reticles);
+            parameters[name] = info;
+            foreach (var (prop, channel) in ChannelProps)
+            {
+                if (data.Textures.TryGetValue(prop, out var t)) channels[channel] = Export(t, channel, channel.ToString());
+            }
+            if (!channels.ContainsKey(TextureChannel.Albedo) && info.Kind is "opaque" or "cutout")
             {
                 var albedo = channels[TextureChannel.Albedo] = Path.Combine(dir, "tex", $"{Safe(name)}_{TextureChannel.Albedo}.png");
                 if (data.Shader == BlendHS.Shader && data.Textures.ContainsKey("_AOCurveTex"))
@@ -114,20 +136,14 @@ public static class Preview
         }
 
         var transforms = new Dictionary<string, List<PreviewTransform>>();
-        foreach (var partRoot in root.All().Where(n => n.Part != null && n.Active))
+        foreach (var (part, path, n) in Assembly.PartNodes(root, activeOnly: true))
         {
-            var list = transforms[partRoot.Part!] = new();
-            void Walk(Node n)
-            {
-                if (!n.Active || (n != partRoot && n.Part != null)) return;
-                var under = new List<string>();
-                void Collect(Node c) { if (!c.Active || (c != n && c.Part != null)) return; if (partOf.ContainsKey(c)) under.Add(nodeName[c]); c.Children.ForEach(Collect); }
-                Collect(n);
-                list.Add(new PreviewTransform(n.Name, nodeName[n], n == partRoot ? null : nodeName[n.Parent!],
-                    [n.Position.X, n.Position.Y, n.Position.Z], [n.Rotation.X, n.Rotation.Y, n.Rotation.Z, n.Rotation.W], [n.Scale.X, n.Scale.Y, n.Scale.Z], under));
-                n.Children.ForEach(Walk);
-            }
-            Walk(partRoot);
+            var under = new List<string>();
+            void Collect(Node c) { if (!c.Active || (c != n && c.Part != null)) return; if (partOf.ContainsKey(c)) under.Add(nodeName[c]); c.Children.ForEach(Collect); }
+            Collect(n);
+            (transforms.TryGetValue(part, out var list) ? list : transforms[part] = new()).Add(new PreviewTransform(n.Name, path, nodeName[n],
+                path == null ? null : nodeName[n.Parent!],
+                [n.Position.X, n.Position.Y, n.Position.Z], [n.Rotation.X, n.Rotation.Y, n.Rotation.Z, n.Rotation.W], [n.Scale.X, n.Scale.Y, n.Scale.Z], under));
         }
         var order = Assembly.Slots.Select(s => s.Id).Concat(["ammo_speedloader", "ammo_bullet", "ammo_shell"]).ToList();
         var result = new PreviewResult(glbPath, parts.Keys.Union(transforms.Keys).OrderBy(p => order.IndexOf(p) is var i && i < 0 ? 99 : i)
@@ -136,20 +152,28 @@ public static class Preview
         return result;
     }
 
+    // Placeholder reticle textures (fully transparent or black, e.g. "Black", "UI_black") draw nothing in game.
+    static bool Blank(string png)
+    {
+        using var bmp = Images.Load(png);
+        return bmp.Pixels.All(c => c.Alpha == 0 || (c.Red | c.Green | c.Blue) == 0);
+    }
+
     public static string Safe(string name) => string.Concat(name.Select(c => Path.GetInvalidFileNameChars().Contains(c) ? '_' : c));
 
-    public static MaterialParams Params(MaterialData d)
+    public static PreviewMaterial Params(MaterialData d, List<PreviewReticle> reticles)
     {
         float? F(string k) => d.Floats.TryGetValue(k, out var v) ? v : null;
         float[]? C(string k, int n) => d.Colors.TryGetValue(k, out var v) ? v[..n] : null;
-        return new MaterialParams
-        {
-            EmissiveEnabled = F("_EnableEmissive") is { } e ? e > 0.5f : null,
-            EmissiveColor = C("_EmissiveColor", 3),
-            Metallic = F("_Metallic"),
-            Smoothness = F("_Glossiness"),
-            Tint = C("_Color", 4),
-        };
+        bool Has(string k) => d.Keywords.Contains(k);
+        // Standard-style blend setup: _Mode 1 cutout, 2 fade, 3 transparent; a custom queue overrides the shader's.
+        var kind = d.Shader.Contains("HolographicSight") ? "reticle"
+            : d.Shader.Contains("Glass") || Has("_ALPHABLEND_ON") || Has("_ALPHAPREMULTIPLY_ON") || F("_Mode") >= 2 || d.RenderQueue >= 2500 ? "glass"
+            : Has("_ALPHATEST_ON") || F("_Mode") == 1 || d.RenderQueue >= 2450 ? "cutout"
+            : "opaque";
+        int queue = d.RenderQueue >= 0 ? d.RenderQueue : kind switch { "opaque" => 2000, "cutout" => 2450, _ => 3000 };
+        return new PreviewMaterial(d.Shader, queue, kind, F("_EnableEmissive") is { } e ? e > 0.5f : null,
+            C("_EmissiveColor", 3) ?? C("_EmissionColor", 3), F("_Metallic"), F("_Glossiness"), C("_Color", 4), reticles);
     }
 
     // Writes a game texture as PNG; Unity DXT5nm normal maps (x in A, y in G) become ordinary RGB normal maps.

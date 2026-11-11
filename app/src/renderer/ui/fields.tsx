@@ -54,10 +54,24 @@ export function Vec({ value, onChange, labels = ['X', 'Y', 'Z', 'W'], ...rest }:
   );
 }
 
-export function Slider({ value, onChange, min = 0, max = 1, step = 0.01 }: { value: number; onChange: (v: number) => void; min?: number; max?: number; step?: number }) {
+export function Slider({
+  value,
+  onChange,
+  min = 0,
+  max = 1,
+  step = 0.01,
+  label = (v) => v.toFixed(2),
+}: {
+  value: number;
+  onChange: (v: number) => void;
+  min?: number;
+  max?: number;
+  step?: number;
+  label?: (v: number) => string;
+}) {
   return (
     <Group gap="xs" wrap="nowrap">
-      <MSlider style={{ flex: 1 }} size="sm" value={value} min={min} max={max} step={step} onChange={onChange} label={(v) => v.toFixed(2)} />
+      <MSlider style={{ flex: 1 }} size="sm" value={value} min={min} max={max} step={step} onChange={onChange} label={label} />
       <Num w={78} value={value} min={min} max={max} step={step * 10} onChange={onChange} />
     </Group>
   );

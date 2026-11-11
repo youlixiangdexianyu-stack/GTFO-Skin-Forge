@@ -5,36 +5,56 @@ import { IconFileText, IconFolderDown } from '@tabler/icons-react';
 import { useEffect, useState } from 'react';
 import { Group as PanelGroup, Panel, Separator, useDefaultLayout } from 'react-resizable-panels';
 import { applyToGame } from './actions';
+import { call } from './protocol';
 import { useStore } from './store';
 import { AttachInspector } from './ui/AttachInspector';
-import { DynamicInspector } from './ui/DynamicInspector';
+import { DynamicInspector, layerFromFiles } from './ui/DynamicInspector';
 import { LeftRail } from './ui/LeftRail';
 import { nativeFiles, SkinInspector } from './ui/SkinInspector';
 import { Stage } from './ui/Stage';
 import { TopBar } from './ui/TopBar';
 import { focusSelection, setView, useViewStore } from './viewport/Viewport';
+import { t, useLang } from './i18n';
 
 function StatusBar({ onLog }: { onLog: () => void }) {
   const busy = useStore((s) => s.busy);
   // Backend progress only matters while the user waits on something (thumbnails load quietly in the background).
   const progress = useStore((s) => (s.busy || s.previewLoading ? s.progress : null));
-  const lastLog = useStore((s) => s.logs.at(-1));
+  const cache = useStore((s) => s.cache);
   const undo = useStore((s) => s.undo.length);
   const projectPath = useStore((s) => s.projectPath);
   const down = useStore((s) => s.backendDown);
-  const text = down ? '后台服务重启中…' : (progress?.text ?? busy ?? lastLog?.replace(/^\[[^\]]+\] /, '') ?? '就绪');
+  const saveError = useStore((s) => s.autosaveError);
+  // Only plain status here; backend log lines stay in the log panel.
+  const text = down ? t('app.k1') : (progress?.text ?? busy ?? t('app.k2'));
   return (
     <footer className="status">
-      <Tooltip label="日志">
-        <ActionIcon variant="subtle" color="gray" size="sm" onClick={onLog} aria-label="日志">
+      <Tooltip label={t('app.k3')}>
+        <ActionIcon variant="subtle" color="gray" size="sm" onClick={onLog} aria-label={t('app.k3')}>
           <IconFileText size={14} />
         </ActionIcon>
       </Tooltip>
       <span className="grow">{text}</span>
       {progress && <Progress w={120} size="xs" value={(progress.done / Math.max(1, progress.total)) * 100} />}
-      <span>{projectPath ? projectPath.split(/[\\/]/).pop() : '已自动保存'}</span>
-      <Tooltip label="Ctrl+Z 撤销 / Ctrl+Y 重做">
-        <span>可撤销 {undo} 步</span>
+      {cache && (
+        <Tooltip label={t('app.k4')}>
+          <Group gap={6} wrap="nowrap">
+            <span>
+              {t('app.k5')} {cache.done}/{cache.total}
+            </span>
+            <Progress w={90} size="xs" color="gray" value={(cache.done / Math.max(1, cache.total)) * 100} />
+          </Group>
+        </Tooltip>
+      )}
+      {saveError ? (
+        <Tooltip label={saveError}>
+          <span style={{ color: 'var(--mantine-color-red-4)' }}>{t('app.k6')}</span>
+        </Tooltip>
+      ) : (
+        <span>{projectPath ? projectPath.split(/[\\/]/).pop() : t('app.k7')}</span>
+      )}
+      <Tooltip label={t('app.k8')}>
+        <span>{t('app.k9')} {undo} {t('app.k10')}</span>
       </Tooltip>
     </footer>
   );
@@ -44,17 +64,17 @@ function LogDrawer({ opened, onClose }: { opened: boolean; onClose: () => void }
   const logs = useStore((s) => s.logs);
   const dataDir = useStore((s) => s.dataDir);
   return (
-    <Drawer opened={opened} onClose={onClose} position="bottom" size={300} title="日志" withOverlay={false}>
+    <Drawer opened={opened} onClose={onClose} position="bottom" size={300} title={t('app.k3')} withOverlay={false}>
       <Group gap="xs" mb="xs">
         <Button variant="default" onClick={() => void window.forge.openPath(`${dataDir}\\logs`)}>
-          打开日志文件夹
+          {t('app.k11')}
         </Button>
         <Button variant="default" onClick={() => void navigator.clipboard.writeText(logs.join('\n'))}>
-          复制
+          {t('app.k12')}
         </Button>
       </Group>
       <ScrollArea h={190}>
-        <pre className="log">{logs.join('\n') || '暂无日志'}</pre>
+        <pre className="log">{logs.join('\n') || t('app.k13')}</pre>
       </ScrollArea>
     </Drawer>
   );
@@ -67,7 +87,10 @@ function onGlobalDrop(files: File[]) {
   const s = useStore.getState();
   const project = paths.find((p) => /\.(sfproj|gtfoskin|gtfdyn)$/i.test(p));
   if (project) return void s.loadProject(project);
-  if (paths.some((p) => /\.(glb|gltf)$/i.test(p))) return s.toast('info', '要导入模型，请切到「挂件与屏幕」，点「导入模型」。');
+  if (paths.some((p) => /\.(glb|gltf)$/i.test(p))) return s.toast('info', t('app.k14'));
+  // On the dynamic tab, media dropped while a part is selected becomes a layer on that part.
+  const part = s.selection?.kind === 'part' ? s.catalog.find((c) => c.id === s.weaponId)?.parts.find((p) => p.id === s.selection!.id) : undefined;
+  if (s.mode === 'dynamic' && part?.materials[0] && layerFromFiles(part.materials[0], part.id, paths)) return;
   void s.matchPaths(paths);
 }
 
@@ -103,7 +126,26 @@ function useShortcuts() {
   ]);
 }
 
+/** Keeps the 游戏运行中 badge live: asks every 2 s while the window has focus, and right away when it gets focus. */
+function useGameRunning() {
+  useEffect(() => {
+    const check = async () => {
+      const s = useStore.getState();
+      if (!document.hasFocus() || !s.game?.found || s.backendDown) return;
+      const game = await call('game.locate', {}).catch(() => null);
+      if (game && game.running !== useStore.getState().game?.running) useStore.setState({ game });
+    };
+    const id = setInterval(() => void check(), 2000);
+    window.addEventListener('focus', check);
+    return () => {
+      clearInterval(id);
+      window.removeEventListener('focus', check);
+    };
+  }, []);
+}
+
 export function App() {
+  useLang(); // the whole tree re-renders in the new language
   const mode = useStore((s) => s.mode);
   // A selected attachment opens its own inspector in every mode.
   const attachment = useStore((s) => s.selection?.kind === 'attachment');
@@ -111,6 +153,7 @@ export function App() {
   const layout = useDefaultLayout({ id: 'sf.layout', storage: localStorage });
   useShortcuts();
   useEffect(() => void useStore.getState().init(), []);
+  useGameRunning();
   return (
     <div className="shell">
       <TopBar />
@@ -132,8 +175,8 @@ export function App() {
       <Dropzone.FullScreen onDrop={onGlobalDrop} getFilesFromEvent={nativeFiles} activateOnClick={false} zIndex={300}>
         <div className="drop-veil">
           <IconFolderDown size={44} stroke={1.3} color="var(--flare)" />
-          <b>松手即可</b>
-          <Text c="dimmed">贴图文件夹或图片会自动对应到部件；工程文件会直接打开</Text>
+          <b>{t('app.k15')}</b>
+          <Text c="dimmed">{t('app.k16')}</Text>
         </div>
       </Dropzone.FullScreen>
     </div>

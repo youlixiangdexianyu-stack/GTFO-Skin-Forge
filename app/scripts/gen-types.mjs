@@ -1,5 +1,5 @@
 // Generates src/renderer/generated/skin-document.ts from the backend `schema` method.
-// Usage: pnpm gen:types            (asks the backend)
+// Usage: pnpm gen:types            (asks the backend; SF_BACKEND_EXE=<exe> picks a specific build)
 //        pnpm gen:types --from x.json  (uses a schema file the backend wrote)
 import { spawn } from 'node:child_process';
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
@@ -12,7 +12,7 @@ const repo = join(appDir, '..');
 const out = join(appDir, 'src/renderer/generated/skin-document.ts');
 
 function askBackend() {
-  const exe = ['Debug', 'Release']
+  const exe = process.env.SF_BACKEND_EXE ?? ['Debug', 'Release']
     .flatMap((c) => ['', 'win-x64/'].map((rid) => join(repo, `src/SkinForge.Backend/bin/${c}/net10.0/${rid}SkinForge.Backend.exe`)))
     .find(existsSync);
   const dataDir = join(appDir, 'GTFO_UserData');

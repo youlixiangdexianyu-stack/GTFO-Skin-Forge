@@ -11,9 +11,26 @@ public static class PreviewCache
 
     static bool Done(GameAssets g, string itemId) => File.Exists(Path.Combine(Dir(g, itemId), "preview.json"));
 
+    // Reads only the cache folder, never waits for the game reader.
+    public static object Status()
+    {
+        var build = GameAssets.ReadBuildId(Game.Dir);
+        var dir = GameAssets.CacheDir(build);
+        var catalog = Path.Combine(dir, "catalog.json");
+        bool ready = File.Exists(catalog);
+        var preview = Path.Combine(dir, "preview");
+        return new
+        {
+            build,
+            catalogReady = ready,
+            previewsReady = Directory.Exists(preview) ? Directory.EnumerateFiles(preview, "preview.json", SearchOption.AllDirectories).Count() : 0,
+            previewsTotal = ready ? System.Text.Json.Nodes.JsonNode.Parse(File.ReadAllText(catalog))!.AsArray().Count : 0,
+        };
+    }
+
     public static void Ready(GameAssets g, List<CatalogItem> items)
     {
-        foreach (var dir in Directory.EnumerateDirectories(Path.GetDirectoryName(g.Cache)!).Where(d => Path.GetFileName(d) != g.BuildId))
+        foreach (var dir in Directory.EnumerateDirectories(Path.GetDirectoryName(g.Cache)!).Where(d => d != g.Cache))
             try { Directory.Delete(dir, true); }
             catch (IOException e) { Log.Write($"cache: could not delete {dir}: {e.Message}"); }
 
@@ -32,12 +49,5 @@ public static class PreviewCache
             catch (Exception e) { Log.Write($"cache: preview {ids[i]} failed: {e.Message}"); }
             Program.Send(new { @event = "cache-progress", data = new { done = i + 1, total = ids.Count, text = ids[i] } });
         }
-    }
-
-    public static object Status(GameAssets g)
-    {
-        bool ready = Catalog.Ready(g);
-        var items = ready ? Catalog.Get(g) : [];
-        return new { build = g.BuildId, catalogReady = ready, previewsReady = items.Count(i => Done(g, i.Id)), previewsTotal = items.Count };
     }
 }

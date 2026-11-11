@@ -8,6 +8,7 @@
     <Nullable>enable</Nullable>
     <CheckEolTargetFramework>false</CheckEolTargetFramework>
     <GenerateDependencyFile>false</GenerateDependencyFile>
+    <CopyLocalLockFileAssemblies>true</CopyLocalLockFileAssemblies>
     <DebugType>none</DebugType>
     <Version>1.0.0</Version>
     <GTFOBepInExPath Condition="'$(GTFOBepInExPath)' == ''">C:/Users/nainf/AppData/Roaming/r2modmanPlus-local/GTFO/profiles/Forge-Multiplayer/BepInEx</GTFOBepInExPath>
@@ -15,6 +16,8 @@
 
   <ItemGroup>
     <ProjectReference Include="..\SkinForge.Format\SkinForge.Format.csproj" />
+    <!-- Ogg Vorbis decoder for skin sounds (MIT, managed); NVorbis.dll ships beside the plugin with licenses/NVorbis.LICENSE. -->
+    <PackageReference Include="NVorbis" Version="0.10.5" />
     <Reference Include="$(GTFOBepInExPath)/core/0Harmony.dll" Private="false" />
     <Reference Include="$(GTFOBepInExPath)/core/BepInEx.Core.dll" Private="false" />
     <Reference Include="$(GTFOBepInExPath)/core/BepInEx.Unity.IL2CPP.dll" Private="false" />

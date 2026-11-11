@@ -1,34 +1,29 @@
 // Layout block of the current selection, shown in every mode.
-import { deltaForPose, IDENTITY, resultingPose, type UnityPose, type Vec3 } from '../space';
+import { IDENTITY, overridesFor, poseWith, type UnityPose, type Vec3 } from '../space';
 import { partTransformOf, useStore } from '../store';
-import { partTargets, viewRefs } from '../viewport/refs';
+import { layoutTarget, viewRefs } from '../viewport/refs';
 import { TransformBlock } from './TransformBlock';
+import { t } from '../i18n';
 
 const v3 = (a: number[] | undefined, d: Vec3): Vec3 => (a && a.length === 3 ? (a as Vec3) : d);
 
-function PartLayout({ part, sub }: { part: string; sub?: string | null }) {
-  const t = useStore((s) => partTransformOf(s.doc, part, sub));
+function PartLayout({ part: selected, path: selectedPath }: { part: string; path?: string | null }) {
   useStore((s) => s.subParts); // re-render once the model (and its vanilla poses) is loaded
-  const obj = partTargets(part, sub)[0];
-  const vanilla = obj && viewRefs.vanilla.get(obj);
+  const target = layoutTarget(selected, selectedPath);
+  const part = target?.part ?? selected;
+  const path = target?.path ?? null;
+  const entry = useStore((s) => partTransformOf(s.doc, part, path));
+  const vanilla = target && viewRefs.vanilla.get(target.obj);
   if (!vanilla) return null;
   const { setPartTransform, resetPartTransform } = useStore.getState();
-  const delta: UnityPose = { position: v3(t?.position, [0, 0, 0]), rotation: v3(t?.rotation, [0, 0, 0]), scale: v3(t?.scale, [1, 1, 1]) };
   return (
     <TransformBlock
-      title={sub ? `位置与大小 · ${sub}` : '位置与大小'}
-      pose={resultingPose(vanilla, delta)}
-      onChange={(pose, key) => {
-        const d = deltaForPose(vanilla, pose);
-        setPartTransform(part, sub, (x) => {
-          x.position = d.position;
-          x.rotation = d.rotation;
-          x.scale = d.scale;
-        }, key);
-      }}
-      onReset={(row) => resetPartTransform(part, sub, row)}
-      visible={t?.visible !== false}
-      onVisible={(v) => setPartTransform(part, sub, (x) => void (x.visible = v))}
+      title={path ? t('selectionLayout.k1', { v0: path.split('/').pop() }) : t('selectionLayout.k2')}
+      pose={poseWith(vanilla, entry)}
+      onChange={(pose, key) => setPartTransform(part, path, (x) => void Object.assign(x, overridesFor(vanilla, pose)), key)}
+      onReset={(row) => resetPartTransform(part, path, row)}
+      visible={entry?.visible !== false}
+      onVisible={(v) => setPartTransform(part, path, (x) => void (x.visible = v ? null : false))}
     />
   );
 }
@@ -40,7 +35,7 @@ function AttachmentLayout({ id }: { id: string }) {
   const pose: UnityPose = { position: v3(a.position, [0, 0, 0]), rotation: v3(a.rotation, [0, 0, 0]), scale: v3(a.scale, [1, 1, 1]) };
   return (
     <TransformBlock
-      title="位置与大小"
+      title={t('selectionLayout.k2')}
       pose={pose}
       onChange={(p, key) =>
         updateAttachment(id, (x) => {
@@ -64,7 +59,7 @@ function AttachmentLayout({ id }: { id: string }) {
 
 export function SelectionLayout() {
   const sel = useStore((s) => s.selection);
-  if (sel?.kind === 'part') return <PartLayout key={`${sel.id}|${sel.sub ?? ''}`} part={sel.id} sub={sel.sub} />;
+  if (sel?.kind === 'part') return <PartLayout key={`${sel.id}|${sel.sub ?? ''}`} part={sel.id} path={sel.sub} />;
   if (sel?.kind === 'attachment') return <AttachmentLayout key={sel.id} id={sel.id} />;
   return null;
 }

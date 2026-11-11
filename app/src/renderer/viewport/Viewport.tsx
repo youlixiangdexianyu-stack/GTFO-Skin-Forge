@@ -3,14 +3,15 @@ import { Canvas, useFrame, useThree } from '@react-three/fiber';
 import { Bloom, EffectComposer } from '@react-three/postprocessing';
 import CameraControlsImpl from 'camera-controls';
 import { Suspense, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
-import { Box3, PMREMGenerator, Sphere, type Mesh } from 'three';
-import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
+import { Box3, CanvasTexture, Object3D, SRGBColorSpace, Sphere, type Mesh } from 'three';
 import { unityDirToThree, type Vec3 } from '../space';
-import { useStore } from '../store';
+import { persistAutosave, useStore } from '../store';
 import { Attachments } from './Attachments';
 import { ModalTransform, modalState, newGesture, selectedTarget, type Target } from './ModalTransform';
-import { partTargets, quiet, SCENE_EVENT, viewRefs } from './refs';
+import { selectedObjects, quiet, SCENE_EVENT, viewRefs } from './refs';
 import { WeaponModel } from './WeaponModel';
+import { roomReflection } from './weaponScene';
+import { t } from '../i18n';
 
 export type ViewName = 'front' | 'back' | 'left' | 'right' | 'top' | 'bottom' | 'iso';
 // Unity weapon space: muzzle along +Z, up +Y, right +X.
@@ -24,7 +25,7 @@ const VIEW_DIRS: Record<ViewName, Vec3> = {
   iso: [0.6, 0.45, 0.66],
 };
 // Viewcube faces are three.js +X, -X, +Y, -Y, +Z, -Z; three +Z is Unity -Z (the back of the gun).
-const CUBE_FACES = ['右', '左', '顶', '底', '后', '前'];
+const cubeFaces = () => [t('viewport.k1'), t('viewport.k2'), t('viewport.k3'), t('viewport.k4'), t('viewport.k5'), t('viewport.k6')];
 const { ACTION } = CameraControlsImpl;
 const HALF_PI = Math.PI / 2;
 
@@ -76,27 +77,50 @@ export function setView(name: ViewName) {
 
 export function focusSelection() {
   const s = useStore.getState().selection;
-  const objs = s?.kind === 'attachment' ? [viewRefs.attachments.get(s.id)] : s?.kind === 'part' ? partTargets(s.id, s.sub) : [];
+  const objs = s?.kind === 'attachment' ? [viewRefs.attachments.get(s.id)] : s?.kind === 'part' ? selectedObjects(s.id, s.sub) : [];
   const box = new Box3();
   objs.forEach((o) => o && box.expandByObject(o));
   const target = box.isEmpty() ? weaponBounds() : box;
   if (target) fit(target);
 }
 
+/**
+ * The one lighting rig: a room reflection map plus three lights, all tinted by the same colour. The reflection map is
+ * rebuilt with the tint, otherwise a coloured light shows next to a white reflection of the room's lamps.
+ */
 function Environment({ intensity, color }: { intensity: number; color: string }) {
   const { gl, scene } = useThree();
   useEffect(() => {
-    const pmrem = new PMREMGenerator(gl);
-    const env = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
+    const env = roomReflection(gl, color);
     scene.environment = env;
     return () => {
+      if (scene.environment === env) scene.environment = null;
       env.dispose();
-      pmrem.dispose();
     };
-  }, [gl, scene]);
+  }, [gl, scene, color]);
   useEffect(() => {
     scene.environmentIntensity = intensity;
   }, [scene, intensity]);
+  // The stage backdrop is drawn by the renderer, so the canvas is opaque: additive reticles and see-through lenses then
+  // blend with the backdrop instead of punching black holes into a transparent canvas.
+  useEffect(() => {
+    const c = document.createElement('canvas');
+    c.width = c.height = 512;
+    const ctx = c.getContext('2d')!;
+    const g = ctx.createRadialGradient(256, 195, 0, 256, 195, 420);
+    g.addColorStop(0, '#3a3e44');
+    g.addColorStop(0.52, '#24272b');
+    g.addColorStop(1, '#16181b');
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, 512, 512);
+    const t = new CanvasTexture(c);
+    t.colorSpace = SRGBColorSpace;
+    scene.background = t;
+    return () => {
+      scene.background = null;
+      t.dispose();
+    };
+  }, [scene]);
   return (
     <>
       <ambientLight intensity={0.25 * intensity} color={color} />
@@ -173,11 +197,21 @@ function CameraRig() {
         dollyToCursor
       />
       <GizmoHelper alignment="top-right" margin={[64, 64]} renderPriority={2}>
-        <GizmoViewcube faces={CUBE_FACES} font="bold 56px 'Microsoft YaHei UI', sans-serif" color="#3a3f46" textColor="#e9e4d8" strokeColor="#565c64" hoverColor="#ff7a2f" opacity={0.95} />
+        <GizmoViewcube
+          faces={cubeFaces()}
+          font="bold 56px 'Microsoft YaHei UI', sans-serif"
+          color="#3a3f46"
+          textColor="#e9e4d8"
+          strokeColor="#565c64"
+          hoverColor="#ff7a2f"
+          opacity={0.95}
+        />
       </GizmoHelper>
     </>
   );
 }
+
+const idle = new Object3D();
 
 function Gizmo() {
   const selection = useStore((s) => s.selection);
@@ -190,18 +224,25 @@ function Gizmo() {
     const id = setTimeout(() => setTarget(selectedTarget()), 0);
     return () => clearTimeout(id);
   }, [selection, doc.attachments]);
-  if (!target || modal !== 'null|null') return null;
+  // One gizmo stays mounted and is pointed at the selection: mounting one per selection leaks its handle geometry.
+  const on = !!target && modal === 'null|null';
   return (
     <TransformControls
-      object={target.obj}
+      object={target?.obj ?? idle}
+      enabled={on}
+      showX={on}
+      showY={on}
+      showZ={on}
       mode={view.gizmo}
       space="local"
       size={0.8}
       onMouseDown={() => (gesture.current = newGesture())}
-      onObjectChange={() => target.commit(gesture.current)}
+      onObjectChange={() => target?.commit(gesture.current)}
     />
   );
 }
+
+const SEE_THROUGH = new Set(['glass', 'reticle']);
 
 /** Outline on the selected part's meshes (drei Outlines portalled into each mesh). */
 function SelectionOutline() {
@@ -217,16 +258,28 @@ function SelectionOutline() {
     void preview;
     void version;
     const out: Mesh[] = [];
-    if (selection?.kind === 'part') partTargets(selection.id, selection.sub).forEach((n) => n.traverse((o) => (o as Mesh).isMesh && out.push(o as Mesh)));
+    if (selection?.kind === 'part')
+      selectedObjects(selection.id, selection.sub).forEach((n) =>
+        n.traverse((o) => {
+          // A lens or holo surface is a flat sheet: its outline hull would fill it as a solid plate, so it gets none.
+          const mesh = o as Mesh;
+          if (
+            mesh.isMesh &&
+            !(Array.isArray(mesh.material) ? mesh.material : [mesh.material]).every((m) => SEE_THROUGH.has(preview?.params[m.name]?.kind ?? ''))
+          )
+            out.push(mesh);
+        }),
+      );
     return out;
   }, [selection, preview, version]);
-  // A depth-only twin of each mesh carries the outline, so the game mesh and its material stay untouched.
+  // A depth-only twin of each mesh carries the outline, so the game mesh and its material stay untouched. angle 0 reuses
+  // the mesh's own geometry: with creased normals Outlines makes a copy per mesh that it fails to free on unmount.
   return (
     <>
       {meshes.map((m) => (
         <mesh key={m.uuid} geometry={m.geometry} matrixAutoUpdate={false} matrix={m.matrixWorld} renderOrder={-1}>
           <meshBasicMaterial colorWrite={false} depthWrite={false} />
-          <Outlines thickness={3} color="#ff7a2f" />
+          <Outlines thickness={3} color="#ff7a2f" angle={0} />
         </mesh>
       ))}
     </>
@@ -240,6 +293,18 @@ export function Viewport() {
     <Canvas
       gl={{ preserveDrawingBuffer: true, antialias: true, alpha: true }}
       dpr={[1, 2]}
+      onCreated={({ gl }) => {
+        if (import.meta.env.DEV) Object.assign(window, { sfGl: gl });
+        // A lost GPU context does not come back on its own here: log it, save, and reload (the autosave reopens).
+        gl.domElement.addEventListener('webglcontextlost', () => {
+          const info = (performance as { memory?: { usedJSHeapSize: number } }).memory;
+          window.forge.appLog(
+            'webglcontextlost',
+            `textures=${gl.info.memory.textures} geometries=${gl.info.memory.geometries} jsHeapMB=${info ? Math.round(info.usedJSHeapSize / 1048576) : '?'}`,
+          );
+          void persistAutosave().finally(() => window.location.reload());
+        });
+      }}
       onPointerMissed={(e) => {
         if (e.button === 0 && !quiet() && !useStore.getState().snapToSurface) useStore.getState().select(null);
       }}
@@ -247,7 +312,7 @@ export function Viewport() {
       <CameraRig />
       <Environment intensity={prefs.ambient} color={prefs.ambientColor} />
       <Suspense fallback={null}>
-        {preview && <WeaponModel preview={preview} />}
+        {preview && <WeaponModel key={preview.glb} preview={preview} />}
         {preview && <Attachments />}
       </Suspense>
       <SelectionOutline />

@@ -17,7 +17,7 @@ public static class Projects
         {
             var item = Catalog.Item(catalog, itemId);
             doc.Name = item.Name;
-            doc.Target = new SkinTarget { Weapon = item.Id, ArchetypeId = item.ArchetypeId };
+            doc.Target = new SkinTarget { Weapon = item.Id, GearId = item.GearId, ItemId = item.ItemId };
         }
         return doc;
     }
@@ -50,12 +50,15 @@ public static class Projects
         return new { path };
     }
 
-    // Every file reference in a document (texture, layer source, font, mesh, glyph strip, atlas).
+    // Every file reference in a document (texture, layer source, font, mesh, glyph strip, atlas, sound). A texture slot
+    // without a file is dropped (the game texture stays).
     public static void MapPaths(SkinDocument doc, Func<string, string> map)
     {
         static void Dict(Dictionary<TextureChannel, string> d, Func<string, string> map)
         {
-            foreach (var k in d.Keys.ToList()) d[k] = map(d[k]);
+            foreach (var k in d.Keys.ToList())
+                if (string.IsNullOrEmpty(d[k])) d.Remove(k);
+                else d[k] = map(d[k]);
         }
         foreach (var m in doc.Materials)
         {
@@ -74,6 +77,7 @@ public static class Projects
             if (a.Screen?.Font is { } font) a.Screen.Font = map(font);
             if (a.Screen?.GlyphAtlas is { } glyphs) a.Screen.GlyphAtlas = map(glyphs);
         }
+        foreach (var s in doc.Sounds.Where(s => !string.IsNullOrEmpty(s.File))) s.File = map(s.File);
     }
 
     static SkinDocument Start(string? itemId, string? name, List<CatalogItem> catalog)
@@ -146,7 +150,7 @@ public static class Projects
                 Visible = (bool?)l["visible"] ?? true,
                 Sources = kind == LayerKind.Video ? [(string)l["source_video"]!] : l["media_paths"]?.AsArray().Select(x => (string)x!).ToList() ?? new(),
                 Fps = F("fps", 10),
-                Loop = (bool?)l["loop"] ?? true,
+                Play = (bool?)l["loop"] ?? true ? PlayMode.Loop : PlayMode.Once,
                 Opacity = F("opacity", 1),
                 Crop = [F("crop_left", 0), F("crop_top", 0), F("crop_right", 1) - F("crop_left", 0), F("crop_bottom", 1) - F("crop_top", 0)],
                 UvCenter = [F("uv_x", 0.38f) + F("uv_width", 0.24f) / 2 + F("offset_x", 0), F("uv_y", 0.18f) + F("uv_height", 0.18f) / 2 + F("offset_y", 0)],

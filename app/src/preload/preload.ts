@@ -25,6 +25,8 @@ const api = {
   writeFile: (path: string, data: Uint8Array): Promise<void> => ipcRenderer.invoke('files:write', path, data),
   openPath: (path: string): Promise<string> => ipcRenderer.invoke('shell:open', path),
   showInFolder: (path: string): Promise<void> => ipcRenderer.invoke('shell:show', path),
+  /** Appends an error line to GTFO_UserData/logs/app.log. */
+  appLog: (kind: string, detail: string): void => ipcRenderer.send('app:log', kind, detail),
   /** Absolute path of a dropped File (Electron removed File.path). */
   pathOf: (file: File): string => webUtils.getPathForFile(file),
 };

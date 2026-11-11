@@ -1,50 +1,76 @@
-// Weapon-list thumbnails: renders each catalog item's preview GLB offscreen, one at a time while the app is idle,
-// and keeps the image in localStorage (per viewer convenience; regenerated if missing).
-import { AmbientLight, Box3, DirectionalLight, Mesh, PerspectiveCamera, Scene, SRGBColorSpace, Vector3, WebGLRenderer, type Material, type MeshStandardMaterial } from 'three';
+// Weapon-list thumbnails: renders each catalog item's preview offscreen with the 3D view's materials, one at a time
+// while the app is idle, and keeps the image in localStorage (per viewer convenience). Each image is stored with a hash
+// of the preview it came from, so a new preview build (new cache, materials or textures) renders it again.
+import {
+  ACESFilmicToneMapping,
+  AmbientLight,
+  Box3,
+  DirectionalLight,
+  Mesh,
+  PerspectiveCamera,
+  Scene,
+  SRGBColorSpace,
+  Vector3,
+  WebGLRenderer,
+  type MeshStandardMaterial,
+  type Object3D,
+  type Texture,
+} from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
-import { call, fileUrl } from '../protocol';
+import { call, fileUrl, type SkinDocument, type WeaponPreview } from '../protocol';
 import { useStore } from '../store';
 import { unityDirToThree } from '../space';
-import { loadTexture } from './textures';
+import { editableMaterials, paintMaterial, restoreUnityNames, roomReflection } from './weaponScene';
 
 export const THUMB_EVENT = 'sf:thumbs';
-const key = (id: string) => `sf.thumb.v2.${id}`;
-export const thumbOf = (id: string) => {
+const key = (id: string) => `sf.thumb.v3.${id}`;
+const read = (k: string) => {
   try {
-    return localStorage.getItem(key(id));
+    return localStorage.getItem(k);
   } catch {
     return null;
   }
 };
+export const thumbOf = (id: string) => read(key(id));
+const hash = (text: string) => [...text].reduce((h, c) => Math.imul(h ^ c.charCodeAt(0), 16777619), 2166136261 >>> 0) >>> 0;
 
 let running = false;
 
-async function render(renderer: WebGLRenderer, id: string): Promise<string | null> {
-  const preview = await call('preview.weapon', { id });
+async function render(renderer: WebGLRenderer, env: Texture, preview: WeaponPreview): Promise<string | null> {
   const gltf = await new GLTFLoader().loadAsync(fileUrl(preview.glb));
+  restoreUnityNames(gltf);
   const scene = new Scene();
+  scene.environment = env;
   const sun = new DirectionalLight(0xffffff, 2.2);
   sun.position.set(1, 2, -1);
   scene.add(new AmbientLight(0xffffff, 1.2), sun);
   scene.add(gltf.scene);
-  const pending: Promise<void>[] = [];
+  // Only what the 3D view draws: meshes that belong to a part.
+  const partNodes = new Set(preview.parts.flatMap((p) => p.nodes));
+  const inPart = (o: Object3D | null): boolean => !!o && (partNodes.has(o.name) || inPart(o.parent));
   gltf.scene.traverse((o) => {
-    const mesh = o as Mesh;
-    if (!mesh.isMesh) return;
-    for (const m of (Array.isArray(mesh.material) ? mesh.material : [mesh.material]) as Material[]) {
-      const albedo = preview.textures[m.name]?.albedo;
-      if (albedo)
-        pending.push(
-          loadTexture(albedo, 'albedo').then((t) => {
-            (m as MeshStandardMaterial).map = t;
-            (m as MeshStandardMaterial).metalness = 0.3;
-            m.needsUpdate = true;
-          }, () => undefined),
-        );
-    }
+    if ((o as Mesh).isMesh && !inPart(o)) o.visible = false;
   });
-  await Promise.all(pending);
-  const box = new Box3().setFromObject(gltf.scene);
+  const mats = new Map<string, MeshStandardMaterial>();
+  editableMaterials(gltf.scene, mats);
+  const empty = {} as SkinDocument;
+  const keep = new Set<string>();
+  await Promise.allSettled(
+    [...mats].flatMap(([name, mat]) =>
+      paintMaterial(
+        mat,
+        name,
+        empty,
+        preview,
+        keep,
+        () => false,
+        () => undefined,
+      ),
+    ),
+  );
+  gltf.scene.updateMatrixWorld(true);
+  const box = new Box3();
+  gltf.scene.traverse((o) => o.visible && (o as Mesh).isMesh && box.expandByObject(o));
   if (box.isEmpty()) return null;
   const center = box.getCenter(new Vector3());
   const radius = box.getSize(new Vector3()).length() / 2;
@@ -58,8 +84,8 @@ async function render(renderer: WebGLRenderer, id: string): Promise<string | nul
     const mesh = o as Mesh;
     if (!mesh.isMesh) return;
     mesh.geometry.dispose();
-    (Array.isArray(mesh.material) ? mesh.material : [mesh.material]).forEach((m) => m.dispose());
   });
+  mats.forEach((m) => m.dispose());
   return url;
 }
 
@@ -70,16 +96,28 @@ export async function fillThumbnails(): Promise<void> {
   const canvas = document.createElement('canvas');
   canvas.width = 256;
   canvas.height = 128;
-  const renderer = new WebGLRenderer({ canvas, alpha: true, antialias: true, preserveDrawingBuffer: true });
+  const renderer = new WebGLRenderer({
+    canvas,
+    alpha: true,
+    antialias: true,
+    preserveDrawingBuffer: true,
+  });
   renderer.outputColorSpace = SRGBColorSpace;
+  renderer.toneMapping = ACESFilmicToneMapping;
+  const env = roomReflection(renderer, '#ffffff');
   try {
+    // Images from earlier thumbnail formats are never read again.
+    for (const k of Object.keys(localStorage)) if (k.startsWith('sf.thumb.') && !k.startsWith('sf.thumb.v3.')) localStorage.removeItem(k);
     for (const item of useStore.getState().catalog) {
-      if (thumbOf(item.id)) continue;
       while (useStore.getState().previewLoading || useStore.getState().busy) await new Promise((r) => setTimeout(r, 1000));
       try {
-        const url = await render(renderer, item.id);
+        const preview = await call('preview.weapon', { id: item.id });
+        const source = String(hash(JSON.stringify(preview)));
+        if (thumbOf(item.id) && read(`${key(item.id)}.src`) === source) continue;
+        const url = await render(renderer, env, preview);
         if (url) {
           localStorage.setItem(key(item.id), url);
+          localStorage.setItem(`${key(item.id)}.src`, source);
           window.dispatchEvent(new Event(THUMB_EVENT));
         }
       } catch {
@@ -88,6 +126,7 @@ export async function fillThumbnails(): Promise<void> {
       await new Promise((r) => setTimeout(r, 150));
     }
   } finally {
+    env.dispose();
     renderer.dispose();
     running = false;
   }

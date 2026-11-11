@@ -1,20 +1,15 @@
 import { useGLTF } from '@react-three/drei';
 import { useFrame, type ThreeEvent } from '@react-three/fiber';
 import { useEffect, useMemo, useRef } from 'react';
-import { Box3, CanvasTexture, Color, Vector3, Mesh, MeshStandardMaterial, SRGBColorSpace, type Material, type Object3D, type Texture } from 'three';
-import { baseTexturePath, drawLayer, LayerSource, loadImage } from '../frames';
-import { CHANNELS, fileUrl, type DynamicLayer, type TextureChannel, type WeaponPreview } from '../protocol';
-import { editorOf, materialOf, useStore } from '../store';
-import { applyDelta, type Vec3 } from '../space';
-import { loadTexture } from './textures';
-import { commonAncestor, partOf, partTargets, quiet, SCENE_EVENT, viewRefs } from './refs';
-
-const SLOT: Record<TextureChannel, 'map' | 'normalMap' | 'metalnessMap' | 'emissiveMap'> = {
-  albedo: 'map',
-  normal: 'normalMap',
-  metallicSmoothness: 'metalnessMap',
-  emissive: 'emissiveMap',
-};
+import { Box3, CanvasTexture, Mesh, Vector3, SRGBColorSpace, type MeshStandardMaterial, type Object3D } from 'three';
+import { drawLayer, LayerSource, loadImage } from '../frames';
+import { CHANNELS, fileUrl, type DynamicLayer, type WeaponPreview } from '../protocol';
+import { editorOf, useStore } from '../store';
+import { poseWith, unityToThree } from '../space';
+import { releaseTextures } from './textures';
+import { editableMaterials, paintMaterial, restoreUnityNames } from './weaponScene';
+import { displayOffset, partOf, partTarget, pathChain, playTime, registerTransforms, quiet, SCENE_EVENT, viewRefs } from './refs';
+import { t } from '../i18n';
 
 /** Live composite of a base texture plus its dynamic layers (the 3D decal preview). */
 class Compositor {
@@ -39,9 +34,9 @@ class Compositor {
     ctx.fillStyle = '#808080';
     ctx.fillRect(0, 0, W, H);
     if (this.base) ctx.drawImage(this.base, 0, 0, W, H);
-    const t = (performance.now() - this.start) / 1000;
     for (const [l, src] of this.sources) {
-      const f = src.at(t);
+      const time = playTime(l.trigger, l.play, l.playSeconds, src.duration, this.start);
+      const f = time === null ? null : src.at(time);
       if (f) drawLayer(ctx, f, l, W, H);
     }
     this.texture.needsUpdate = true;
@@ -53,11 +48,12 @@ class Compositor {
   }
 }
 
+let shownGlb: string | null = null;
+
 export function WeaponModel({ preview }: { preview: WeaponPreview }) {
   const gltf = useGLTF(fileUrl(preview.glb));
   const scene = useMemo(() => {
-    // Mark real glTF nodes (Unity transforms), as opposed to the extra meshes the loader makes for multi-material primitives.
-    gltf.scene.traverse((o) => void (o.userData.sfNode = gltf.parser.associations.get(o)?.nodes !== undefined));
+    restoreUnityNames(gltf);
     return gltf.scene.clone(true);
   }, [gltf]);
   const doc = useStore((s) => s.doc);
@@ -70,55 +66,69 @@ export function WeaponModel({ preview }: { preview: WeaponPreview }) {
   useEffect(() => {
     viewRefs.root = scene;
     viewRefs.partNodes.clear();
-    viewRefs.partRoots.clear();
+    viewRefs.transforms.clear();
+    viewRefs.transformKey.clear();
     viewRefs.nodeToPart.clear();
     for (const p of preview.parts) {
       const nodes = p.nodes.map((n) => scene.getObjectByName(n)).filter(Boolean) as Object3D[];
       viewRefs.partNodes.set(p.id, nodes);
       nodes.forEach((n) => viewRefs.nodeToPart.set(n, p.id));
-      const root = commonAncestor(nodes);
-      if (root) viewRefs.partRoots.set(p.id, root);
+      registerTransforms(
+        p.id,
+        (p.transforms ?? []).flatMap((t) => {
+          const obj = scene.getObjectByName(t.node);
+          return obj ? [{ path: t.path, obj }] : [];
+        }),
+      );
     }
-    const pose = (o: Object3D) => ({ position: o.position.clone(), quaternion: o.quaternion.clone(), scale: o.scale.clone() });
-    scene.traverse((o) => viewRefs.vanilla.set(o, pose(o)));
+    const pose = (o: Object3D) => ({
+      position: o.position.clone(),
+      quaternion: o.quaternion.clone(),
+      scale: o.scale.clone(),
+    });
+    // Captured once per model; an effect re-run (StrictMode, preview refresh) restores it before laying out ammo again.
+    scene.traverse((o) => {
+      const v = viewRefs.vanilla.get(o);
+      if (!v) return void viewRefs.vanilla.set(o, pose(o));
+      o.position.copy(v.position);
+      o.quaternion.copy(v.quaternion);
+      o.scale.copy(v.scale);
+    });
     layOutAmmo();
     scene.traverse((o) => viewRefs.display.set(o, pose(o)));
-    // Sub-parts: named transforms under each part that carry geometry.
-    const hasMesh = (o: Object3D) => {
-      let found = false;
-      o.traverse((c) => void (found ||= (c as Mesh).isMesh));
-      return found;
-    };
-    const subParts: Record<string, { name: string; depth: number }[]> = {};
-    for (const [part, root] of viewRefs.partRoots) {
-      const list: { name: string; depth: number }[] = [];
-      const walk = (o: Object3D, depth: number) => {
-        for (const c of o.children) {
-          if (!c.userData.sfNode || !c.name || !hasMesh(c)) continue;
-          list.push({ name: c.name, depth });
-          walk(c, depth + 1);
-        }
-      };
-      walk(root, 0);
-      subParts[part] = list;
-    }
-    useStore.setState({ subParts });
-    const mats = materials.current;
+    // Every drawn mesh belongs to a part and can be selected; anything else is hidden and named once in the log.
+    const unmapped: string[] = [];
     scene.traverse((o) => {
-      const mesh = o as Mesh;
-      if (!mesh.isMesh) return;
-      const list = (Array.isArray(mesh.material) ? mesh.material : [mesh.material]) as Material[];
-      const mine = list.map((m) => {
-        let mat = mats.get(m.name);
-        if (!mat) {
-          mat = new MeshStandardMaterial({ name: m.name, color: 0xffffff, metalness: 1, roughness: 1 });
-          mats.set(m.name, mat);
-        }
-        return mat;
-      });
-      mesh.material = Array.isArray(mesh.material) ? mine : mine[0];
-      mesh.castShadow = mesh.receiveShadow = false;
+      if ((o as Mesh).isMesh && !partOf(o)) {
+        o.userData.sfUnmapped = true;
+        o.visible = false;
+        unmapped.push(o.name || t('weaponModel.k1'));
+      }
     });
+    if (unmapped.length)
+      useStore.getState().log(
+        t('weaponModel.k2', {
+          v0: useStore.getState().weaponId,
+          v1: unmapped.length,
+          v2: unmapped.join('、'),
+        }),
+      );
+    // Sub-parts: named transforms under each part that carry geometry.
+    const subParts: Record<string, { path: string; name: string; depth: number }[]> = {};
+    for (const p of preview.parts)
+      subParts[p.id] = (p.transforms ?? []).flatMap((t) =>
+        t.path
+          ? [
+              {
+                path: t.path,
+                name: t.name,
+                depth: t.path.split('/').length - 1,
+              },
+            ]
+          : [],
+      );
+    useStore.setState({ subParts });
+    editableMaterials(scene, materials.current);
     window.dispatchEvent(new Event(SCENE_EVENT));
     return () => {
       viewRefs.root = null;
@@ -128,44 +138,32 @@ export function WeaponModel({ preview }: { preview: WeaponPreview }) {
   // Apply textures and parameters from the document over the game's own.
   useEffect(() => {
     let cancelled = false;
+    const keep = new Set<string>();
+    const loads: Promise<unknown>[] = [];
     for (const [name, mat] of materials.current) {
-      const override = materialOf(doc, name);
-      const params = { ...preview.params[name], ...Object.fromEntries(Object.entries(override?.params ?? {}).filter(([, v]) => v != null)) };
-      const layers = (override?.layers ?? []).filter((l): l is DynamicLayer => !!l && l.visible !== false);
       for (const ch of CHANNELS) {
-        const path = baseTexturePath(doc, preview, name, ch);
-        const chLayers = layers.filter((l) => (l.channel ?? 'albedo') === ch);
-        const key = `${name}|${ch}`;
-        compositors.current.get(key)?.dispose();
-        compositors.current.delete(key);
-        if (chLayers.length) {
-          const c = new Compositor(path, chLayers);
-          compositors.current.set(key, c);
-          setSlot(mat, ch, c.texture);
-          continue;
-        }
-        if (!path) {
-          setSlot(mat, ch, null);
-          continue;
-        }
-        loadTexture(path, ch).then(
-          (t) => !cancelled && setSlot(mat, ch, t),
-          () => useStore.getState().log(`贴图读不了：${path}`),
-        );
+        compositors.current.get(`${name}|${ch}`)?.dispose();
+        compositors.current.delete(`${name}|${ch}`);
       }
-      const tint = params.tint ?? [1, 1, 1, 1];
-      mat.color.setRGB(tint[0], tint[1], tint[2]);
-      // With a MetallicSmoothness map the scalars multiply it; without one, fall back to a neutral finish.
-      const hasMs = !!baseTexturePath(doc, preview, name, 'metallicSmoothness');
-      mat.metalness = params.metallic ?? (hasMs ? 1 : 0.4);
-      mat.roughness = params.smoothness != null ? 1 - params.smoothness : hasMs ? 1 : 0.55;
-      const on = params.emissiveEnabled ?? !!mat.emissiveMap;
-      const c = params.emissiveColor ?? [1, 1, 1];
-      const k = on ? (params.emissiveIntensity ?? 1) : 0;
-      mat.emissive = new Color(c[0], c[1], c[2]);
-      mat.emissiveIntensity = k;
-      mat.needsUpdate = true;
+      loads.push(
+        ...paintMaterial(
+          mat,
+          name,
+          doc,
+          preview,
+          keep,
+          () => cancelled,
+          (path) => useStore.getState().log(t('weaponModel.k3', { v0: path })),
+          (ch, base, layers) => {
+            const c = new Compositor(base, layers);
+            compositors.current.set(`${name}|${ch}`, c);
+            return c.texture;
+          },
+        ),
+      );
     }
+    // Once the materials hold this document's textures, free the ones nothing uses any more (replaced or undone images).
+    void Promise.allSettled(loads).then(() => !cancelled && releaseTextures(keep));
     return () => {
       cancelled = true;
     };
@@ -173,7 +171,19 @@ export function WeaponModel({ preview }: { preview: WeaponPreview }) {
 
   useEffect(() => () => compositors.current.forEach((c) => c.dispose()), []);
 
-  // Part layout (deltas on the vanilla pose) and visibility: hidden (layout) and switched-off parts.
+  // Leaving this weapon frees its GPU copies (geometry, the editable materials) and drops the previous glTF from the
+  // loader cache; a later visit reloads it. Disposed objects that are drawn again are simply re-uploaded (StrictMode).
+  useEffect(() => {
+    if (shownGlb && shownGlb !== preview.glb) useGLTF.clear(fileUrl(shownGlb));
+    shownGlb = preview.glb;
+    const mats = materials.current;
+    return () => {
+      scene.traverse((o) => (o as Mesh).geometry?.dispose());
+      mats.forEach((m) => m.dispose());
+    };
+  }, [scene, preview.glb]);
+
+  // Part layout (absolute local values; null keeps the game's) and visibility: hidden (layout) and switched-off parts.
   useEffect(() => {
     scene.traverse((o) => {
       const v = viewRefs.display.get(o);
@@ -181,18 +191,18 @@ export function WeaponModel({ preview }: { preview: WeaponPreview }) {
       o.position.copy(v.position);
       o.quaternion.copy(v.quaternion);
       o.scale.copy(v.scale);
-      if (o.userData.sfNode) o.visible = true;
+      if (o.userData.sfNode && !o.userData.sfUnmapped) o.visible = true;
     });
     for (const t of doc.parts ?? []) {
       if (!t) continue;
-      const delta = { position: (t.position ?? [0, 0, 0]) as Vec3, rotation: (t.rotation ?? [0, 0, 0]) as Vec3, scale: (t.scale ?? [1, 1, 1]) as Vec3 };
-      for (const o of partTargets(t.part ?? '', t.transform)) {
-        const r = applyDelta(viewRefs.display.get(o)!, delta);
-        o.position.copy(r.position);
-        o.quaternion.copy(r.quaternion);
-        o.scale.copy(r.scale);
-        if (t.visible === false) o.visible = false;
-      }
+      const o = partTarget(t.part ?? '', t.path);
+      const vanilla = o && viewRefs.vanilla.get(o);
+      if (!o || !vanilla) continue;
+      const r = unityToThree(poseWith(vanilla, t));
+      o.position.copy(r.position).add(displayOffset(o));
+      o.quaternion.copy(r.quaternion);
+      o.scale.copy(r.scale);
+      if (t.visible === false) o.visible = false;
     }
     const ed = editorOf(doc);
     for (const [part, nodes] of viewRefs.partNodes) {
@@ -218,26 +228,21 @@ export function WeaponModel({ preview }: { preview: WeaponPreview }) {
     }
     const part = partOf(e.object);
     if (!part) return;
-    // Clicking the selected part again drills one level down into the sub-part under the cursor.
-    const path: Object3D[] = [];
-    const root = viewRefs.partRoots.get(part);
-    for (let o: Object3D | null = e.object; o && o !== root; o = o.parent) if (o.userData.sfNode && o.name) path.unshift(o);
+    // Clicking the selected part again drills one level down into the child transform under the cursor.
+    const chain = pathChain(part, e.object);
     const sel = s.selection;
     let sub: string | null = null;
-    if (sel?.kind === 'part' && sel.id === part && path.length) {
-      const i = sel.sub ? path.findIndex((o) => o.name === sel.sub) : -1;
-      sub = path[Math.min(i + 1, path.length - 1)].name;
-    }
+    if (sel?.kind === 'part' && sel.id === part && chain.length) sub = chain[Math.min(chain.indexOf(sel.sub ?? null) + 1, chain.length - 1)];
     select({ kind: 'part', id: part, sub });
   };
 
   return <primitive object={scene} onClick={onClick} />;
 }
 
-// Ammo parts sit inside the gun; the preview lines them up just below the front of the gun instead. Display only: the
-// offset is baked into `viewRefs.display` at load, never stored in the document and never applied in game.
-// From the muzzle backwards: speed loader, whole bullet, empty shell, so in the side view the shell is on the left and
-// the bullet on the right, bottoms aligned.
+// Ammo parts sit inside the gun, and some of their nodes rest wherever the game's animator leaves them (an ejected
+// shell's bone can rest well away from the gun). The preview lines every ammo piece up in one row just below the gun
+// instead, each piece on its own. Display only: the offset is baked into `viewRefs.display` at load, never stored in
+// the document and never applied in game. From the muzzle backwards: speed loader, whole bullets, empty shells.
 const AMMO_ORDER = ['ammo_speedloader', 'ammo_bullet', 'ammo_shell'];
 
 function layOutAmmo() {
@@ -246,33 +251,27 @@ function layOutAmmo() {
   for (const [part, nodes] of viewRefs.partNodes) if (!AMMO_ORDER.includes(part)) nodes.forEach((n) => gun.expandByObject(n));
   if (gun.isEmpty()) return;
   const gap = Math.min(0.03, Math.max(0.01, gun.getSize(new Vector3()).length() * 0.04));
-  const rows = AMMO_ORDER.map((part) => {
+  // One item per outermost node: a node inside another moved node moves with it.
+  const items = AMMO_ORDER.flatMap((part) => {
     const nodes = viewRefs.partNodes.get(part) ?? [];
-    const box = new Box3();
-    nodes.forEach((n) => box.expandByObject(n));
-    return { nodes, box };
-  }).filter((r) => !r.box.isEmpty());
-  const height = Math.max(0, ...rows.map((r) => r.box.max.y - r.box.min.y));
+    const set = new Set(nodes);
+    return nodes
+      .filter((n) => {
+        for (let p = n.parent; p; p = p.parent) if (set.has(p)) return false;
+        return true;
+      })
+      .map((n) => ({ n, box: new Box3().expandByObject(n) }))
+      .filter((r) => !r.box.isEmpty());
+  });
+  const height = Math.max(0, ...items.map((r) => r.box.max.y - r.box.min.y));
   const bottom = gun.min.y - gap - height;
   const centerX = (gun.min.x + gun.max.x) / 2;
   let cursor = gun.min.z; // three -Z is the muzzle (Unity +Z)
-  for (const { nodes, box } of rows) {
+  for (const { n, box } of items) {
     const delta = new Vector3(centerX - (box.min.x + box.max.x) / 2, bottom - box.min.y, cursor - box.min.z);
     cursor += box.max.z - box.min.z + gap / 2;
-    const moved = new Set(nodes);
-    for (const n of nodes) {
-      let nested = false;
-      for (let p = n.parent; p && !nested; p = p.parent) nested = moved.has(p);
-      if (nested) continue;
-      const target = n.getWorldPosition(new Vector3()).add(delta);
-      n.position.copy(n.parent!.worldToLocal(target));
-    }
+    const target = n.getWorldPosition(new Vector3()).add(delta);
+    n.position.copy(n.parent!.worldToLocal(target));
+    n.updateMatrixWorld(true);
   }
-}
-
-function setSlot(mat: MeshStandardMaterial, ch: TextureChannel, t: Texture | null) {
-  const slot = SLOT[ch];
-  mat[slot] = t;
-  if (ch === 'metallicSmoothness') mat.roughnessMap = t;
-  mat.needsUpdate = true;
 }

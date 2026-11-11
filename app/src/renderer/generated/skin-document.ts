@@ -8,7 +8,8 @@ author?: string
 version?: string
 target?: {
 weapon?: (string | null)
-archetypeId?: (number | null)
+gearId?: (number | null)
+itemId?: (number | null)
 }
 materials?: ({
 material?: string
@@ -38,7 +39,10 @@ sizePx?: number
 color?: number[]
 } | null)
 fps?: number
-loop?: boolean
+trigger?: ("always" | "kill" | "hit" | "fire" | "dryFire" | "reloadStart" | "reloadEnd" | "equip" | "unequip" | "aim" | "aimEnd" | "lowAmmo" | "empty" | "ammoPickup" | "flashlightOn" | "flashlightOff")
+play?: ("loop" | "once" | "loopFor")
+playSeconds?: number
+lowAmmoFraction?: number
 opacity?: number
 crop?: number[]
 uvCenter?: number[]
@@ -81,7 +85,7 @@ tint?: Tint
 }
 } | null)
 screen?: ({
-source?: ("ammoClip" | "ammoReserve" | "ammoTotal" | "static")
+source?: ("ammoClip" | "ammoReserve" | "ammoTotal" | "static" | "kills")
 digits?: number
 padZero?: boolean
 staticText?: (string | null)
@@ -98,14 +102,29 @@ lowAmmoFraction?: number
 lowAmmoColor?: (number[] | null)
 glyphAtlas?: (string | null)
 } | null)
+effects?: ({
+trigger?: ("always" | "kill" | "hit" | "fire" | "dryFire" | "reloadStart" | "reloadEnd" | "equip" | "unequip" | "aim" | "aimEnd" | "lowAmmo" | "empty" | "ammoPickup" | "flashlightOn" | "flashlightOff")
+action?: ("flash" | "show")
+color?: number[]
+intensity?: number
+seconds?: number
+} | null)[]
 } | null)[]
 parts?: ({
 part?: string
-transform?: (string | null)
-position?: number[]
-rotation?: number[]
-scale?: number[]
-visible?: boolean
+path?: (string | null)
+position?: (number[] | null)
+rotation?: (number[] | null)
+scale?: (number[] | null)
+visible?: (boolean | null)
+} | null)[]
+sounds?: ({
+id?: string
+name?: string
+trigger?: ("always" | "kill" | "hit" | "fire" | "dryFire" | "reloadStart" | "reloadEnd" | "equip" | "unequip" | "aim" | "aimEnd" | "lowAmmo" | "empty" | "ammoPickup" | "flashlightOn" | "flashlightOff")
+file?: string
+volume?: number
+lowAmmoFraction?: number
 } | null)[]
 editor?: ({
 

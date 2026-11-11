@@ -65,38 +65,32 @@ export interface ThreeTRS {
   scale: Vector3;
 }
 
-/**
- * Part layout delta (PLAN §3.1) on a vanilla local pose: position = vanilla + delta, rotation = vanilla * Euler(delta),
- * scale = vanilla * delta. The mirror across Z is linear and a quaternion homomorphism, so the same rules hold in three space.
- */
-export function applyDelta(vanilla: ThreeTRS, delta: UnityPose): ThreeTRS {
-  const d = unityToThree(delta);
+/** Absolute local values of a part layout entry (PLAN §3.1); null keeps the game's value. */
+export interface PoseOverride {
+  position?: number[] | null;
+  rotation?: number[] | null;
+  scale?: number[] | null;
+}
+
+/** Unity local pose shown for a part node: the entry's value where set, the game's value elsewhere. */
+export function poseWith(vanilla: ThreeTRS, entry: PoseOverride | undefined): UnityPose {
+  const v = threeToUnity(vanilla.position, vanilla.quaternion, vanilla.scale);
   return {
-    position: vanilla.position.clone().add(d.position),
-    quaternion: vanilla.quaternion.clone().multiply(d.quaternion),
-    scale: vanilla.scale.clone().multiply(d.scale),
+    position: (entry?.position as Vec3 | null | undefined) ?? v.position,
+    rotation: (entry?.rotation as Vec3 | null | undefined) ?? v.rotation,
+    scale: (entry?.scale as Vec3 | null | undefined) ?? v.scale,
   };
 }
 
-/** Inverse of applyDelta: the delta that turns `vanilla` into `current`. */
-export function deltaFrom(vanilla: ThreeTRS, current: ThreeTRS): UnityPose {
-  const safe = (v: number) => (Math.abs(v) < 1e-9 ? 1e-9 : v);
-  return threeToUnity(
-    current.position.clone().sub(vanilla.position),
-    vanilla.quaternion.clone().invert().multiply(current.quaternion),
-    new Vector3(current.scale.x / safe(vanilla.scale.x), current.scale.y / safe(vanilla.scale.y), current.scale.z / safe(vanilla.scale.z)),
-  );
-}
-
-/** Resulting Unity local pose (what Unity's Transform panel shows) for a vanilla pose plus a delta. */
-export function resultingPose(vanilla: ThreeTRS, delta: UnityPose): UnityPose {
-  const r = applyDelta(vanilla, delta);
-  return threeToUnity(r.position, r.quaternion, r.scale);
-}
-
-/** Delta that produces the given resulting Unity local pose. */
-export function deltaForPose(vanilla: ThreeTRS, pose: UnityPose): UnityPose {
-  return deltaFrom(vanilla, unityToThree(pose));
+/** Entry fields for `pose`: each value that differs from the game's, null where it matches. */
+export function overridesFor(vanilla: ThreeTRS, pose: UnityPose): { position: Vec3 | null; rotation: Vec3 | null; scale: Vec3 | null } {
+  const t = unityToThree(pose);
+  const near = (a: Vector3, b: Vector3) => a.distanceTo(b) < 1e-5;
+  return {
+    position: near(t.position, vanilla.position) ? null : pose.position,
+    rotation: t.quaternion.angleTo(vanilla.quaternion) < 1e-4 ? null : pose.rotation,
+    scale: near(t.scale, vanilla.scale) ? null : pose.scale,
+  };
 }
 
 export const IDENTITY: UnityPose = { position: [0, 0, 0], rotation: [0, 0, 0], scale: [1, 1, 1] };

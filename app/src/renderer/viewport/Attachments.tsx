@@ -1,12 +1,24 @@
 import { Edges, useGLTF } from '@react-three/drei';
 import { createPortal, useFrame, type ThreeEvent } from '@react-three/fiber';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { CanvasTexture, DoubleSide, Group, MeshBasicMaterial, SRGBColorSpace, type Mesh, type MeshStandardMaterial, type Object3D } from 'three';
+import {
+  CanvasTexture,
+  Color,
+  DoubleSide,
+  Group,
+  MeshBasicMaterial,
+  SRGBColorSpace,
+  type Mesh,
+  type MeshStandardMaterial,
+  type Object3D,
+} from 'three';
 import { glyphCanvas, GLYPHS } from '../frames';
-import { fileUrl, type Attachment, type Screen } from '../protocol';
+import { loadFont } from '../fonts';
+import { fileUrl, type Attachment, type Screen, type TriggerEffect } from '../protocol';
 import { unityToThree } from '../space';
 import { useStore } from '../store';
-import { anchorObject, quiet, SCENE_EVENT, viewRefs } from './refs';
+import { anchorObject, previewEvents, quiet, SCENE_EVENT, viewRefs } from './refs';
+import { t } from '../i18n';
 
 const rgb = (c?: number[] | null) => `rgb(${(c?.[0] ?? 1) * 255},${(c?.[1] ?? 1) * 255},${(c?.[2] ?? 1) * 255})`;
 
@@ -20,7 +32,16 @@ function ScreenMesh({ screen, selected, onPick }: { screen: Screen; selected: bo
     t.colorSpace = SRGBColorSpace;
     return t;
   }, [canvas]);
-  const glyphs = useMemo(() => glyphCanvas(screen.font), [screen.font]);
+  // Redrawn once the chosen font has loaded (canvas text does not wait for it).
+  const [glyphs, setGlyphs] = useState(() => glyphCanvas(screen.font));
+  useEffect(() => {
+    let live = true;
+    loadFont(screen.font).then(
+      () => live && setGlyphs(glyphCanvas(screen.font)),
+      () => useStore.getState().log(t('attachments.k1', { v0: screen.font })),
+    );
+    return () => void (live = false);
+  }, [screen.font]);
 
   // Redraws the face: counts down so the low-ammo colour is visible too.
   const draw = (value: number) => {
@@ -45,8 +66,9 @@ function ScreenMesh({ screen, selected, onPick }: { screen: Screen; selected: bo
       ctx.strokeRect(bw / 2, bw / 2, px - bw, H - bw);
     }
     const digits = Math.max(1, screen.digits ?? 2);
-    const text = screen.source === 'static' ? (screen.staticText ?? '') : screen.padZero !== false ? String(value).padStart(digits, '0') : String(value);
-    const low = screen.lowAmmoColor && value / 30 <= (screen.lowAmmoFraction ?? 0.2);
+    const text =
+      screen.source === 'static' ? (screen.staticText ?? '') : screen.padZero !== false ? String(value).padStart(digits, '0') : String(value);
+    const low = !kills && screen.lowAmmoColor && value / 30 <= (screen.lowAmmoFraction ?? 0.2);
     const gh = H * (screen.textScale ?? 0.8);
     const cellW = glyphs.width / GLYPHS.length;
     const gw = (gh * cellW) / glyphs.height;
@@ -69,9 +91,15 @@ function ScreenMesh({ screen, selected, onPick }: { screen: Screen; selected: bo
     texture.needsUpdate = true;
   };
 
-  useEffect(() => draw(30), [screen, glyphs]); // eslint-disable-line react-hooks/exhaustive-deps
+  const kills = screen.source === 'kills';
+  useEffect(() => draw(kills ? previewEvents.kills : 30), [screen, glyphs]); // eslint-disable-line react-hooks/exhaustive-deps
   const last = useRef(0);
   useFrame(({ clock }) => {
+    if (kills) {
+      // The kill count changes only on 模拟击杀.
+      if (sample.current !== previewEvents.kills) draw((sample.current = previewEvents.kills));
+      return;
+    }
     if (screen.source === 'static' || clock.elapsedTime - last.current < 0.35) return;
     last.current = clock.elapsedTime;
     sample.current = (sample.current + 1) % 31;
@@ -108,6 +136,51 @@ function MeshModel({ glb, attachment, onPick }: { glb: string; attachment: Attac
   return <primitive object={scene} onClick={onPick} />;
 }
 
+const since = (e: TriggerEffect) => {
+  const at = previewEvents.at[e.trigger ?? 'kill'];
+  return at === undefined ? Infinity : (performance.now() - at) / 1000;
+};
+
+/** Attachment effects as the game plays them: `show` hides it except for a few seconds after its event, `flash` adds a fading emission. */
+function playEffects(g: Group, a: Attachment) {
+  const effects = (a.effects ?? []).filter((e): e is TriggerEffect => !!e);
+  const shows = effects.filter((e) => e.action === 'show');
+  g.visible = !shows.length || shows.some((e) => since(e) < (e.seconds ?? 1));
+  let k = 0;
+  const glow = new Color();
+  for (const e of effects) {
+    const t = since(e);
+    const s = e.seconds ?? 0.4;
+    if (e.action === 'show' || t >= s) continue;
+    const w = (e.intensity ?? 4) * (1 - t / s);
+    const c = e.color ?? [1, 1, 1, 1];
+    glow.r += c[0] * w;
+    glow.g += c[1] * w;
+    glow.b += c[2] * w;
+    k += w;
+  }
+  g.traverse((o) => {
+    const m = (o as Mesh).material as (MeshStandardMaterial & MeshBasicMaterial) | undefined;
+    if (!m || Array.isArray(m)) return;
+    if (m.isMeshStandardMaterial) {
+      const base = (m.userData.sfEmissive ??= {
+        color: m.emissive.clone(),
+        k: m.emissiveIntensity,
+      }) as { color: Color; k: number };
+      if (k > 0) {
+        m.emissive.copy(glow).multiplyScalar(1 / k);
+        m.emissiveIntensity = k;
+      } else {
+        m.emissive.copy(base.color);
+        m.emissiveIntensity = base.k;
+      }
+    } else if (m.isMeshBasicMaterial) {
+      const base = (m.userData.sfColor ??= m.color.clone()) as Color;
+      m.color.copy(base).add(glow);
+    }
+  });
+}
+
 function AttachmentNode({ a, anchor }: { a: Attachment; anchor: Object3D }) {
   const group = useRef<Group>(null);
   const selection = useStore((s) => s.selection);
@@ -128,7 +201,10 @@ function AttachmentNode({ a, anchor }: { a: Attachment; anchor: Object3D }) {
     g.scale.copy(pose.scale);
   });
   useFrame(({ camera }) => {
-    if (a.faceCamera && group.current) group.current.lookAt(camera.position); // visible face (three +Z) toward camera
+    const g = group.current;
+    if (!g) return;
+    if (a.faceCamera) g.lookAt(camera.position); // visible face (three +Z) toward camera
+    playEffects(g, a);
   });
   useEffect(() => {
     const g = group.current;

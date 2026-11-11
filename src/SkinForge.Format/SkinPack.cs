@@ -76,6 +76,9 @@ public sealed class SkinPack : IDisposable
         (head.Length >= 8 && head[0] == 0x89 && head[1] == 'P' && head[2] == 'N' && head[3] == 'G') ||
         (head.Length >= 3 && head[0] == 0xFF && head[1] == 0xD8 && head[2] == 0xFF);
 
+    // The container only; the plugin checks the Vorbis stream when it decodes.
+    public static bool IsOgg(byte[] head) => head.Length >= 4 && head[0] == 'O' && head[1] == 'g' && head[2] == 'g' && head[3] == 'S';
+
     public byte[] ReadBytes(string name)
     {
         var entry = _zip.GetEntry(name) ?? throw new SkinFormatException("missing-file", $"{FilePath}: {name} missing");
@@ -94,10 +97,10 @@ public sealed class SkinPack : IDisposable
             throw new SkinFormatException("schema", $"Unsupported schema {doc.Schema}");
         if (string.IsNullOrWhiteSpace(doc.Id))
             throw new SkinFormatException("no-id", "Skin id is empty");
-        if (doc.Target.Weapon != null && doc.Target.ArchetypeId == null)
-            throw new SkinFormatException("no-archetype", $"Weapon {doc.Target.Weapon} has no archetype id");
+        if (doc.Target.Weapon != null && (doc.Target.GearId == null) == (doc.Target.ItemId == null))
+            throw new SkinFormatException("no-gear", $"Weapon {doc.Target.Weapon} needs exactly one of a gear id and an item id");
 
-        void File(string? path, string where, bool image = false)
+        void File(string? path, string where, bool image = false, bool audio = false)
         {
             if (path == null) return;
             if (path.Contains("..") || Path.IsPathRooted(path))
@@ -105,6 +108,8 @@ public sealed class SkinPack : IDisposable
             var bytes = head(path) ?? throw new SkinFormatException("missing-file", $"{where}: {path} missing");
             if (image && !IsImage(bytes))
                 throw new SkinFormatException("bad-image", $"{where}: {path} is not a PNG or JPEG");
+            if (audio && !IsOgg(bytes))
+                throw new SkinFormatException("bad-audio", $"{where}: {path} is not an Ogg Vorbis file");
         }
         static void Vec(float[]? v, int n, string where)
         {
@@ -120,6 +125,8 @@ public sealed class SkinPack : IDisposable
             Vec(m.Params.Tint, 4, m.Material);
             foreach (var l in m.Layers)
             {
+                if (l.Play == PlayMode.LoopFor && !(l.PlaySeconds > 0))
+                    throw new SkinFormatException("bad-trigger", $"{m.Material}/{l.Id}: loopFor needs playSeconds > 0");
                 if (l.Atlas == null) throw new SkinFormatException("no-atlas", $"{m.Material}/{l.Id}: layer not baked");
                 File(l.Atlas.Path, $"{m.Material}/{l.Id}", true);
                 var a = l.Atlas;
@@ -130,11 +137,17 @@ public sealed class SkinPack : IDisposable
         }
         foreach (var t in doc.Parts)
         {
-            var where = $"{t.Part}/{t.Transform}";
+            var where = $"{t.Part}/{t.Path}";
             if (string.IsNullOrWhiteSpace(t.Part)) throw new SkinFormatException("no-anchor", "Part layout without a part id");
-            Vec(t.Position ?? Array.Empty<float>(), 3, where);
-            Vec(t.Rotation ?? Array.Empty<float>(), 3, where);
-            Vec(t.Scale ?? Array.Empty<float>(), 3, where);
+            Vec(t.Position, 3, where);
+            Vec(t.Rotation, 3, where);
+            Vec(t.Scale, 3, where);
+        }
+        foreach (var s in doc.Sounds)
+        {
+            if (s.Trigger == Trigger.Always || !(s.Volume >= 0))
+                throw new SkinFormatException("bad-trigger", $"{s.Id}: a sound needs an event trigger and a volume >= 0");
+            File(s.File, s.Id, audio: true);
         }
         foreach (var a in doc.Attachments)
         {
@@ -144,6 +157,12 @@ public sealed class SkinPack : IDisposable
             Vec(a.Rotation ?? Array.Empty<float>(), 3, a.Id);
             Vec(a.Scale ?? Array.Empty<float>(), 3, a.Id);
             File(a.Mesh, a.Id);
+            foreach (var e in a.Effects)
+            {
+                if (e.Trigger == Trigger.Always || !(e.Seconds > 0))
+                    throw new SkinFormatException("bad-trigger", $"{a.Id}: an effect needs an event trigger and seconds > 0");
+                Vec(e.Color ?? Array.Empty<float>(), 3, a.Id);
+            }
             if (a.Material != null) foreach (var t in a.Material.Textures.Values) File(t, a.Id, true);
             if (a.Screen != null)
             {

@@ -1,4 +1,5 @@
 import { app, BrowserWindow, dialog, ipcMain, net, protocol, shell, type OpenDialogOptions } from 'electron';
+import { appendFileSync, mkdirSync } from 'node:fs';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { dirname, isAbsolute, join, normalize, resolve, sep } from 'node:path';
 import { pathToFileURL } from 'node:url';
@@ -16,7 +17,28 @@ let win: BrowserWindow | null = null;
 let quitting = false;
 let startedAt = 0;
 let crashes = 0;
-const send = (channel: string, ...args: unknown[]) => win?.webContents.send(channel, ...args);
+// The window can be gone while the app shuts down (the backend exits after it).
+const send = (channel: string, ...args: unknown[]) => {
+  if (win && !win.isDestroyed()) win.webContents.send(channel, ...args);
+};
+
+/** Crash and error evidence: one line per event in GTFO_UserData/logs/app.log, written synchronously so it survives the crash. */
+function appLog(kind: string, detail: unknown) {
+  const text = detail instanceof Error ? `${detail.message}
+${detail.stack}` : typeof detail === 'string' ? detail : JSON.stringify(detail);
+  try {
+    const dir = join(Backend.dataDir(), 'logs');
+    mkdirSync(dir, { recursive: true });
+    appendFileSync(join(dir, 'app.log'), `${new Date().toISOString()} [${kind}] ${text}
+`);
+  } catch {
+    // nowhere left to report it
+  }
+}
+
+process.on('uncaughtException', (e) => appLog('main uncaughtException', e));
+process.on('unhandledRejection', (e) => appLog('main unhandledRejection', e));
+app.on('child-process-gone', (_e, d) => appLog('child-process-gone', d));
 
 const backend = new Backend(
   (event, data) => send('backend:event', event, data),
@@ -57,6 +79,12 @@ function createWindow() {
     },
   });
   win.once('ready-to-show', () => win?.show());
+  // A dead renderer is reloaded; the store then reopens the last weapon from its autosave.
+  win.webContents.on('render-process-gone', (_e, d) => {
+    appLog('render-process-gone', d);
+    if (d.reason !== 'clean-exit' && !quitting) setTimeout(() => win?.webContents.reload(), 500);
+  });
+  win.webContents.on('unresponsive', () => appLog('renderer unresponsive', ''));
   if (MAIN_WINDOW_VITE_DEV_SERVER_URL) win.loadURL(MAIN_WINDOW_VITE_DEV_SERVER_URL);
   else win.loadFile(join(__dirname, `../renderer/${MAIN_WINDOW_VITE_NAME}/index.html`));
   win.webContents.setWindowOpenHandler(({ url }) => {
@@ -65,11 +93,13 @@ function createWindow() {
   });
 }
 
-// The renderer may only write generated frame PNGs (project `.frames/`) and files inside the data dir.
+// The renderer may only write generated frame PNGs (project `.frames/`), converted sounds (project `sounds/*.ogg`) and
+// files inside the data dir.
 function writable(path: string): boolean {
   if (!isAbsolute(path)) return false;
   const p = normalize(path);
-  return p.split(sep).includes('.frames') || p.startsWith(resolve(Backend.dataDir()) + sep);
+  const dirs = p.split(sep);
+  return dirs.includes('.frames') || (dirs.at(-2) === 'sounds' && p.endsWith('.ogg')) || p.startsWith(resolve(Backend.dataDir()) + sep);
 }
 
 function registerIpc() {
@@ -102,6 +132,7 @@ function registerIpc() {
     await mkdir(dirname(path), { recursive: true });
     await writeFile(path, data);
   });
+  ipcMain.on('app:log', (_e, kind: string, detail: string) => appLog(kind, detail));
   ipcMain.handle('shell:open', (_e, path: string) => shell.openPath(path));
   ipcMain.handle('shell:show', (_e, path: string) => shell.showItemInFolder(path));
 }

@@ -1,8 +1,28 @@
-import { ActionIcon, Button, ColorInput, Group, Kbd, Loader, Paper, Popover, SegmentedControl, Slider, Stack, Stepper, Switch, Text, Title, Tooltip } from '@mantine/core';
+import {
+  ActionIcon,
+  Button,
+  ColorInput,
+  Group,
+  Kbd,
+  Loader,
+  Paper,
+  Popover,
+  SegmentedControl,
+  Slider,
+  Stack,
+  Stepper,
+  Switch,
+  Text,
+  Title,
+  Tooltip,
+} from '@mantine/core';
 import { IconArrowsMove, IconFocusCentered, IconFolder, IconMagnet, IconRotate, IconRotate360, IconSun, IconZoomScan } from '@tabler/icons-react';
+import { triggersFor } from '../protocol';
 import { useItem, useStore } from '../store';
+import { simulate } from '../viewport/refs';
 import { categoryOf } from './LeftRail';
 import { focusSelection, useModal, useViewStore, Viewport } from '../viewport/Viewport';
+import { lang, t } from '../i18n';
 
 function FirstRun() {
   const game = useStore((s) => s.game);
@@ -16,23 +36,23 @@ function FirstRun() {
       <Paper className="card" bg="transparent">
         {!ready ? (
           <Stack align="center">
-            <Title order={2}>正在准备</Title>
-            <Text c="dimmed">查找 GTFO 和武器列表…</Text>
+            <Title order={2}>{t('stage.k1')}</Title>
+            <Text c="dimmed">{t('stage.k2')}</Text>
             <Loader type="bars" size="sm" />
           </Stack>
         ) : (
           <Stack>
-            <Title order={2}>{found ? '选一把枪' : '先找到游戏'}</Title>
-            <Text c="dimmed">{found ? '从左边挑一把武器，它会出现在这里。' : '自动查找没有找到 GTFO。选一下游戏所在的文件夹（里面有 GTFO.exe）。'}</Text>
+            <Title order={2}>{found ? t('stage.k3') : t('stage.k4')}</Title>
+            <Text c="dimmed">{found ? t('stage.k5') : t('stage.k6')}</Text>
             <Stepper active={found ? 1 : 0} orientation="vertical" size="sm" color="flare">
-              <Stepper.Step label="连接游戏" />
-              <Stepper.Step label="选一把武器" />
-              <Stepper.Step label="把 Substance Painter 导出的贴图文件夹拖进来" />
-              <Stepper.Step label="点右上角「应用到游戏」" />
+              <Stepper.Step label={t('stage.k7')} />
+              <Stepper.Step label={t('stage.k8')} />
+              <Stepper.Step label={t('stage.k9')} />
+              <Stepper.Step label={t('stage.k10')} />
             </Stepper>
             {!found && (
               <Button size="sm" leftSection={<IconFolder size={16} />} onClick={() => void choose()}>
-                选择游戏文件夹
+                {t('stage.k11')}
               </Button>
             )}
           </Stack>
@@ -46,11 +66,29 @@ function ViewBar() {
   const view = useViewStore();
   return (
     <Group className="overlay views" gap={4}>
-      <Tooltip label="透视 / 正交（小键盘 5）。前后左右顶底：点右上角方块，或小键盘 1 3 7（加 Ctrl 看反面）">
-        <SegmentedControl size="xs" value={view.ortho ? 'o' : 'p'} onChange={(v) => view.set({ ortho: v === 'o' })} data={[{ value: 'p', label: '透视' }, { value: 'o', label: '正交' }]} />
+      <Tooltip label={t('stage.k12')}>
+        <SegmentedControl
+          size="xs"
+          value={view.ortho ? 'o' : 'p'}
+          onChange={(v) => view.set({ ortho: v === 'o' })}
+          data={[
+            {
+              value: 'p',
+              get label() {
+                return t('stage.k13');
+              },
+            },
+            {
+              value: 'o',
+              get label() {
+                return t('stage.k14');
+              },
+            },
+          ]}
+        />
       </Tooltip>
-      <Tooltip label="对准选中（F）">
-        <ActionIcon variant="subtle" color="gray" onClick={focusSelection} aria-label="对准选中">
+      <Tooltip label={t('stage.k15')}>
+        <ActionIcon variant="subtle" color="gray" onClick={focusSelection} aria-label={t('stage.k16')}>
           <IconFocusCentered size={16} />
         </ActionIcon>
       </Tooltip>
@@ -65,8 +103,8 @@ function LightBar() {
     <Group className="overlay light" gap={4}>
       <Popover position="top-start" width={260} withArrow>
         <Popover.Target>
-          <Tooltip label="灯光">
-            <ActionIcon variant="subtle" color="gray" aria-label="灯光">
+          <Tooltip label={t('stage.k17')}>
+            <ActionIcon variant="subtle" color="gray" aria-label={t('stage.k17')}>
               <IconSun size={16} />
             </ActionIcon>
           </Tooltip>
@@ -75,17 +113,29 @@ function LightBar() {
           <Stack gap="sm">
             <div>
               <Text size="xs" c="dimmed" mb={4}>
-                环境光 {prefs.ambient.toFixed(2)}（调到 0 只看自发光）
+                {t('stage.k18')} {prefs.ambient.toFixed(2)}
+                {t('stage.k19')}
               </Text>
               <Slider min={0} max={3} step={0.05} value={prefs.ambient} onChange={(v) => setPrefs({ ambient: v })} />
             </div>
-            <ColorInput label="光色" value={prefs.ambientColor} onChange={(v) => setPrefs({ ambientColor: v })} />
-            <Switch label="亮的发光像素会泛光" checked={prefs.bloom} onChange={(e) => setPrefs({ bloom: e.currentTarget.checked })} />
+            {/* Nested dropdown stays inside the popover; in a portal, clicks in it count as outside and close the popover. */}
+            <ColorInput
+              label={t('stage.k20')}
+              value={prefs.ambientColor}
+              onChange={(v) => setPrefs({ ambientColor: v })}
+              popoverProps={{ withinPortal: false }}
+            />
+            <Switch label={t('stage.k21')} checked={prefs.bloom} onChange={(e) => setPrefs({ bloom: e.currentTarget.checked })} />
           </Stack>
         </Popover.Dropdown>
       </Popover>
-      <Tooltip label="自动旋转">
-        <ActionIcon variant={prefs.autoRotate ? 'light' : 'subtle'} color={prefs.autoRotate ? 'flare' : 'gray'} onClick={() => setPrefs({ autoRotate: !prefs.autoRotate })} aria-label="自动旋转">
+      <Tooltip label={t('stage.k22')}>
+        <ActionIcon
+          variant={prefs.autoRotate ? 'light' : 'subtle'}
+          color={prefs.autoRotate ? 'flare' : 'gray'}
+          onClick={() => setPrefs({ autoRotate: !prefs.autoRotate })}
+          aria-label={t('stage.k22')}
+        >
           <IconRotate360 size={16} />
         </ActionIcon>
       </Tooltip>
@@ -105,22 +155,48 @@ function AttachTools() {
         value={view.gizmo}
         onChange={(v) => view.set({ gizmo: v as 'translate' })}
         data={[
-          { value: 'translate', label: <Group gap={4} wrap="nowrap"><IconArrowsMove size={14} />移动 <Kbd size="xs">G</Kbd></Group> },
-          { value: 'rotate', label: <Group gap={4} wrap="nowrap"><IconRotate size={14} />旋转 <Kbd size="xs">R</Kbd></Group> },
-          { value: 'scale', label: <Group gap={4} wrap="nowrap"><IconZoomScan size={14} />缩放 <Kbd size="xs">S</Kbd></Group> },
+          {
+            value: 'translate',
+            label: (
+              <Group gap={4} wrap="nowrap">
+                <IconArrowsMove size={14} />
+                {t('stage.k23')} <Kbd size="xs">G</Kbd>
+              </Group>
+            ),
+          },
+          {
+            value: 'rotate',
+            label: (
+              <Group gap={4} wrap="nowrap">
+                <IconRotate size={14} />
+                {t('stage.k24')} <Kbd size="xs">R</Kbd>
+              </Group>
+            ),
+          },
+          {
+            value: 'scale',
+            label: (
+              <Group gap={4} wrap="nowrap">
+                <IconZoomScan size={14} />
+                {t('stage.k25')} <Kbd size="xs">S</Kbd>
+              </Group>
+            ),
+          },
         ]}
       />
-      {mode === 'attach' && <Tooltip label="打开后点击枪身，选中的挂件会贴到点击的位置">
-        <Button
-          variant={snap ? 'light' : 'subtle'}
-          color={snap ? 'flare' : 'gray'}
-          disabled={selection?.kind !== 'attachment'}
-          leftSection={<IconMagnet size={14} />}
-          onClick={() => useStore.setState({ snapToSurface: !snap })}
-        >
-          贴到表面
-        </Button>
-      </Tooltip>}
+      {mode === 'attach' && (
+        <Tooltip label={t('stage.k26')}>
+          <Button
+            variant={snap ? 'light' : 'subtle'}
+            color={snap ? 'flare' : 'gray'}
+            disabled={selection?.kind !== 'attachment'}
+            leftSection={<IconMagnet size={14} />}
+            onClick={() => useStore.setState({ snapToSurface: !snap })}
+          >
+            {t('stage.k27')}
+          </Button>
+        </Tooltip>
+      )}
     </Group>
   );
 }
@@ -129,15 +205,53 @@ function ModalHint() {
   const modal = useModal();
   const [tool, axis] = modal.split('|');
   if (tool === 'null') return null;
-  const name = { move: '移动', rotate: '旋转', scale: '缩放' }[tool as 'move'];
+  const name = {
+    get move() {
+      return t('stage.k23');
+    },
+    get rotate() {
+      return t('stage.k24');
+    },
+    get scale() {
+      return t('stage.k25');
+    },
+  }[tool as 'move'];
   return (
     <div className="modal-hint">
       <b style={{ color: 'var(--flare)' }}>{name}</b>
-      <span>轴：{axis === 'null' ? '自由' : <b className={`axis-${axis}`}>{axis.toUpperCase()}（部件坐标）</b>}</span>
+      <span>
+        {t('stage.k28')}
+        {axis === 'null' ? (
+          t('stage.k29')
+        ) : (
+          <b className={`axis-${axis}`}>
+            {axis.toUpperCase()}
+            {t('stage.k30')}
+          </b>
+        )}
+      </span>
       <Text span size="xs" c="dimmed">
-        <Kbd>X</Kbd> <Kbd>Y</Kbd> <Kbd>Z</Kbd> 锁轴 · 单击/<Kbd>Enter</Kbd> 确认 · 右键/<Kbd>Esc</Kbd> 取消
+        <Kbd>X</Kbd> <Kbd>Y</Kbd> <Kbd>Z</Kbd> {t('stage.k31')}
+        <Kbd>Enter</Kbd> {t('stage.k32')}
+        <Kbd>Esc</Kbd> {t('stage.k33')}
       </Text>
     </div>
+  );
+}
+
+/** Plays game events in the 3D view, exactly as the game triggers layers and attachment effects. */
+function EventBar() {
+  const item = useItem();
+  return (
+    <Group className="overlay events" gap={2} wrap="nowrap">
+      {triggersFor(item)
+        .filter((x) => x.simulate)
+        .map((x) => (
+          <Button key={x.value} size="compact-xs" variant="subtle" color="gray" onClick={() => simulate(x.value)}>
+            {t('stage.simulate', { v0: x.label })}
+          </Button>
+        ))}
+    </Group>
   );
 }
 
@@ -153,7 +267,7 @@ export function Stage() {
           <div className="name">{item.name}</div>
           <div className="sub">
             {categoryOf(item)}
-            {item.nameZh ? ` · ${item.nameZh}` : ''}
+            {lang() === 'zh' && item.nameZh ? ` · ${item.nameZh}` : ''}
             {item.calibre ? ` · ${item.calibre}` : ''}
           </div>
         </div>
@@ -163,9 +277,9 @@ export function Stage() {
           <Stack align="center" gap="xs">
             <Loader type="bars" size="sm" />
             <Text c="dimmed" ta="center">
-              正在从游戏里读取模型和贴图…
+              {t('stage.k34')}
               <br />
-              第一次打开一把枪需要几秒钟。
+              {t('stage.k35')}
             </Text>
           </Stack>
         </div>
@@ -176,6 +290,7 @@ export function Stage() {
           <ViewBar />
           <LightBar />
           <AttachTools />
+          <EventBar />
           <ModalHint />
         </>
       )}

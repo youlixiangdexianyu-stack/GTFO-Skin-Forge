@@ -250,6 +250,14 @@ body {
   color: var(--flare);
   border-color: var(--flare);
 }
+.effect {
+  padding: 8px;
+  border: 1px solid var(--line-soft);
+  border-radius: var(--mantine-radius-sm);
+}
+.effect + .effect {
+  margin-top: 6px;
+}
 .moved {
   display: inline-block;
   width: 6px;
@@ -345,6 +353,11 @@ body {
   top: 14px;
   transform: translateX(-50%);
 }
+.overlay.events {
+  left: 50%;
+  bottom: 14px;
+  transform: translateX(-50%);
+}
 .overlay.light {
   left: 14px;
   bottom: 14px;
@@ -352,7 +365,7 @@ body {
 .modal-hint {
   position: absolute;
   left: 50%;
-  bottom: 22px;
+  bottom: 64px;
   display: flex;
   align-items: center;
   gap: 10px;

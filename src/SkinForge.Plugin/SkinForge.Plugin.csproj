@@ -1,0 +1,26 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- BepInEx 6 IL2CPP plugin for GTFO. References come from a BepInEx profile (read-only); override with -p:GTFOBepInExPath=<profile>/BepInEx. -->
+  <PropertyGroup>
+    <TargetFramework>net6.0</TargetFramework>
+    <LangVersion>latest</LangVersion>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <CheckEolTargetFramework>false</CheckEolTargetFramework>
+    <GenerateDependencyFile>false</GenerateDependencyFile>
+    <DebugType>none</DebugType>
+    <Version>1.0.0</Version>
+    <GTFOBepInExPath Condition="'$(GTFOBepInExPath)' == ''">C:/Users/nainf/AppData/Roaming/r2modmanPlus-local/GTFO/profiles/Forge-Multiplayer/BepInEx</GTFOBepInExPath>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\SkinForge.Format\SkinForge.Format.csproj" />
+    <Reference Include="$(GTFOBepInExPath)/core/0Harmony.dll" Private="false" />
+    <Reference Include="$(GTFOBepInExPath)/core/BepInEx.Core.dll" Private="false" />
+    <Reference Include="$(GTFOBepInExPath)/core/BepInEx.Unity.IL2CPP.dll" Private="false" />
+    <Reference Include="$(GTFOBepInExPath)/core/Il2CppInterop.Common.dll" Private="false" />
+    <Reference Include="$(GTFOBepInExPath)/core/Il2CppInterop.Runtime.dll" Private="false" />
+    <Reference Include="$(GTFOBepInExPath)/interop/*.dll" Exclude="$(GTFOBepInExPath)/interop/netstandard.dll" Private="false" />
+  </ItemGroup>
+
+</Project>

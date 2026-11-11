@@ -1,0 +1,752 @@
+{
+ "weapons": {
+  "Shelling S49": {
+   "id": "small_pistol",
+   "order": 1,
+   "nameZh": "手枪",
+   "categoryZh": "手枪"
+  },
+  "Shelling Nano": {
+   "id": "double_pistol",
+   "order": 2,
+   "nameZh": "连发手枪",
+   "categoryZh": "手枪"
+  },
+  "Bataldo 3RB": {
+   "id": "hel_left",
+   "order": 3,
+   "nameZh": "HEL左轮手枪",
+   "categoryZh": "左轮"
+  },
+  "Raptus Treffen 2": {
+   "id": "machine_pistol",
+   "order": 4,
+   "nameZh": "冲锋手枪",
+   "categoryZh": "手枪"
+  },
+  "Raptus Steigro": {
+   "id": "auto_pistol",
+   "order": 5,
+   "nameZh": "HEL自动手枪",
+   "categoryZh": "手枪"
+  },
+  "Accrat Golok DA": {
+   "id": "bullpup",
+   "order": 6,
+   "nameZh": "无托步枪",
+   "categoryZh": "步枪"
+  },
+  "Van Auken LTC5": {
+   "id": "smg",
+   "order": 7,
+   "nameZh": "冲锋枪",
+   "categoryZh": "冲锋枪"
+  },
+  "Accrat STB": {
+   "id": "pdw",
+   "order": 8,
+   "nameZh": "PDW",
+   "categoryZh": "冲锋枪"
+  },
+  "Accrat ND6": {
+   "id": "heavy_smg",
+   "order": 9,
+   "nameZh": "重型冲锋枪",
+   "categoryZh": "冲锋枪"
+  },
+  "Van Auken CAB F4": {
+   "id": "carbine",
+   "order": 10,
+   "nameZh": "卡宾枪",
+   "categoryZh": "步枪"
+  },
+  "TR22 Hanaway": {
+   "id": "dmr",
+   "order": 11,
+   "nameZh": "精确步枪",
+   "categoryZh": "精确射手步枪"
+  },
+  "Hanaway PSB": {
+   "id": "double_dmr",
+   "order": 12,
+   "nameZh": "双发步枪",
+   "categoryZh": "精确射手步枪"
+  },
+  "Malatack LX": {
+   "id": "assault_rifle",
+   "order": 13,
+   "nameZh": "突击步枪",
+   "categoryZh": "步枪"
+  },
+  "Malatack CH 4": {
+   "id": "semi_auto_rifle",
+   "order": 14,
+   "nameZh": "连发步枪",
+   "categoryZh": "步枪"
+  },
+  "Drekker Pres MOD 556": {
+   "id": "battle_rifle",
+   "order": 15,
+   "nameZh": "步枪",
+   "categoryZh": "步枪"
+  },
+  "Buckland SBS III": {
+   "id": "short_shotgun_2",
+   "order": 16,
+   "nameZh": "短管霰弹枪",
+   "categoryZh": "霰弹枪"
+  },
+  "Bataldo J 300": {
+   "id": "hel_shotgun",
+   "order": 17,
+   "nameZh": "HEL霰弹枪",
+   "categoryZh": "霰弹枪"
+  },
+  "Bataldo Custom K330": {
+   "id": "slug_shotgun",
+   "order": 18,
+   "nameZh": "独头弹霰弹枪",
+   "categoryZh": "霰弹枪"
+  },
+  "Malatack HXC": {
+   "id": "heavy_assault",
+   "order": 101,
+   "nameZh": "重型突击步枪",
+   "categoryZh": "步枪"
+  },
+  "Drekker CLR": {
+   "id": "drekker_clr",
+   "order": 102,
+   "nameZh": "短管步枪",
+   "categoryZh": "步枪"
+  },
+  "Buckland s870": {
+   "id": "pump_shotgun",
+   "order": 103,
+   "nameZh": "霰弹枪",
+   "categoryZh": "霰弹枪"
+  },
+  "Buckland AF6": {
+   "id": "combat_shotgun",
+   "order": 104,
+   "nameZh": "战斗霰弹枪",
+   "categoryZh": "霰弹枪"
+  },
+  "Drekker INEX Drei": {
+   "id": "dragon_shotgun",
+   "order": 105,
+   "nameZh": "三管霰弹枪",
+   "categoryZh": "霰弹枪"
+  },
+  "Buckland XDist2": {
+   "id": "choke_shotgun",
+   "order": 106,
+   "nameZh": "收束器霰弹枪",
+   "categoryZh": "霰弹枪"
+  },
+  "Mastaba R66": {
+   "id": "heavy_revolver",
+   "order": 107,
+   "nameZh": "左轮手枪",
+   "categoryZh": "左轮"
+  },
+  "TechMan Arbalist V": {
+   "id": "machinegun_2",
+   "order": 108,
+   "nameZh": "机关枪",
+   "categoryZh": "机枪"
+  },
+  "TechMan Veruta XII": {
+   "id": "machinegun",
+   "order": 109,
+   "nameZh": "机关枪",
+   "categoryZh": "机枪"
+  },
+  "TechMan Klust 6": {
+   "id": "burst_cannon",
+   "order": 110,
+   "nameZh": "连发炮",
+   "categoryZh": "特殊"
+  },
+  "Omneco exp1": {
+   "id": "helgun",
+   "order": 111,
+   "nameZh": "HEL枪",
+   "categoryZh": "特殊"
+  },
+  "Shelling Arid 5": {
+   "id": "large_caliber",
+   "order": 112,
+   "nameZh": "大口径手枪",
+   "categoryZh": "手枪"
+  },
+  "Drekker DEL P1": {
+   "id": "infrared_precision",
+   "order": 113,
+   "nameZh": "精准步枪",
+   "categoryZh": "狙击枪"
+  },
+  "Köning PR 11": {
+   "id": "sniper",
+   "order": 114,
+   "nameZh": "狙击枪",
+   "categoryZh": "狙击枪"
+  },
+  "Omneco LRG": {
+   "id": "helr",
+   "order": 115,
+   "nameZh": "HEL步枪",
+   "categoryZh": "步枪"
+  }
+ },
+ "calibres": {
+  "1": {
+   "id": "9mm",
+   "label": "9mm",
+   "nameZh": "9mm 手枪弹",
+   "shellPrefab": "Shell_9_18mm"
+  },
+  "2": {
+   "id": "45acp",
+   "label": ".45 ACP",
+   "nameZh": ".45 ACP 手枪弹",
+   "shellPrefab": "Shell_45_ACP"
+  },
+  "3": {
+   "id": "308",
+   "label": ".308",
+   "nameZh": ".308 步枪弹",
+   "shellPrefab": "Shell_388"
+  },
+  "4": {
+   "id": "12g",
+   "label": "12G",
+   "nameZh": "12G 霰弹",
+   "shellPrefab": "Shell_mos_590"
+  },
+  "revolver": {
+   "id": "revolver",
+   "label": ".44",
+   "nameZh": ".44 左轮弹"
+  }
+ },
+ "partsZh": {
+  "front": "前部",
+  "receiver": "机匣",
+  "stock": "枪托",
+  "sight": "瞄具",
+  "mag": "弹匣",
+  "flashlight": "枪灯",
+  "front_attachment_a": "前部附件 A",
+  "front_attachment_b": "前部附件 B",
+  "receiver_attachment": "机匣附件",
+  "ammo_bullet": "整颗子弹",
+  "ammo_shell": "空弹壳",
+  "ammo_speedloader": "快速装弹器",
+  "lens": "镜片"
+ },
+ "_comment": "Naming and official order (from the old tool's catalog). Weapons keyed by GearJSON Name; calibres keyed by WeaponShellCasing ShellCasingType (ShellTypes), 'revolver' for revolver categories. Geometry and positions always come from the game. legacyMaterials: old tool item -> part -> material, for importing .gtfoskin/.gtfdyn/DLY projects.",
+ "legacyMaterials": {
+  "hel_left": {
+   "front": "Front_Revolver_2",
+   "receiver": "Receiver_Revolver_2",
+   "stock": "Stock_Revolver_2",
+   "sight": "Sight_RedDot_Revolver_2",
+   "flashlight": "Flashlight_B",
+   "ammo_speedloader": "Revolver_Speedloader_1",
+   "ammo_bullet": "Revolver_Shell_1",
+   "ammo_shell": "Revolver_Shell_1"
+  },
+  "machinegun_2": {
+   "front": "Front_MachineGun_1",
+   "receiver": "Receiver_SMG_2",
+   "stock": "Stock_Rifle_2",
+   "mag": "Mag_762_40rnds_A",
+   "sight": "Sight_21",
+   "flashlight": "Flashlight_D",
+   "ammo_bullet": "Casing_308",
+   "ammo_shell": "Casing_308"
+  },
+  "smg": {
+   "front": "Front_SMG_3",
+   "receiver": "Receiver_SMG_2",
+   "stock": "Stock_SMG_1",
+   "mag": "Mag_9mm_30rdns_A",
+   "sight": "Sight_14",
+   "flashlight": "Flashlight_A",
+   "ammo_bullet": "Casing_9mm",
+   "ammo_shell": "Casing_9mm"
+  },
+  "bullpup": {
+   "front": "Front_Bullpop_1",
+   "receiver": "Receiver_UZI_2",
+   "stock": "Stock_Bullpop_1",
+   "mag": "Mag_9mm_30rdns_A",
+   "sight": "Sight_18",
+   "flashlight": "Flashlight_E",
+   "ammo_bullet": "Casing_9mm",
+   "ammo_shell": "Casing_9mm"
+  },
+  "heavy_smg": {
+   "front": "Front_SMG_2",
+   "receiver": "Receiver_SMG_2",
+   "stock": "Stock_SMG_1",
+   "mag": "Mag_9mm_30rdns_A",
+   "sight": "Sight_2",
+   "flashlight": "Flashlight_B",
+   "ammo_bullet": "Casing_9mm",
+   "ammo_shell": "Casing_9mm"
+  },
+  "pdw": {
+   "front": "Front_SMG_1",
+   "receiver": "Receiver_SMG_2",
+   "stock": "Stock_SMG_2",
+   "sight": "Sight_19",
+   "flashlight": "Flashlight_D",
+   "ammo_bullet": "Casing_9mm",
+   "ammo_shell": "Casing_9mm"
+  },
+  "carbine": {
+   "front": "Front_SMG_4",
+   "receiver": "Receiver_SMG_2",
+   "stock": "Stock_SMG_2",
+   "mag": "Mag_9mm_30rdns_A",
+   "sight": "Sight_16",
+   "flashlight": "Flashlight_B",
+   "ammo_bullet": "Casing_9mm",
+   "ammo_shell": "Casing_9mm"
+  },
+  "dmr": {
+   "front": "Front_Rifle_2",
+   "receiver": "Receiver_Rifle_1",
+   "stock": "Stock_Precision_4",
+   "mag": "Mag_556_40rnds_A",
+   "sight": "Sight_8",
+   "flashlight": "Flashlight_B",
+   "ammo_bullet": "Casing_308",
+   "ammo_shell": "Casing_308"
+  },
+  "double_dmr": {
+   "front": "Front_Rifle_2",
+   "receiver": "Receiver_SMG_3",
+   "stock": "Stock_Rifle_3",
+   "mag": "Mag_556_40rnds_A",
+   "sight": "Sight_17",
+   "flashlight": "Flashlight_E",
+   "ammo_bullet": "Casing_308",
+   "ammo_shell": "Casing_308"
+  },
+  "assault_rifle": {
+   "front": "Front_Rifle_1",
+   "receiver": "Receiver_Rifle_2",
+   "stock": "Stock_Rifle_1",
+   "mag": "Mag_556_60rnds_A",
+   "sight": "Sight_6",
+   "flashlight": "Flashlight_B",
+   "ammo_bullet": "Casing_308",
+   "ammo_shell": "Casing_308"
+  },
+  "hel_shotgun": {
+   "front": "Front_AutoShotgun_2",
+   "receiver": "Receiver_SMG_1",
+   "stock": "Stock_Shootgun_2",
+   "mag": "Mag_12G_10rnds",
+   "sight": "Sight_1",
+   "flashlight": "Flashlight_E",
+   "ammo_bullet": "Shotgun_Shell_Empty_1",
+   "ammo_shell": "Shotgun_Shell_Empty_1"
+  },
+  "short_shotgun_2": {
+   "front": "Front_Short_Shotgun_2",
+   "receiver": "Receiver_Short_Shotgun_2",
+   "stock": "Stock_Short_Shotgun_2",
+   "flashlight": "Flashlight_B",
+   "ammo_bullet": "Shotgun_Shell_Empty_1",
+   "ammo_shell": "Shotgun_Shell_Empty_1"
+  },
+  "semi_auto_rifle": {
+   "front": "Front_Rifle_4",
+   "receiver": "Receiver_Rifle_2",
+   "stock": "Stock_Rifle_3",
+   "mag": "Mag_556_60rnds_A",
+   "sight": "Sight_5",
+   "flashlight": "Flashlight_C",
+   "ammo_bullet": "Casing_308",
+   "ammo_shell": "Casing_308"
+  },
+  "heavy_assault": {
+   "front": "Front_Rifle_1",
+   "receiver": "Receiver_Rifle_2",
+   "stock": "Stock_Rifle_2",
+   "mag": "Mag_556_40rnds_A",
+   "sight": "Sight_23",
+   "flashlight": "Flashlight_E",
+   "ammo_bullet": "Casing_308",
+   "ammo_shell": "Casing_308"
+  },
+  "pump_shotgun": {
+   "front": "Front_Shotgun_1",
+   "receiver": "Receiver_SMG_1",
+   "stock": "Stock_Shootgun_1",
+   "sight": "IronSights_8",
+   "flashlight": "Flashlight_A",
+   "ammo_bullet": "Shotgun_Shell_Empty_1",
+   "ammo_shell": "Shotgun_Shell_Empty_1"
+  },
+  "choke_shotgun": {
+   "front": "Front_Shotgun_3",
+   "receiver": "Receiver_SMG_2",
+   "stock": "Stock_Precision_1",
+   "sight": "IronSights_10",
+   "flashlight": "Flashlight_E",
+   "ammo_bullet": "Shotgun_Shell_Empty_1",
+   "ammo_shell": "Shotgun_Shell_Empty_1"
+  },
+  "heavy_revolver": {
+   "front": "Front_Revolver_1",
+   "receiver": "Receiver_Revolver_1",
+   "stock": "Stock_Revolver_1",
+   "flashlight": "Flashlight_A",
+   "ammo_speedloader": "Revolver_Speedloader_1",
+   "ammo_bullet": "Revolver_Shell_1",
+   "ammo_shell": "Revolver_Shell_1"
+  },
+  "machinegun": {
+   "front": "Front_MachineGun_2",
+   "receiver": "Receiver_SMG_2",
+   "stock": "Stock_Rifle_2",
+   "mag": "Mag_762_100rnds_A",
+   "sight": "Sight_20",
+   "flashlight": "Flashlight_D",
+   "ammo_bullet": "Casing_308",
+   "ammo_shell": "Casing_308"
+  },
+  "sniper": {
+   "front": "Front_Precision_1",
+   "receiver": "Receiver_Rifle_2",
+   "stock": "Stock_Precision_3",
+   "mag": "Mag_50_10rnds_A",
+   "sight": "Sight_22",
+   "flashlight": "Flashlight_C",
+   "ammo_bullet": "Casing_308",
+   "ammo_shell": "Casing_308"
+  },
+  "infrared_precision": {
+   "front": "Front_Precision_3",
+   "receiver": "Receiver_Machinegun_1",
+   "stock": "Stock_Precision_2",
+   "mag": "Mag_50_20rnds_A",
+   "sight": "Sight_10",
+   "flashlight": "Flashlight_A",
+   "ammo_bullet": "Casing_308",
+   "ammo_shell": "Casing_308"
+  },
+  "helgun": {
+   "front": "Front_MachineGun_2",
+   "receiver": "Receiver_Machinegun_2",
+   "stock": "Stock_Precision_2",
+   "mag": "Mag_762_40rnds_A",
+   "sight": "Sight_12",
+   "flashlight": "Flashlight_E",
+   "ammo_bullet": "Casing_308",
+   "ammo_shell": "Casing_308"
+  },
+  "large_caliber": {
+   "body": "Front_Pistol_4",
+   "stock": "Stock_Pistol_1",
+   "receiver": "Receiver_Pistol_1",
+   "mag": "Mag_9mm_20rdns_A",
+   "sight": "Front_Pistol_Sight_1_E",
+   "flashlight": "Flashlight_B",
+   "ammo_bullet": "Casing_9mm",
+   "ammo_shell": "Casing_9mm"
+  },
+  "small_pistol": {
+   "front": "Front_Pistol_1",
+   "receiver": "Receiver_Pistol_1",
+   "stock": "Stock_Pistol_1",
+   "mag": "Mag_9mm_20rdns_A",
+   "sight": "Sight_RedDot_Pistol_b",
+   "flashlight": "Flashlight_B",
+   "ammo_bullet": "Casing_9mm",
+   "ammo_shell": "Casing_9mm"
+  },
+  "burst_cannon": {
+   "front": "Front_MachineGun_2",
+   "receiver": "Receiver_Machinegun_1",
+   "stock": "Stock_Rifle_3",
+   "mag": "Mag_762_80rnds_A",
+   "sight": "Sight_9",
+   "flashlight": "Flashlight_D",
+   "ammo_bullet": "Casing_308",
+   "ammo_shell": "Casing_308"
+  },
+  "helr": {
+   "front": "Front_Precision_2",
+   "receiver": "Receiver_Machinegun_2",
+   "stock": "Stock_Precision_4",
+   "mag": "Mag_50_20rnds_A",
+   "sight": "Sight_13",
+   "flashlight": "Flashlight_C",
+   "ammo_bullet": "Casing_308",
+   "ammo_shell": "Casing_308"
+  },
+  "combat_shotgun": {
+   "front": "Front_AutoShotgun_1",
+   "receiver": "Receiver_SMG_2",
+   "stock": "Stock_Shootgun_2",
+   "mag": "Mag_12G_10rnds",
+   "sight": "IronSights_9",
+   "flashlight": "Flashlight_A",
+   "ammo_bullet": "Shotgun_Shell_Empty_1",
+   "ammo_shell": "Shotgun_Shell_Empty_1"
+  },
+  "dragon_shotgun": {
+   "front": "Front_AutoShotgun_3",
+   "receiver": "Receiver_Rifle_2",
+   "stock": "Stock_Shootgun_1",
+   "mag": "Mag_50_10rnds_A",
+   "sight": "IronSights_4_F",
+   "flashlight": "Flashlight_E",
+   "ammo_bullet": "Shotgun_Shell_Empty_1",
+   "ammo_shell": "Shotgun_Shell_Empty_1"
+  },
+  "machine_pistol": {
+   "front": "Front_UZI_1",
+   "receiver": "Receiver_UZI_1",
+   "stock": "Stock_Pistol_1",
+   "mag": "Mag_9mm_30rdns_A",
+   "sight": "Front_Pistol_Sight_1_E",
+   "flashlight": "Flashlight_B",
+   "ammo_bullet": "Casing_9mm",
+   "ammo_shell": "Casing_9mm"
+  },
+  "auto_pistol": {
+   "front": "Front_UZI_2",
+   "receiver": "Receiver_UZI_1",
+   "stock": "Stock_Pistol_1",
+   "mag": "Mag_9mm_50rdns_A",
+   "sight": "Front_Pistol_Sight_2_E",
+   "flashlight": "Flashlight_B",
+   "ammo_bullet": "Casing_9mm",
+   "ammo_shell": "Casing_9mm"
+  },
+  "slug_shotgun": {
+   "front": "Front_Shotgun_2",
+   "receiver": "Receiver_SMG_1",
+   "stock": "Stock_Precision_1",
+   "sight": "Sight_24_Sight_25_Albedo",
+   "flashlight": "Flashlight_E",
+   "ammo_bullet": "Shotgun_Shell_Empty_1",
+   "ammo_shell": "Shotgun_Shell_Empty_1"
+  },
+  "battle_rifle": {
+   "front": "Front_Rifle_3",
+   "receiver": "Receiver_Rifle_1",
+   "stock": "Stock_Rifle_1",
+   "mag": "Mag_556_40rnds_A",
+   "sight": "Sight_15",
+   "flashlight": "Flashlight_E",
+   "ammo_bullet": "Casing_308",
+   "ammo_shell": "Casing_308"
+  },
+  "double_pistol": {
+   "front": "Front_Pistol_2",
+   "stock": "Stock_Pistol_2",
+   "flashlight": "Flashlight_B",
+   "ammo_bullet": "Casing_9mm",
+   "ammo_shell": "Casing_9mm"
+  },
+  "drekker_clr": {
+   "front": "Front_SMG_2",
+   "receiver": "Receiver_SMG_4",
+   "stock": "Stock_Rifle_3",
+   "mag": "Mag_9mm_30rdns_A",
+   "sight": "Sight_25",
+   "flashlight": "Flashlight_B",
+   "ammo_bullet": "Casing_9mm",
+   "ammo_shell": "Casing_9mm"
+  },
+  "sight_10": {
+   "main": "Sight_10"
+  },
+  "sight_glass_opaque": {
+   "main": "OpaqueSightGlass"
+  },
+  "sight_15": {
+   "main": "Sight_15"
+  },
+  "sight_19": {
+   "main": "Sight_19"
+  },
+  "iron_sights_10": {
+   "main": "IronSights_10"
+  },
+  "iron_sights_9": {
+   "main": "IronSights_9"
+  },
+  "sight_7": {
+   "main": "Sight_7"
+  },
+  "sight_17": {
+   "main": "Sight_17"
+  },
+  "sight_23": {
+   "main": "Sight_23"
+  },
+  "iron_sights_4": {
+   "main": "IronSights_4_F"
+  },
+  "sight_13": {
+   "main": "Sight_13"
+  },
+  "sight_6": {
+   "main": "Sight_6"
+  },
+  "sight_5": {
+   "main": "Sight_5"
+  },
+  "sight_22": {
+   "main": "Sight_22"
+  },
+  "sight_25": {
+   "main": "Sight_25"
+  },
+  "sight_3": {
+   "main": "Sight_3"
+  },
+  "sight_4": {
+   "main": "Sight_4"
+  },
+  "sight_12": {
+   "main": "Sight_12"
+  },
+  "sight_9": {
+   "main": "Sight_9"
+  },
+  "sight_20": {
+   "main": "Sight_20"
+  },
+  "sight_11": {
+   "main": "Sight_11"
+  },
+  "sight_8": {
+   "main": "Sight_8"
+  },
+  "sight_2": {
+   "main": "Sight_2"
+  },
+  "iron_sights_8": {
+   "main": "IronSights_8"
+  },
+  "sight_18": {
+   "main": "Sight_18"
+  },
+  "sight_14": {
+   "main": "Sight_14"
+  },
+  "sight_1": {
+   "main": "Sight_1"
+  },
+  "sight_16": {
+   "main": "Sight_16"
+  },
+  "sight_21": {
+   "main": "Sight_21"
+  },
+  "mag_50_20": {
+   "main": "Mag_50_20rnds_A"
+  },
+  "mag_50_10": {
+   "main": "Mag_50_10rnds_A"
+  },
+  "mag_762_40": {
+   "main": "Mag_762_40rnds_A"
+  },
+  "mag_762_80": {
+   "main": "Mag_762_80rnds_A"
+  },
+  "mag_9mm_50": {
+   "main": "Mag_9mm_50rdns_A"
+  },
+  "mag_12g_20": {
+   "main": "Mag_12G_20rnds"
+  },
+  "mag_556_40": {
+   "main": "Mag_556_40rnds_A"
+  },
+  "mag_556_30": {
+   "main": "Mag_556_30rnds_B"
+  },
+  "mag_762_20": {
+   "main": "Mag_762_20rnds_A"
+  },
+  "mag_12g_10": {
+   "main": "Mag_12G_10rnds"
+  },
+  "mag_556_60": {
+   "main": "Mag_556_60rnds_A"
+  },
+  "mag_9mm_30": {
+   "main": "Mag_9mm_30rdns_A"
+  },
+  "mag_762_60": {
+   "main": "Mag_762_60rnds_A"
+  },
+  "mag_762_100": {
+   "main": "Mag_762_100rnds_A"
+  },
+  "mag_9mm_20": {
+   "main": "Mag_9mm_20rdns_A"
+  },
+  "mag_556_150": {
+   "main": "Mag_556_150rnds_A"
+  },
+  "peq_1_e": {
+   "main": "Flashlight_E"
+  },
+  "peq_1_lens": {
+   "main": "Flashlight_LensA"
+  },
+  "gun_light_a": {
+   "main": "Flashlight_A"
+  },
+  "gun_light_b": {
+   "main": "Flashlight_B"
+  },
+  "gun_light_c": {
+   "main": "Flashlight_C"
+  },
+  "gun_light_d": {
+   "main": "Flashlight_D"
+  },
+  "ammo_9mm": {
+   "ammo_bullet": "Casing_9mm",
+   "ammo_shell": "Casing_9mm"
+  },
+  "ammo_308": {
+   "ammo_bullet": "Casing_308",
+   "ammo_shell": "Casing_308"
+  },
+  "ammo_12g": {
+   "ammo_bullet": "Shotgun_Shell_Empty_1",
+   "ammo_shell": "Shotgun_Shell_Empty_1"
+  },
+  "ammo_45acp": {
+   "ammo_bullet": "Casing_45",
+   "ammo_shell": "Casing_45"
+  },
+  "ammo_revolver": {
+   "ammo_speedloader": "Revolver_Speedloader_1",
+   "ammo_bullet": "Revolver_Shell_1",
+   "ammo_shell": "Revolver_Shell_1"
+  }
+ },
+ "categoriesZh": {
+  "mag": "弹匣",
+  "flashlight": "枪灯",
+  "sight": "瞄具",
+  "lens": "镜片",
+  "ammo": "子弹"
+ }
+}

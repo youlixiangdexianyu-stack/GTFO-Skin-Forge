@@ -14,3 +14,14 @@ source/**/.vs/
 BepInEx/
 *.zip
 *.7z
+
+src/**/bin/
+src/**/obj/
+tests/**/bin/
+tests/**/obj/
+.vs/
+app/node_modules/
+app/out/
+app/.vite/
+app/artifacts/
+GTFO_UserData/

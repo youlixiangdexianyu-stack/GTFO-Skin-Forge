@@ -1,0 +1,34 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <InvariantGlobalization>true</InvariantGlobalization>
+    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+    <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Unity class database for stripped type trees: the AssetRipper-format TPK shipped with UnityPy (MIT); AssetsTools.NET reads it. -->
+    <EmbeddedResource Include="classdata.tpk" LogicalName="classdata.tpk" />
+    <!-- Weapon names, Chinese names, official order and calibre labels; geometry always comes from the game. -->
+    <EmbeddedResource Include="naming.json" LogicalName="naming.json" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\SkinForge.Format\SkinForge.Format.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Reads Unity serialized files (the game's assets); mature MIT library used by UABEA. -->
+    <PackageReference Include="AssetsTools.NET" Version="3.0.5" />
+    <!-- Decodes Unity texture formats (DXT/BC/ETC) to RGBA; companion package of AssetsTools.NET. -->
+    <PackageReference Include="AssetsTools.NET.Texture" Version="3.0.2" />
+    <!-- PNG/JPEG decode and encode, high-quality resizing, rotation and compositing for packs and previews (Microsoft-maintained, MIT). -->
+    <PackageReference Include="SkiaSharp" Version="2.88.9" />
+    <PackageReference Include="SkiaSharp.NativeAssets.Win32" Version="2.88.9" />
+  </ItemGroup>
+
+</Project>

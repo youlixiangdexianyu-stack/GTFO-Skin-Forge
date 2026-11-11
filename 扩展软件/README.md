@@ -3,7 +3,7 @@
 Windows 桌面工具，用于把用户提供的枪皮贴图写入 GTFO 的 `sharedassets*.assets`，
 或导出到任意目录后再手动安装。
 
-![界面预览](artifacts/ui-preview.png)
+![界面预览](docs/ui-preview.png)
 
 ## 功能
 

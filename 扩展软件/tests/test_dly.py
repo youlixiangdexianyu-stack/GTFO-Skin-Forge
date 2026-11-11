@@ -10,6 +10,8 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from PySide6.QtWidgets import QApplication
 from PySide6.QtGui import QVector3D
+from PySide6.QtTest import QTest
+from PySide6.QtCore import QPoint, Qt
 
 from gtfo_skin_forge.dly import (
     DLY_PLUGIN_FOLDER,
@@ -22,6 +24,8 @@ from gtfo_skin_forge.dly import (
 )
 from gtfo_skin_forge.dly_viewer import DlyPreviewView
 from gtfo_skin_forge.dly_workspace import DlyWorkspace
+from gtfo_skin_forge.dynamic_visuals import DynamicLayer
+from gtfo_skin_forge.dynamic_workspace import DynamicVisualWorkspace
 from gtfo_skin_forge.ui import MainWindow
 
 
@@ -131,7 +135,7 @@ def test_dly_workspace_is_separate_and_does_not_change_skin_state(
 ):
     app = QApplication.instance() or QApplication([])
     window = MainWindow()
-    assert window.workspace_tabs.count() == 2
+    assert window.workspace_tabs.count() == 3
     original_item = window.current_item.id if window.current_item else ""
     original_part = window.current_part_id
     original_rows = window.table.rowCount()
@@ -408,5 +412,107 @@ def test_dly_workspace_applies_preset_to_selected_profile(
     assert "OffsetZ = 0.018" in text
     assert "FollowItemCamera = false" in text
     assert (plugin_dir / "Yuyu.HelAmmoDisplay.dll").is_file()
+    workspace.close()
+    app.processEvents()
+
+
+def test_three_workspaces_keep_dynamic_state_isolated(
+    forge_data,
+    monkeypatch,
+):
+    app = QApplication.instance() or QApplication([])
+    monkeypatch.setattr(
+        "gtfo_skin_forge.dly_workspace.DlyWorkspace.ensure_preview",
+        lambda self: None,
+    )
+    monkeypatch.setattr(
+        "gtfo_skin_forge.dynamic_viewer.DynamicVisualPreviewView.load_dynamic",
+        lambda *_args, **_kwargs: None,
+    )
+    window = MainWindow()
+    skin_item = window.current_item.id if window.current_item else ""
+    skin_part = window.current_part_id
+    window._set_workspace("dynamic")
+    app.processEvents()
+    assert window.workspace_stack.currentIndex() == 2
+    workspace = window.dynamic_workspace
+    assert workspace is not None
+    workspace.project.selected_part_id = "receiver"
+    workspace.project.selected_channel = "Normal"
+    window._set_workspace("skin")
+    app.processEvents()
+    assert window.workspace_stack.currentIndex() == 0
+    assert (window.current_item.id if window.current_item else "") == skin_item
+    assert window.current_part_id == skin_part
+    window._set_workspace("dynamic")
+    app.processEvents()
+    assert window.workspace_stack.currentIndex() == 2
+    assert workspace.project.selected_part_id == "receiver"
+    assert workspace.project.selected_channel == "Normal"
+    window.close()
+    app.processEvents()
+
+
+def test_dynamic_overlay_move_uses_absolute_anchor_not_offset(tmp_path):
+    app = QApplication.instance() or QApplication([])
+    workspace = DynamicVisualWorkspace(app_root=tmp_path, game=None)
+    layer = DynamicLayer(name="test", part_id="front", channel="Albedo")
+    workspace.project.layers = [layer]
+    workspace.project.selected_layer_id = layer.id
+    workspace.preview_view._preset = DlyDisplayPreset(
+        anchor_part_id="front",
+        use_absolute_anchor=True,
+        anchor_local_x=0.11,
+        anchor_local_y=0.22,
+        anchor_local_z=-0.33,
+    )
+    workspace.preview_view.selected_part_bounds = lambda: (
+        (0.0, 0.0, -0.4),
+        (0.2, 0.4, 0.2),
+    )
+    workspace._overlay_moved(0.001, 0.002, 0.003)
+    assert layer.plane_x == pytest.approx(0.11)
+    assert layer.plane_y == pytest.approx(0.22)
+    assert layer.plane_z == pytest.approx(-0.33)
+    assert layer.uv_x != pytest.approx(0.001)
+    workspace.close()
+    app.processEvents()
+
+
+def test_dynamic_uv_layer_can_be_dragged(tmp_path):
+    app = QApplication.instance() or QApplication([])
+    workspace = DynamicVisualWorkspace(app_root=tmp_path, game=None)
+    layer = DynamicLayer(
+        name="drag",
+        uv_x=0.30,
+        uv_y=0.25,
+        uv_width=0.20,
+        uv_height=0.20,
+    )
+    workspace.project.layers = [layer]
+    workspace.project.selected_layer_id = layer.id
+    workspace._refresh_layer_table()
+    workspace._sync_controls()
+    workspace.uv_canvas.resize(600, 500)
+    workspace.uv_canvas.show()
+    app.processEvents()
+    workspace._refresh_uv_canvas()
+    app.processEvents()
+    workspace.uv_canvas._update_viewport()
+    start = workspace.uv_canvas._layer_rect(layer).center().toPoint()
+    target = start + QPoint(40, 25)
+    QTest.mousePress(
+        workspace.uv_canvas,
+        Qt.MouseButton.LeftButton,
+        pos=start,
+    )
+    QTest.mouseMove(workspace.uv_canvas, target, delay=20)
+    QTest.mouseRelease(
+        workspace.uv_canvas,
+        Qt.MouseButton.LeftButton,
+        pos=target,
+    )
+    assert layer.uv_x > 0.30
+    assert layer.uv_y > 0.25
     workspace.close()
     app.processEvents()

@@ -1,0 +1,9 @@
+{
+  "name": "HEL_DynamicVisuals",
+  "version_number": "2.0.0",
+  "website_url": "",
+  "description": "Loads visual dynamic sticker packs for the HEL automatic pistol.",
+  "dependencies": [
+    "BepInEx-BepInExPack_GTFO-3.2.4"
+  ]
+}

@@ -7,6 +7,19 @@ internal static class DisplayConfig
     private const string Section = "HEL Ammo Display";
 
     internal static ConfigEntry<bool> Enabled { get; private set; }
+    internal static ConfigEntry<bool> EmissiveTest { get; private set; }
+    internal static ConfigEntry<bool> EmissiveDisplay { get; private set; }
+    internal static ConfigEntry<float> EmissiveU { get; private set; }
+    internal static ConfigEntry<float> EmissiveV { get; private set; }
+    internal static ConfigEntry<float> EmissiveWidth { get; private set; }
+    internal static ConfigEntry<bool> Diagnostics { get; private set; }
+    internal static ConfigEntry<bool> HudMode { get; private set; }
+    internal static ConfigEntry<float> HudOffsetX { get; private set; }
+    internal static ConfigEntry<float> HudOffsetY { get; private set; }
+    internal static ConfigEntry<float> HudScreenWidth { get; private set; }
+    internal static ConfigEntry<bool> InGameAdjust { get; private set; }
+    internal static ConfigEntry<float> AdjustStep { get; private set; }
+    internal static ConfigEntry<float> ModelZOffset { get; private set; }
     internal static ConfigEntry<bool> AutoPlaceOnReceiverTop { get; private set; }
     internal static ConfigEntry<bool> FollowItemCamera { get; private set; }
     internal static ConfigEntry<string> AnchorObjectName { get; private set; }
@@ -42,6 +55,107 @@ internal static class DisplayConfig
             "Enabled",
             true,
             "Enable the HEL first-person ammunition display.");
+
+        EmissiveTest = config.Bind(
+            Section,
+            "EmissiveTest",
+            false,
+            "Paint a test marker into the HEL front part's emissive texture "
+            + "(verified the texture-skin attachment path).");
+
+        EmissiveDisplay = config.Bind(
+            Section,
+            "EmissiveDisplay",
+            true,
+            "Draw the live magazine count into the HEL front part's emissive texture, "
+            + "so the digits are part of the weapon material (glued to the model).");
+
+        EmissiveU = config.Bind(
+            Section,
+            "EmissiveU",
+            0.5f,
+            new ConfigDescription(
+                "Horizontal centre of the display on the emissive texture (0..1).",
+                new AcceptableValueRange<float>(0f, 1f)));
+
+        EmissiveV = config.Bind(
+            Section,
+            "EmissiveV",
+            0.5f,
+            new ConfigDescription(
+                "Vertical centre of the display on the emissive texture (0..1).",
+                new AcceptableValueRange<float>(0f, 1f)));
+
+        EmissiveWidth = config.Bind(
+            Section,
+            "EmissiveWidth",
+            0.10f,
+            new ConfigDescription(
+                "Display width as a fraction of the emissive texture.",
+                new AcceptableValueRange<float>(0.005f, 0.5f)));
+
+        Diagnostics = config.Bind(
+            Section,
+            "Diagnostics",
+            false,
+            "Log weapon-part transforms and draw model-space debug markers "
+            + "(white=origin, red=+Z, green=-Z, blue=+Y).");
+
+        InGameAdjust = config.Bind(
+            Section,
+            "InGameAdjust",
+            true,
+            "While the HEL display is visible: press F6 to toggle in-game adjustment, "
+            + "then use arrow keys (X/Y), PageUp/PageDown (Z) and Shift for fine steps.");
+
+        HudMode = config.Bind(
+            Section,
+            "HudMode",
+            true,
+            "Render the counter as a screen-space HUD locked to the camera (stable, "
+            + "independent of the weapon render pass). Disable to use the 3D weapon-space panel.");
+
+        HudOffsetX = config.Bind(
+            Section,
+            "HudOffsetX",
+            0.16f,
+            new ConfigDescription(
+                "HUD horizontal offset from screen centre, in screen widths.",
+                new AcceptableValueRange<float>(-0.6f, 0.6f)));
+
+        HudOffsetY = config.Bind(
+            Section,
+            "HudOffsetY",
+            -0.12f,
+            new ConfigDescription(
+                "HUD vertical offset from screen centre, in screen heights.",
+                new AcceptableValueRange<float>(-0.6f, 0.6f)));
+
+        HudScreenWidth = config.Bind(
+            Section,
+            "HudScreenWidth",
+            0.055f,
+            new ConfigDescription(
+                "HUD width as a fraction of the screen width.",
+                new AcceptableValueRange<float>(0.01f, 0.3f)));
+
+        AdjustStep = config.Bind(
+            Section,
+            "AdjustStep",
+            0.005f,
+            new ConfigDescription(
+                "In-game adjustment step in metres (Shift divides it by 10).",
+                new AcceptableValueRange<float>(0.0005f, 0.05f)));
+
+        ModelZOffset = config.Bind(
+            Section,
+            "ModelZOffset",
+            -0.29f,
+            new ConfigDescription(
+                "Constant Z offset (metres) between the weapon model space used by the "
+                + "editor and the space in which the weapon is actually drawn. The editor "
+                + "coordinates are kept untouched; this offset is applied when placing the panel.",
+                new AcceptableValueRange<float>(-1f, 1f)));
 
         AutoPlaceOnReceiverTop = config.Bind(
             Section,

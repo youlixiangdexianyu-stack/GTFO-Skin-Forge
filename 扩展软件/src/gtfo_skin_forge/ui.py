@@ -84,6 +84,8 @@ from .config import (
     save_settings,
 )
 from .dly_workspace import DlyWorkspace
+from .dynamic_workspace import DynamicVisualWorkspace
+from .dynamic_visuals import load_dynamic_project
 from .game_locator import best_game_install, is_gtfo_running, validate_game_root
 from .installer import (
     InstallManager,
@@ -573,7 +575,7 @@ def _read_pixmap(path: Path) -> QPixmap:
 class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("GTFO 枪皮工坊 v0.1.53")
+        self.setWindowTitle("GTFO 枪皮工坊 v0.2.1")
         self.resize(1480, 920)
         self.setMinimumSize(1120, 720)
         self.setStyleSheet(APP_STYLE)
@@ -601,6 +603,7 @@ class MainWindow(QMainWindow):
         self.three_d_view = None
         self.three_d_dirty = True
         self.dly_workspace: DlyWorkspace | None = None
+        self.dynamic_workspace: DynamicVisualWorkspace | None = None
         self.skin_workspace: QWidget | None = None
         self._workspace_switching = False
         self.log_path = ensure_app_dirs()["logs"] / "app.log"
@@ -651,24 +654,49 @@ class MainWindow(QMainWindow):
                 if self.dly_workspace.profile_root
                 else ""
             )
-        self.settings.active_workspace = (
-            "dly"
+        if self.dynamic_workspace is not None:
+            self.settings.dynamic_splitter_sizes = (
+                self.dynamic_workspace.save_splitter_sizes()
+            )
+            self.settings.dynamic_project_path = str(
+                self.dynamic_workspace.project_path
+            )
+            self.settings.dynamic_profile_root = (
+                str(self.dynamic_workspace.profile_root)
+                if self.dynamic_workspace.profile_root
+                else ""
+            )
+            self.settings.dynamic_last_part_id = (
+                self.dynamic_workspace.project.selected_part_id
+            )
+            self.settings.dynamic_last_channel = (
+                self.dynamic_workspace.project.selected_channel
+            )
+        index = (
+            self.workspace_stack.currentIndex()
             if hasattr(self, "workspace_stack")
-            and self.workspace_stack.currentIndex() == 1
-            else "skin"
+            else 0
         )
+        self.settings.active_workspace = {
+            1: "dly",
+            2: "dynamic",
+        }.get(index, "skin")
         save_settings(self.settings)
 
     def _restore_active_workspace(self) -> None:
         self._set_workspace(
-            "dly" if self.settings.active_workspace == "dly" else "skin",
+            (
+                self.settings.active_workspace
+                if self.settings.active_workspace in {"skin", "dly", "dynamic"}
+                else "skin"
+            ),
             persist=False,
         )
 
     def _workspace_tab_changed(self, index: int) -> None:
         if self._workspace_switching:
             return
-        self._set_workspace("dly" if index == 1 else "skin")
+        self._set_workspace({0: "skin", 1: "dly", 2: "dynamic"}.get(index, "skin"))
 
     def _set_workspace(self, workspace: str, *, persist: bool = True) -> None:
         if not hasattr(self, "workspace_stack"):
@@ -681,6 +709,14 @@ class MainWindow(QMainWindow):
                 self.workspace_tabs.setCurrentIndex(1)
                 dly_workspace.set_game(self.current_game)
                 dly_workspace.activate()
+                if hasattr(self, "undo_action"):
+                    self.undo_action.setEnabled(False)
+            elif workspace == "dynamic":
+                dynamic_workspace = self._ensure_dynamic_workspace()
+                self.workspace_stack.setCurrentIndex(2)
+                self.workspace_tabs.setCurrentIndex(2)
+                dynamic_workspace.set_game(self.current_game)
+                dynamic_workspace.activate()
                 if hasattr(self, "undo_action"):
                     self.undo_action.setEnabled(False)
             else:
@@ -696,6 +732,61 @@ class MainWindow(QMainWindow):
                 save_settings(self.settings)
         finally:
             self._workspace_switching = False
+
+    def _ensure_dynamic_workspace(self) -> DynamicVisualWorkspace:
+        if self.dynamic_workspace is not None:
+            return self.dynamic_workspace
+        app_root = (
+            Path(sys.executable).resolve().parent
+            if getattr(sys, "frozen", False)
+            else Path(__file__).resolve().parents[2]
+        )
+        workspace = DynamicVisualWorkspace(
+            app_root=app_root,
+            game=self.current_game,
+        )
+        if self.settings.dynamic_project_path:
+            project_path = Path(self.settings.dynamic_project_path)
+            if project_path.is_file():
+                try:
+                    workspace.project_path = project_path
+                    workspace.project = load_dynamic_project(project_path)
+                except (OSError, ValueError):
+                    pass
+        if self.settings.dynamic_profile_root:
+            profile_root = Path(self.settings.dynamic_profile_root)
+            if profile_root.is_dir():
+                workspace.profile_root = profile_root
+                workspace.profile_label.setText(str(profile_root))
+        workspace.project.selected_part_id = (
+            self.settings.dynamic_last_part_id or "front"
+        )
+        workspace.project.selected_channel = (
+            self.settings.dynamic_last_channel or "Albedo"
+        )
+        workspace._populate_parts()
+        workspace._refresh_layer_table()
+        workspace._sync_controls()
+        workspace.restore_splitter_sizes(
+            list(self.settings.dynamic_splitter_sizes)
+        )
+        workspace.status_message.connect(self._dynamic_status_changed)
+        self.workspace_stack.removeWidget(self.dynamic_workspace_placeholder)
+        self.workspace_stack.insertWidget(2, workspace)
+        self.dynamic_workspace = workspace
+        return workspace
+
+    def _dynamic_status_changed(self, text: str) -> None:
+        if self.dynamic_workspace is None:
+            return
+        self.settings.dynamic_project_path = str(
+            self.dynamic_workspace.project_path
+        )
+        self.settings.dynamic_profile_root = (
+            str(self.dynamic_workspace.profile_root)
+            if self.dynamic_workspace.profile_root
+            else ""
+        )
 
     def _ensure_dly_workspace(self) -> DlyWorkspace:
         if self.dly_workspace is not None:
@@ -726,7 +817,8 @@ class MainWindow(QMainWindow):
             list(self.settings.dly_splitter_sizes)
         )
         workspace.status_message.connect(self._dly_status_changed)
-        self.workspace_stack.addWidget(workspace)
+        self.workspace_stack.removeWidget(self.dly_workspace_placeholder)
+        self.workspace_stack.insertWidget(1, workspace)
         self.dly_workspace = workspace
         return workspace
 
@@ -830,7 +922,7 @@ class MainWindow(QMainWindow):
         title_box = QVBoxLayout()
         title = QLabel("GTFO 枪皮工坊")
         title.setObjectName("Title")
-        subtitle = QLabel("WORKSPACE TOOLS // v0.1.53")
+        subtitle = QLabel("WORKSPACE TOOLS // v0.2.1")
         subtitle.setObjectName("Subtitle")
         title_box.addWidget(title)
         title_box.addWidget(subtitle)
@@ -841,6 +933,7 @@ class MainWindow(QMainWindow):
         self.workspace_tabs.setExpanding(False)
         self.workspace_tabs.addTab("枪皮工坊")
         self.workspace_tabs.addTab("DLY 弹夹显示")
+        self.workspace_tabs.addTab("动态视觉")
         self.workspace_tabs.currentChanged.connect(
             self._workspace_tab_changed
         )
@@ -866,6 +959,10 @@ class MainWindow(QMainWindow):
         skin_layout.setContentsMargins(0, 0, 0, 0)
         skin_layout.setSpacing(0)
         self.workspace_stack.addWidget(self.skin_workspace)
+        self.dly_workspace_placeholder = QWidget()
+        self.dynamic_workspace_placeholder = QWidget()
+        self.workspace_stack.addWidget(self.dly_workspace_placeholder)
+        self.workspace_stack.addWidget(self.dynamic_workspace_placeholder)
 
         self.main_splitter = QSplitter(Qt.Orientation.Horizontal)
         self.main_splitter.setChildrenCollapsible(False)
@@ -2346,6 +2443,8 @@ class MainWindow(QMainWindow):
         if self.dly_workspace is not None:
             self.dly_workspace.set_game(install)
             self.dly_workspace._refresh_profile_status()
+        if self.dynamic_workspace is not None:
+            self.dynamic_workspace.set_game(install)
         if install:
             self.settings.game_root = str(install.root)
             save_settings(self.settings)

@@ -1,16 +1,17 @@
 # -*- mode: python ; coding: utf-8 -*-
 
-from PyInstaller.utils.hooks import collect_all, collect_data_files
+from PyInstaller.utils.hooks import collect_all, collect_data_files, collect_dynamic_libs
 
 
 unity_datas, unity_binaries, unity_hidden = collect_all("UnityPy")
 fmod_datas = collect_data_files("fmod_toolkit")
 archspec_datas = collect_data_files("archspec", includes=["json/cpu/*"])
+cv2_binaries = collect_dynamic_libs("cv2")
 
 a = Analysis(
     ["run_app.py"],
     pathex=["src"],
-    binaries=unity_binaries,
+    binaries=unity_binaries + cv2_binaries,
     datas=unity_datas
     + fmod_datas
     + archspec_datas
@@ -19,11 +20,12 @@ a = Analysis(
         ("src/gtfo_skin_forge/data/assembly.json", "gtfo_skin_forge/data"),
         ("src/gtfo_skin_forge/data/preview_meshes", "gtfo_skin_forge/data/preview_meshes"),
         ("src/gtfo_skin_forge/data/dly_plugin", "gtfo_skin_forge/data/dly_plugin"),
+        ("src/gtfo_skin_forge/data/dynamic_plugin", "gtfo_skin_forge/data/dynamic_plugin"),
         ("src/gtfo_skin_forge/data/checkmark.svg", "gtfo_skin_forge/data"),
         ("src/gtfo_skin_forge/data/spin_up.svg", "gtfo_skin_forge/data"),
         ("src/gtfo_skin_forge/data/spin_down.svg", "gtfo_skin_forge/data"),
     ],
-    hiddenimports=unity_hidden,
+    hiddenimports=unity_hidden + ["cv2"],
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],

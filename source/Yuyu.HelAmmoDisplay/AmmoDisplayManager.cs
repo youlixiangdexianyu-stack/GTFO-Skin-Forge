@@ -1,4 +1,5 @@
-using System.Globalization;
+﻿using System.Globalization;
+using System.Text;
 using Gear;
 using HarmonyLib;
 using UnityEngine;
@@ -203,6 +204,9 @@ internal static class AmmoDisplayManager
         Vector3 modelPosition;
         float targetWidth = DisplayConfig.PanelWidth.Value;
         float targetHeight = DisplayConfig.PanelHeight.Value;
+        float scale = Mathf.Max(0.01f, DisplayConfig.PanelScale.Value);
+        targetWidth *= scale;
+        targetHeight *= scale;
 
         if (DisplayConfig.UseAbsoluteAnchor.Value)
         {
@@ -224,8 +228,21 @@ internal static class AmmoDisplayManager
         else if (DisplayConfig.AutoPlaceOnReceiverTop.Value
             && meshFilter.sharedMesh != null)
         {
+            // Sit the panel's bottom edge on the actual part surface: sample the
+            // mesh vertices under the panel footprint instead of using the whole
+            // part's bounding box, which can be several centimetres too high.
             modelPosition = modelBounds.center;
-            modelPosition.y += modelBounds.extents.y + DisplayConfig.SurfaceClearance.Value;
+            float searchX = modelPosition.x;
+            float searchZ = modelPosition.z;
+            float surfaceY = SurfaceHeight(
+                meshFilter,
+                modelHolder,
+                searchX,
+                searchZ,
+                modelBounds.center.y + modelBounds.extents.y);
+            modelPosition.y = surfaceY
+                + DisplayConfig.SurfaceClearance.Value
+                + targetHeight * 0.5f;
         }
         else
         {
@@ -241,7 +258,15 @@ internal static class AmmoDisplayManager
                 DisplayConfig.OffsetZ.Value);
         }
 
-        Vector3 worldPosition = modelHolder.TransformPoint(modelPosition);
+        // The editor authors positions in the weapon model space of the Forge
+        // preview, which is offset from the space GTFO actually draws the weapon
+        // in. ModelZOffset bridges that gap without touching the saved editor
+        // coordinates.
+        Vector3 placement = modelPosition + new Vector3(
+            0f,
+            0f,
+            DisplayConfig.ModelZOffset.Value);
+        Vector3 worldPosition = modelHolder.TransformPoint(placement);
         Vector3 anchorLocalPosition = anchor.InverseTransformPoint(worldPosition);
         // The DLY editor builds its panel in the model YZ plane facing +X, while
         // a Unity quad is built in the XY plane. surfaceBaseRotation maps the
@@ -257,17 +282,48 @@ internal static class AmmoDisplayManager
         Quaternion anchorLocalRotation =
             Quaternion.Inverse(anchor.rotation) * desiredWorldRotation;
 
-        float scale = Mathf.Max(0.01f, DisplayConfig.PanelScale.Value);
-        targetWidth *= scale;
-        targetHeight *= scale;
-
         var root = new GameObject(DisplayRootName);
-        int layer = anchor.gameObject.layer;
+        Camera hudCamera = DisplayConfig.HudMode.Value ? ResolveCamera(weapon) : null;
+        // In HUD mode use the Default layer so the main view camera always draws
+        // it (the weapon pass uses layer 8 and does not include Default).
+        int layer = hudCamera != null ? 0 : anchor.gameObject.layer;
         SetLayerRecursively(root, layer);
-        root.transform.SetParent(anchor, false);
-        root.transform.localPosition = anchorLocalPosition;
-        root.transform.localRotation = anchorLocalRotation;
-        root.transform.localScale = Vector3.one;
+
+        if (hudCamera != null)
+        {
+            // Screen-space HUD: parent to the view camera so it is locked to the
+            // screen and cannot drift with the weapon render pass.
+            const float hudDepth = 0.5f;
+            float hudWidth = Mathf.Max(
+                0.0005f,
+                DisplayConfig.HudScreenWidth.Value * scale);
+            float aspect = DisplayConfig.PanelWidth.Value > 0.0001f
+                ? DisplayConfig.PanelHeight.Value / DisplayConfig.PanelWidth.Value
+                : 0.42f;
+            Vector3 centre = hudCamera.ViewportToWorldPoint(
+                new Vector3(0.5f, 0.5f, hudDepth));
+            Vector3 edge = hudCamera.ViewportToWorldPoint(
+                new Vector3(0.5f + hudWidth, 0.5f, hudDepth));
+            float worldWidth = Vector3.Distance(centre, edge);
+            targetWidth = worldWidth;
+            targetHeight = worldWidth * aspect;
+            Vector3 hudWorld = hudCamera.ViewportToWorldPoint(
+                new Vector3(
+                    0.5f + DisplayConfig.HudOffsetX.Value,
+                    0.5f + DisplayConfig.HudOffsetY.Value,
+                    hudDepth));
+            root.transform.SetParent(hudCamera.transform, false);
+            root.transform.position = hudWorld;
+            root.transform.rotation = hudCamera.transform.rotation;
+            root.transform.localScale = Vector3.one;
+        }
+        else
+        {
+            root.transform.SetParent(anchor, false);
+            root.transform.localPosition = anchorLocalPosition;
+            root.transform.localRotation = anchorLocalRotation;
+            root.transform.localScale = Vector3.one;
+        }
 
         GameObject border = CreatePanelQuad(
             "Border",
@@ -307,6 +363,7 @@ internal static class AmmoDisplayManager
         state.DigitDisplay = digitDisplay;
         state.Anchor = anchor;
         state.ModelHolder = modelHolder;
+        state.ModelPosition = modelPosition;
         state.AnchorLocalPosition = anchorLocalPosition;
         state.AnchorLocalRotation = anchorLocalRotation;
         state.ConfigurationSignature = BuildConfigurationSignature();
@@ -318,6 +375,17 @@ internal static class AmmoDisplayManager
         state.DigitTexture = digitTexture;
         state.LastText = FormatClip(weapon.GetCurrentClip());
         state.DigitDisplay.SetValue(state.LastText);
+
+        if (DisplayConfig.Diagnostics.Value)
+        {
+            state.DebugMarkers = CreateDebugMarkers(modelHolder, layer);
+            LogDiagnostics(modelHolder, anchor, meshFilter, root, modelPosition);
+            LogRenderers("item", modelHolder);
+            if (modelHolder.parent != null)
+            {
+                LogRenderers("itemParent", modelHolder.parent);
+            }
+        }
 
         if (logSuccess)
         {
@@ -345,6 +413,122 @@ internal static class AmmoDisplayManager
 
         UpdateDisplay(weapon, state);
         return true;
+    }
+
+    private static List<GameObject> CreateDebugMarkers(
+        Transform modelHolder,
+        int layer)
+    {
+        var markers = new List<GameObject>();
+        AddDebugMarker(modelHolder, new Vector3(0f, 0.12f, 0f), new Color(1f, 1f, 1f, 1f), "HEL_DBG_Center", layer, markers);
+        AddDebugMarker(modelHolder, new Vector3(0f, 0.12f, 0.12f), new Color(1f, 0.15f, 0.1f, 1f), "HEL_DBG_ZPlus", layer, markers);
+        AddDebugMarker(modelHolder, new Vector3(0f, 0.12f, -0.12f), new Color(0.1f, 1f, 0.2f, 1f), "HEL_DBG_ZMinus", layer, markers);
+        AddDebugMarker(modelHolder, new Vector3(0.10f, 0.12f, 0f), new Color(0.2f, 0.4f, 1f, 1f), "HEL_DBG_XPlus", layer, markers);
+        return markers;
+    }
+
+    private static void AddDebugMarker(
+        Transform parent,
+        Vector3 localPosition,
+        Color color,
+        string name,
+        int layer,
+        List<GameObject> markers)
+    {
+        GameObject marker = GameObject.CreatePrimitive(PrimitiveType.Cube);
+        marker.name = name;
+        marker.layer = layer;
+        Collider collider = marker.GetComponent<Collider>();
+        if (collider != null)
+        {
+            Object.Destroy(collider);
+        }
+
+        MeshRenderer renderer = marker.GetComponent<MeshRenderer>();
+        if (renderer != null)
+        {
+            Shader shader = Shader.Find("Unlit/Color")
+                ?? Shader.Find("Sprites/Default");
+            if (shader != null)
+            {
+                var material = new Material(shader);
+                material.name = name + "_Mat";
+                material.color = color;
+                renderer.sharedMaterial = material;
+            }
+
+            renderer.shadowCastingMode = ShadowCastingMode.Off;
+            renderer.receiveShadows = false;
+        }
+
+        marker.transform.SetParent(parent, false);
+        marker.transform.localPosition = localPosition;
+        marker.transform.localRotation = Quaternion.identity;
+        marker.transform.localScale = Vector3.one * 0.008f;
+        markers.Add(marker);
+    }
+
+    private static void LogDiagnostics(
+        Transform modelHolder,
+        Transform anchor,
+        MeshFilter meshFilter,
+        GameObject root,
+        Vector3 modelPosition)
+    {
+        var text = new StringBuilder();
+        text.AppendLine("HEL diagnostics:");
+        text.AppendLine(
+            $"  modelHolder='{TransformPath(modelHolder)}' "
+            + $"localPos={FormatVector(modelHolder.localPosition)} "
+            + $"localEuler={FormatVector(modelHolder.localEulerAngles)} "
+            + $"localScale={FormatVector(modelHolder.localScale)} "
+            + $"lossyScale={FormatVector(modelHolder.lossyScale)} "
+            + $"worldPos={FormatVector(modelHolder.position)}");
+        text.AppendLine(
+            $"  anchor='{TransformPath(anchor)}' "
+            + $"localPos={FormatVector(anchor.localPosition)} "
+            + $"localEuler={FormatVector(anchor.localEulerAngles)} "
+            + $"localScale={FormatVector(anchor.localScale)} "
+            + $"lossyScale={FormatVector(anchor.lossyScale)} "
+            + $"worldPos={FormatVector(anchor.position)}");
+        text.AppendLine(
+            $"  requestedModelPos={FormatVector(modelPosition)} "
+            + $"panelWorldPos={FormatVector(root.transform.position)} "
+            + $"panelLossyScale={FormatVector(root.transform.lossyScale)}");
+        if (meshFilter?.sharedMesh != null)
+        {
+            Bounds source = meshFilter.sharedMesh.bounds;
+            Vector3 minimum = source.center - source.extents;
+            Vector3 maximum = source.center + source.extents;
+            Bounds modelBounds = BoundsInModelSpace(meshFilter, modelHolder);
+            text.AppendLine(
+                $"  anchorMesh='{meshFilter.sharedMesh.name}' "
+                + $"localMin={FormatVector(minimum)} "
+                + $"localMax={FormatVector(maximum)} "
+                + $"modelMin={FormatVector(modelBounds.min)} "
+                + $"modelMax={FormatVector(modelBounds.max)}");
+        }
+
+        for (Transform current = anchor;
+             current != null && current != modelHolder;
+             current = current.parent)
+        {
+            text.AppendLine(
+                $"  chain '{current.name}' "
+                + $"localPos={FormatVector(current.localPosition)} "
+                + $"localEuler={FormatVector(current.localEulerAngles)} "
+                + $"localScale={FormatVector(current.localScale)}");
+        }
+
+        HelAmmoDisplayPlugin.LogSource.LogInfo(text.ToString());
+    }
+
+    private static string FormatVector(Vector3 value)
+    {
+        return "("
+            + $"{FormatFloat(value.x)}, "
+            + $"{FormatFloat(value.y)}, "
+            + $"{FormatFloat(value.z)})";
     }
 
     private static void UpdateDisplay(BulletWeapon weapon, DisplayState state)
@@ -389,19 +573,365 @@ internal static class AmmoDisplayManager
             state.DigitDisplay.SetValue(text);
             state.LastText = text;
         }
+
+        TickInGameAdjustment(state, camera);
+
+        if (DisplayConfig.Diagnostics.Value
+            && Time.unscaledTime >= state.NextScreenLog)
+        {
+            state.NextScreenLog = Time.unscaledTime + 1f;
+            Vector3 screen = camera.WorldToScreenPoint(state.Root.transform.position);
+            var chain = new StringBuilder();
+            Transform node = state.ModelHolder;
+            for (int depth = 0; node != null && depth < 5; depth++, node = node.parent)
+            {
+                chain.Append($"'{node.name}'");
+                chain.Append($"@{FormatVector(node.position)}");
+                chain.Append($" rot={FormatVector(node.eulerAngles)}");
+                chain.Append(' ');
+            }
+
+            HelAmmoDisplayPlugin.LogSource.LogInfo(
+                "HEL chain "
+                + chain.ToString()
+                + $"| anchorWorld={FormatVector(state.Anchor.position)} "
+                + $"anchorLayer={state.Anchor.gameObject.layer} "
+                + $"rootLayer={state.Root.layer} "
+                + $"rootParent='{(state.Root.transform.parent != null ? state.Root.transform.parent.name : "<none>")}' "
+                + $"| panelWorld={FormatVector(state.Root.transform.position)} "
+                + $"screen=({FormatFloat(screen.x)}, {FormatFloat(screen.y)}, {FormatFloat(screen.z)}) "
+                + $"| camera='{camera.name}' fov={FormatFloat(camera.fieldOfView)} "
+                + $"mask={camera.cullingMask} "
+                + $"camPos={FormatVector(camera.transform.position)} "
+                + $"camEuler={FormatVector(camera.transform.eulerAngles)} "
+                + $"res={Screen.width}x{Screen.height}");
+
+            if (state.DebugMarkers != null)
+            {
+                foreach (GameObject marker in state.DebugMarkers)
+                {
+                    if (marker == null)
+                    {
+                        continue;
+                    }
+
+                    Vector3 markerScreen = camera.WorldToScreenPoint(marker.transform.position);
+                    HelAmmoDisplayPlugin.LogSource.LogInfo(
+                        "HEL marker "
+                        + $"'{marker.name}' "
+                        + $"modelLocal={FormatVector(marker.transform.localPosition)} "
+                        + $"world={FormatVector(marker.transform.position)} "
+                        + $"screen=({FormatFloat(markerScreen.x)}, {FormatFloat(markerScreen.y)}, {FormatFloat(markerScreen.z)})");
+                }
+            }
+        }
+    }
+
+    private static void LogRenderers(string label, Transform root)
+    {
+        try
+        {
+            var text = new StringBuilder();
+            Renderer[] renderers = root.GetComponentsInChildren<Renderer>(true);
+            text.AppendLine(
+                $"HEL renderers under '{root.name}' ({label}) count={renderers.Length}");
+            int index = 0;
+            foreach (Renderer renderer in renderers)
+            {
+                if (renderer == null || index++ >= 40)
+                {
+                    continue;
+                }
+
+                Bounds bounds = renderer.bounds;
+                string kind = renderer is SkinnedMeshRenderer
+                    ? "SkinnedMeshRenderer"
+                    : "MeshRenderer";
+                text.AppendLine(
+                    $"  {kind} '{renderer.name}' "
+                    + $"enabled={renderer.enabled} "
+                    + $"layer={renderer.gameObject.layer} "
+                    + $"center={FormatVector(bounds.center)} "
+                    + $"size={FormatVector(bounds.size)}");
+            }
+
+            HelAmmoDisplayPlugin.LogSource.LogInfo(text.ToString());
+        }
+        catch (Exception exception)
+        {
+            HelAmmoDisplayPlugin.LogSource.LogWarning(
+                $"Could not list renderers under '{label}': {exception.Message}");
+        }
+    }
+
+    private static void TickInGameAdjustment(DisplayState state, Camera camera)
+    {
+        if (state == null || state.Root == null || state.ModelHolder == null)
+        {
+            return;
+        }
+
+        if (!DisplayConfig.InGameAdjust.Value)
+        {
+            state.AdjustMode = false;
+            return;
+        }
+
+        if (Input.GetKeyDown(KeyCode.F6))
+        {
+            state.AdjustMode = !state.AdjustMode;
+            HelAmmoDisplayPlugin.LogSource.LogInfo(
+                state.AdjustMode
+                    ? "HEL adjust mode ON: arrow keys = X/Y, PgUp/PgDn = Z, "
+                        + "Shift = fine step, [ ] = rotate Y, F6 = exit and save."
+                    : "HEL adjust mode OFF. Position saved in the plugin config.");
+            return;
+        }
+
+        if (!state.AdjustMode)
+        {
+            return;
+        }
+
+        float step = Mathf.Max(0.0001f, DisplayConfig.AdjustStep.Value);
+        if (Input.GetKey(KeyCode.LeftShift) || Input.GetKey(KeyCode.RightShift))
+        {
+            step *= 0.1f;
+        }
+
+        var delta = Vector3.zero;
+        if (Input.GetKeyDown(KeyCode.LeftArrow))
+        {
+            delta.x -= step;
+        }
+
+        if (Input.GetKeyDown(KeyCode.RightArrow))
+        {
+            delta.x += step;
+        }
+
+        if (Input.GetKeyDown(KeyCode.DownArrow))
+        {
+            delta.y -= step;
+        }
+
+        if (Input.GetKeyDown(KeyCode.UpArrow))
+        {
+            delta.y += step;
+        }
+
+        if (Input.GetKeyDown(KeyCode.PageDown))
+        {
+            delta.z -= step;
+        }
+
+        if (Input.GetKeyDown(KeyCode.PageUp))
+        {
+            delta.z += step;
+        }
+
+        float rotationStep = 0f;
+        if (Input.GetKeyDown(KeyCode.LeftBracket))
+        {
+            rotationStep -= 5f;
+        }
+
+        if (Input.GetKeyDown(KeyCode.RightBracket))
+        {
+            rotationStep += 5f;
+        }
+
+        if (delta == Vector3.zero && Mathf.Approximately(rotationStep, 0f))
+        {
+            return;
+        }
+
+        if (DisplayConfig.HudMode.Value)
+        {
+            // HUD mode: move the screen-space panel and rebuild so the layout
+            // picks up the new viewport offset / width.
+            float hudStep = 0.0015f;
+            if (Input.GetKey(KeyCode.LeftShift) || Input.GetKey(KeyCode.RightShift))
+            {
+                hudStep *= 0.1f;
+            }
+
+            float offsetX = DisplayConfig.HudOffsetX.Value;
+            float offsetY = DisplayConfig.HudOffsetY.Value;
+            float width = DisplayConfig.HudScreenWidth.Value;
+            if (Input.GetKeyDown(KeyCode.LeftArrow))
+            {
+                offsetX -= hudStep;
+            }
+
+            if (Input.GetKeyDown(KeyCode.RightArrow))
+            {
+                offsetX += hudStep;
+            }
+
+            if (Input.GetKeyDown(KeyCode.UpArrow))
+            {
+                offsetY += hudStep;
+            }
+
+            if (Input.GetKeyDown(KeyCode.DownArrow))
+            {
+                offsetY -= hudStep;
+            }
+
+            if (Input.GetKeyDown(KeyCode.PageUp))
+            {
+                width += hudStep * 0.2f;
+            }
+
+            if (Input.GetKeyDown(KeyCode.PageDown))
+            {
+                width -= hudStep * 0.2f;
+            }
+
+            DisplayConfig.HudOffsetX.Value = Mathf.Clamp(offsetX, -0.6f, 0.6f);
+            DisplayConfig.HudOffsetY.Value = Mathf.Clamp(offsetY, -0.6f, 0.6f);
+            DisplayConfig.HudScreenWidth.Value = Mathf.Clamp(width, 0.01f, 0.3f);
+            // Force a rebuild at the next config watcher tick.
+            state.ConfigurationSignature = string.Empty;
+
+            try
+            {
+                HelAmmoDisplayPlugin.Instance?.Config.Save();
+            }
+            catch (Exception exception)
+            {
+                HelAmmoDisplayPlugin.LogSource.LogWarning(
+                    $"Could not save HEL HUD position: {exception.Message}");
+            }
+
+            HelAmmoDisplayPlugin.LogSource.LogInfo(
+                "HEL hud adjust "
+                + $"offsetX={FormatFloat(DisplayConfig.HudOffsetX.Value)} "
+                + $"offsetY={FormatFloat(DisplayConfig.HudOffsetY.Value)} "
+                + $"width={FormatFloat(DisplayConfig.HudScreenWidth.Value)}");
+            return;
+        }
+
+        if (delta != Vector3.zero && camera != null)
+        {
+            // The arrow keys act along the screen axes (camera right/up/forward),
+            // so dragging the panel feels like moving it on screen. Convert the
+            // resulting world offset back into the weapon model space the panel
+            // position is stored in.
+            Vector3 worldDelta = camera.transform.right * delta.x
+                + camera.transform.up * delta.y
+                + camera.transform.forward * delta.z;
+            delta = state.ModelHolder.InverseTransformDirection(worldDelta);
+        }
+
+        state.ModelPosition += delta;
+        state.Root.transform.position = state.ModelHolder.TransformPoint(
+            state.ModelPosition + new Vector3(
+                0f,
+                0f,
+                DisplayConfig.ModelZOffset.Value));
+        if (!Mathf.Approximately(rotationStep, 0f))
+        {
+            DisplayConfig.RotationY.Value = Mathf.Repeat(
+                DisplayConfig.RotationY.Value + rotationStep + 180f,
+                360f) - 180f;
+            Quaternion baseRotation = Quaternion.Euler(0f, -90f, 0f);
+            Quaternion panelRotation = Quaternion.Euler(
+                DisplayConfig.RotationX.Value,
+                DisplayConfig.RotationY.Value,
+                DisplayConfig.RotationZ.Value) * baseRotation;
+            state.Root.transform.rotation =
+                state.ModelHolder.rotation * panelRotation;
+        }
+
+        DisplayConfig.UseAbsoluteAnchor.Value = true;
+        DisplayConfig.AnchorLocalX.Value = state.ModelPosition.x;
+        DisplayConfig.AnchorLocalY.Value = state.ModelPosition.y;
+        DisplayConfig.AnchorLocalZ.Value = state.ModelPosition.z;
+        // Keep the change signature in sync so the periodic config watcher does
+        // not rebuild the display while the player is dragging it.
+        state.ConfigurationSignature = BuildConfigurationSignature();
+
+        try
+        {
+            HelAmmoDisplayPlugin.Instance?.Config.Save();
+        }
+        catch (Exception exception)
+        {
+            HelAmmoDisplayPlugin.LogSource.LogWarning(
+                $"Could not save HEL display position: {exception.Message}");
+        }
+
+        HelAmmoDisplayPlugin.LogSource.LogInfo(
+            "HEL adjust "
+            + $"position={FormatVector(state.ModelPosition)} "
+            + $"rotationY={FormatFloat(DisplayConfig.RotationY.Value)} "
+            + $"step={FormatFloat(step)}");
+    }
+
+    private static float SurfaceHeight(
+        MeshFilter meshFilter,
+        Transform modelHolder,
+        float x,
+        float z,
+        float fallback)
+    {
+        try
+        {
+            Mesh mesh = meshFilter.sharedMesh;
+            if (mesh == null)
+            {
+                return fallback;
+            }
+
+            Vector3[] vertices = mesh.vertices;
+            Transform meshTransform = meshFilter.transform;
+            const float radius = 0.012f;
+            float best = float.MinValue;
+            int found = 0;
+            foreach (Vector3 vertex in vertices)
+            {
+                Vector3 modelPoint = modelHolder.InverseTransformPoint(
+                    meshTransform.TransformPoint(vertex));
+                if (Mathf.Abs(modelPoint.x - x) > radius
+                    || Mathf.Abs(modelPoint.z - z) > radius)
+                {
+                    continue;
+                }
+
+                if (modelPoint.y > best)
+                {
+                    best = modelPoint.y;
+                }
+
+                found++;
+            }
+
+            return found > 0 ? best : fallback;
+        }
+        catch (Exception exception)
+        {
+            HelAmmoDisplayPlugin.LogSource.LogWarning(
+                $"Could not sample the panel surface: {exception.Message}");
+            return fallback;
+        }
     }
 
     private static Camera ResolveCamera(BulletWeapon weapon)
     {
         FirstPersonItemHolder holder = weapon.FPItemHolder;
-        if (holder?.m_ItemLayerCamera != null)
-        {
-            return holder.m_ItemLayerCamera;
-        }
-
+        // m_LookCamera is the player's view camera. m_ItemLayerCamera is only the
+        // item-layer compositing camera and is often parked at the item holder,
+        // so it must not be preferred for billboarding or projection maths.
         if (holder?.m_LookCamera != null)
         {
             return holder.m_LookCamera;
+        }
+
+        if (holder?.m_ItemLayerCamera != null)
+        {
+            return holder.m_ItemLayerCamera;
         }
 
         return Camera.main;
@@ -620,6 +1150,14 @@ internal static class AmmoDisplayManager
             new[]
             {
                 DisplayConfig.Enabled.Value ? "1" : "0",
+                DisplayConfig.Diagnostics.Value ? "1" : "0",
+                DisplayConfig.HudMode.Value ? "1" : "0",
+                DisplayConfig.HudOffsetX.Value.ToString("R", CultureInfo.InvariantCulture),
+                DisplayConfig.HudOffsetY.Value.ToString("R", CultureInfo.InvariantCulture),
+                DisplayConfig.HudScreenWidth.Value.ToString("R", CultureInfo.InvariantCulture),
+                DisplayConfig.InGameAdjust.Value ? "1" : "0",
+                DisplayConfig.AdjustStep.Value.ToString("R", CultureInfo.InvariantCulture),
+                DisplayConfig.ModelZOffset.Value.ToString("R", CultureInfo.InvariantCulture),
                 DisplayConfig.AutoPlaceOnReceiverTop.Value ? "1" : "0",
                 DisplayConfig.FollowItemCamera.Value ? "1" : "0",
                 DisplayConfig.AnchorObjectName.Value ?? string.Empty,
@@ -858,6 +1396,19 @@ internal static class AmmoDisplayManager
             Object.Destroy(state.Root);
         }
 
+        if (state.DebugMarkers != null)
+        {
+            foreach (GameObject marker in state.DebugMarkers)
+            {
+                if (marker != null)
+                {
+                    Object.Destroy(marker);
+                }
+            }
+
+            state.DebugMarkers = null;
+        }
+
         if (state.BorderMaterial != null)
         {
             Object.Destroy(state.BorderMaterial);
@@ -913,6 +1464,9 @@ internal static class AmmoDisplayManager
         internal DigitDisplay DigitDisplay { get; set; }
         internal Transform Anchor { get; set; }
         internal Transform ModelHolder { get; set; }
+        internal Vector3 ModelPosition { get; set; }
+        internal bool AdjustMode { get; set; }
+        internal List<GameObject> DebugMarkers { get; set; }
         internal Vector3 AnchorLocalPosition { get; set; }
         internal Quaternion AnchorLocalRotation { get; set; }
         internal Material BorderMaterial { get; set; }
@@ -924,6 +1478,7 @@ internal static class AmmoDisplayManager
         internal string LastText { get; set; }
         internal float NextAttachAttempt { get; set; }
         internal float NextAnchorWarning { get; set; }
+        internal float NextScreenLog { get; set; }
         internal float NextConfigurationCheck { get; set; }
         internal string ConfigurationSignature { get; set; } = string.Empty;
     }
@@ -1036,6 +1591,8 @@ internal static class BulletWeaponOnWieldPatch
 {
     private static void Postfix(BulletWeapon __instance)
     {
+        EmissiveTest.OnWield(__instance);
+        EmissiveDisplay.OnWield(__instance);
         AmmoDisplayManager.OnWield(__instance);
     }
 }
@@ -1055,6 +1612,8 @@ internal static class BulletWeaponUpdatePatch
     private static void Postfix(BulletWeapon __instance)
     {
         AmmoDisplayManager.OnUpdate(__instance);
+        EmissiveTest.OnUpdate(__instance);
+        EmissiveDisplay.OnUpdate(__instance);
     }
 }
 
@@ -1066,3 +1625,5 @@ internal static class BulletWeaponOnDestroyPatch
         AmmoDisplayManager.OnDestroy(__instance);
     }
 }
+
+

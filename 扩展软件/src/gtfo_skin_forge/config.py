@@ -15,7 +15,7 @@ DATA_FOLDER_NAME = "GTFO_UserData"
 
 @dataclass(slots=True)
 class AppSettings:
-    schema_version: int = 7
+    schema_version: int = 8
     game_root: str = ""
     persistent_backup: bool = True
     auto_backup: bool = False
@@ -34,6 +34,11 @@ class AppSettings:
     dly_profile_root: str = ""
     dly_splitter_sizes: list[int] = field(default_factory=list)
     dly_last_part_id: str = "receiver"
+    dynamic_project_path: str = ""
+    dynamic_profile_root: str = ""
+    dynamic_splitter_sizes: list[int] = field(default_factory=list)
+    dynamic_last_part_id: str = "front"
+    dynamic_last_channel: str = "Albedo"
     theme: str = "gtfo-dark"
 
 
@@ -184,6 +189,13 @@ def load_settings() -> AppSettings:
             value.setdefault("dly_splitter_sizes", [])
             value.setdefault("dly_last_part_id", "receiver")
             value["schema_version"] = 7
+        if version < 8:
+            value.setdefault("dynamic_project_path", "")
+            value.setdefault("dynamic_profile_root", "")
+            value.setdefault("dynamic_splitter_sizes", [])
+            value.setdefault("dynamic_last_part_id", "front")
+            value.setdefault("dynamic_last_channel", "Albedo")
+            value["schema_version"] = 8
         settings = AppSettings(
             **{
                 key: value[key]
@@ -191,7 +203,7 @@ def load_settings() -> AppSettings:
                 if key in value
             }
         )
-        if version < 7:
+        if version < 8:
             save_settings(settings)
         return settings
     except (OSError, ValueError, TypeError):

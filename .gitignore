@@ -1,5 +1,10 @@
 ﻿**/__pycache__/
 **/*.pyc
+source/**/bin/
+source/**/obj/
+source/**/.vs/
+*.user
+*.suo
 扩展软件/dist*/
 扩展软件/build*/
 扩展软件/artifacts/

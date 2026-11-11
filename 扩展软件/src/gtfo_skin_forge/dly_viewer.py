@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import math
+from pathlib import Path
 
 import numpy as np
 from PySide6.Qt3DCore import Qt3DCore
@@ -90,6 +91,7 @@ class DlyPreviewView(Weapon3DView):
         self._surface_normal = QVector3D(0.0, 1.0, 0.0)
         self._surface_snap_enabled = False
         self._perspective_projection = True
+        self.custom_overlay_image_path: Path | None = None
         self._alt_view_drag_active = False
         self._alt_view_last_position = None
         self._alt_view_dragged = False
@@ -203,6 +205,10 @@ class DlyPreviewView(Weapon3DView):
         self._build_selection_highlight(preset.anchor_part_id)
         self._build_display_overlay(preset)
         self._face_camera_tick()
+
+    def set_custom_overlay_image(self, path: Path | None) -> None:
+        self.custom_overlay_image_path = Path(path) if path else None
+        self.apply_preset(self._preset)
 
     def selected_part_bounds(
         self,
@@ -427,6 +433,56 @@ class DlyPreviewView(Weapon3DView):
         handle_material = self._material("#fff2d6")
 
         content = self._overlay_content_root
+        if self.custom_overlay_image_path is not None:
+            texture_material = Qt3DExtras.QTextureMaterial(content)
+            texture = self._texture(
+                texture_material,
+                self.custom_overlay_image_path,
+            )
+            if texture is not None:
+                texture_material.setTexture(texture)
+            if hasattr(texture_material, "setAlphaBlendingEnabled"):
+                texture_material.setAlphaBlendingEnabled(True)
+            self._dly_materials.append(texture_material)
+            image_entity = self._add_box(
+                content,
+                QVector3D(depth * 0.55, 0.0, 0.0),
+                QVector3D(max(depth, 0.0002), panel_height, panel_width),
+                texture_material,
+            )
+            image_picker = Qt3DRender.QObjectPicker(image_entity)
+            image_picker.setDragEnabled(True)
+            image_picker.setHoverEnabled(False)
+            image_picker.pressed.connect(self._overlay_pressed)
+            image_picker.moved.connect(self._overlay_dragged)
+            image_picker.released.connect(self._overlay_released)
+            image_entity.addComponent(image_picker)
+            self._overlay_pickers.append(image_picker)
+            for center, size in (
+                (
+                    QVector3D(depth * 0.9, panel_height * 0.5, 0.0),
+                    QVector3D(depth * 0.7, border, panel_width + border * 2),
+                ),
+                (
+                    QVector3D(depth * 0.9, -panel_height * 0.5, 0.0),
+                    QVector3D(depth * 0.7, border, panel_width + border * 2),
+                ),
+                (
+                    QVector3D(depth * 0.9, 0.0, panel_width * 0.5),
+                    QVector3D(depth * 0.7, panel_height, border),
+                ),
+                (
+                    QVector3D(depth * 0.9, 0.0, -panel_width * 0.5),
+                    QVector3D(depth * 0.7, panel_height, border),
+                ),
+            ):
+                self._add_box(content, center, size, editor_material)
+            self._build_transform_gizmo(
+                anchor,
+                max(panel_width * 0.85, 0.012),
+            )
+            self._mark_scene_selection()
+            return
         self._add_box(
             content,
             QVector3D(depth * 0.45, 0.0, 0.0),

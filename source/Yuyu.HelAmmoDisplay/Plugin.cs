@@ -1,4 +1,4 @@
-using BepInEx;
+﻿using BepInEx;
 using BepInEx.Logging;
 using BepInEx.Unity.IL2CPP;
 using HarmonyLib;
@@ -11,7 +11,7 @@ public sealed class HelAmmoDisplayPlugin : BasePlugin
 {
     public const string GUID = "Yuyu.HelAmmoDisplay";
     public const string PluginName = "HEL Ammo Display";
-    public const string PluginVersion = "1.6.0";
+    public const string PluginVersion = "1.9.1";
 
     internal static HelAmmoDisplayPlugin Instance { get; private set; }
     internal static ManualLogSource LogSource { get; private set; }
@@ -39,3 +39,13 @@ public sealed class HelAmmoDisplayPlugin : BasePlugin
         return true;
     }
 }
+
+
+
+
+
+
+
+
+
+

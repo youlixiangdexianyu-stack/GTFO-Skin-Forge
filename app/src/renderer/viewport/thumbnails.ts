@@ -2,7 +2,6 @@
 // while the app is idle, and keeps the image in localStorage (per viewer convenience). Each image is stored with a hash
 // of the preview it came from, so a new preview build (new cache, materials or textures) renders it again.
 import {
-  ACESFilmicToneMapping,
   AmbientLight,
   Box3,
   DirectionalLight,
@@ -73,10 +72,13 @@ async function render(renderer: WebGLRenderer, env: Texture, preview: WeaponPrev
   gltf.scene.traverse((o) => o.visible && (o as Mesh).isMesh && box.expandByObject(o));
   if (box.isEmpty()) return null;
   const center = box.getCenter(new Vector3());
-  const radius = box.getSize(new Vector3()).length() / 2;
+  const size = box.getSize(new Vector3());
+  const radius = size.length() / 2;
   // Side view from the weapon's right, slightly above: reads best at list size.
   const camera = new PerspectiveCamera(30, 2, radius / 100, radius * 20);
   camera.position.copy(center).addScaledVector(unityDirToThree([1, 0.25, 0.15]).normalize(), radius / Math.tan((15 * Math.PI) / 180) / 1.6);
+  // Upright items (melee weapons) are turned to lie along the wide image, muzzle or head forward.
+  if (size.y > Math.max(size.x, size.z)) camera.up.set(0, 0, -1);
   camera.lookAt(center);
   renderer.render(scene, camera);
   const url = renderer.domElement.toDataURL('image/webp', 0.85);
@@ -103,7 +105,6 @@ export async function fillThumbnails(): Promise<void> {
     preserveDrawingBuffer: true,
   });
   renderer.outputColorSpace = SRGBColorSpace;
-  renderer.toneMapping = ACESFilmicToneMapping;
   const env = roomReflection(renderer, '#ffffff');
   try {
     // Images from earlier thumbnail formats are never read again.

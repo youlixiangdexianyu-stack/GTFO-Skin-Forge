@@ -199,6 +199,12 @@ public static class Catalog
             var parts = Parts(Build(g, recipe));
             if (parts.Count == 0) continue;
             var name = (string)row["name"]!;
+            // Unreleased items: every visible renderer is placeholder geometry with Unity's built-in material.
+            if (parts.SelectMany(p => p.Materials).All(m => m == "Default-Material"))
+            {
+                Log.Write($"catalog: skipped item {row["persistentID"]} {name}: only placeholder geometry");
+                continue;
+            }
             var naming = Naming["items"]![name];
             items.Add(new CatalogItem((string?)naming?["id"] ?? Slug(name), (string?)naming?["name"] ?? (string)row["publicName"]!, (string?)naming?["nameZh"],
                 slot, slot, null, null, parts)

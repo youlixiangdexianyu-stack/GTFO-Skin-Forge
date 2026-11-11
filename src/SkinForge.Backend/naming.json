@@ -955,12 +955,6 @@
    "nameZh": "爆炸绊雷",
    "categoryZh": "消耗品"
   },
-  "CONSUMABLE_ShapedMine_Explosive": {
-   "id": "shaped_charge_mine",
-   "order": 511,
-   "nameZh": "聚能爆炸地雷",
-   "categoryZh": "消耗品"
-  },
   "CONSUMABLE_LockMelter": {
    "id": "lock_melter",
    "order": 512,
@@ -977,12 +971,6 @@
    "id": "melee_syringe",
    "order": 514,
    "nameZh": "IIx 注射器",
-   "categoryZh": "消耗品"
-  },
-  "CONSUMABLE_Portable_Barrier": {
-   "id": "portable_barrier",
-   "order": 515,
-   "nameZh": "便携屏障",
    "categoryZh": "消耗品"
   },
   "CONSUMABLE_Grenade": {

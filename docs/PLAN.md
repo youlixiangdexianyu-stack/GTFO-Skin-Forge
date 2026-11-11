@@ -136,7 +136,7 @@ Error codes: `game-not-found`, `game-running`, `bad-request`, `not-found`, plus 
   range rebuilt from a packet the game's own gear (`GearManager.GetAllGearForSlot`) with the same components.
 - Events come from the local player's own gear only:
   - kill / hit: the local player's damage made an enemy die / hit it and it lived, while this gear was wielded (guns and melee);
-  - fire: a gun's fire animation, a melee attack, a C-foam burst, a mine, sentry or barrier placed, a resource pack applied,
+  - fire: a gun's fire animation, a melee attack, a C-foam burst, a mine or sentry placed, a resource pack applied,
     a throwable thrown, a syringe or lock melter used, a carry item inserted; dryFire: a gun's trigger on an empty clip;
   - reloadStart / reloadEnd: the reload sequence started / its completion callback ran;
   - equip: the equip animation; unequip: the item's unwield (base or override, once per frame); for items without holder
@@ -162,7 +162,8 @@ Skin workspace
 - Catalog: main weapons, special weapons, melee weapons (head, neck, handle, pommel), tools (bio tracker, C-foam launcher,
   mine deployer, sentry guns: main, grip, delivery, payload, targeting, screen; the sentry's gun parts on its turret mount),
   the hacking tool, resource packs, consumables and large carry items (every ItemDataBlock item of those slots with a
-  first-person prefab; key items and commodities have none) and attachments (mags, lights, sights, lenses, ammo: 9mm, .308, 12G, .45 ACP, revolver,
+  first-person prefab; key items and commodities have none, and an unreleased item whose visible renderers all use
+  Unity's Default-Material placeholder is left out) and attachments (mags, lights, sights, lenses, ammo: 9mm, .308, 12G, .45 ACP, revolver,
   whole bullet and empty shell as separate parts, revolver speed loader); official order; "official type · English name"; calibre labels.
 - Default gun light per weapon (Gun Light A–D or PEQ-1), off by default; every part has an enable checkbox (lights and ammo on).
 - Choose a texture folder (or drop files): channel and part recognition with confidence; low-confidence items highlighted and

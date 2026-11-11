@@ -119,8 +119,8 @@ static class SentryPlacedHook
 }
 
 // Fire for items with their own prefabs, the moment each is used: a resource pack applied (dump.cs 615108 class), a
-// throwable thrown (561007), a lock melter used (560783), a syringe applied (560904; the call starts the injection), a
-// barrier placed (566234) and a carry item inserted, e.g. a power cell into a generator (613847). Consumable mines are
+// throwable thrown (561007), a lock melter used (560783), a syringe applied (560904; the call starts the injection)
+// and a carry item inserted, e.g. a power cell into a generator (613847). Consumable mines are
 // placed through MineDeployerFirstPerson.PlaceMine above.
 [HarmonyPatch]
 static class ItemUsedHook
@@ -131,7 +131,6 @@ static class ItemUsedHook
         AccessTools.DeclaredMethod(typeof(ThrowingWeapon), nameof(ThrowingWeapon.Throw)),
         AccessTools.DeclaredMethod(typeof(LockMelterFirstPerson), nameof(LockMelterFirstPerson.UseLockMelter)),
         AccessTools.DeclaredMethod(typeof(SyringeFirstPerson), nameof(SyringeFirstPerson.ApplySyringe)),
-        AccessTools.DeclaredMethod(typeof(BarrierFirstPerson), nameof(BarrierFirstPerson.PlaceOnGround)),
         AccessTools.DeclaredMethod(typeof(CarryItemEquippableFirstPerson), nameof(CarryItemEquippableFirstPerson.InsertItem)),
     }.Where(m => m != null)!;
 

@@ -1,6 +1,7 @@
-import { CameraControls, GizmoHelper, GizmoViewcube, OrthographicCamera, Outlines, PerspectiveCamera, TransformControls } from '@react-three/drei';
+import { CameraControls, GizmoHelper, GizmoViewcube, OrthographicCamera, PerspectiveCamera, TransformControls } from '@react-three/drei';
 import { Canvas, useFrame, useThree } from '@react-three/fiber';
-import { Bloom, EffectComposer } from '@react-three/postprocessing';
+import { Bloom, EffectComposer, Outline } from '@react-three/postprocessing';
+import type { OutlineEffect } from 'postprocessing';
 import CameraControlsImpl from 'camera-controls';
 import { Suspense, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { Box3, CanvasTexture, Object3D, SRGBColorSpace, Sphere, type Mesh } from 'three';
@@ -11,7 +12,7 @@ import { ModalTransform, modalState, newGesture, selectedTarget, type Target } f
 import { selectedObjects, quiet, SCENE_EVENT, viewRefs } from './refs';
 import { WeaponModel } from './WeaponModel';
 import { roomReflection } from './weaponScene';
-import { t } from '../i18n';
+import { lang, t } from '../i18n';
 
 export type ViewName = 'front' | 'back' | 'left' | 'right' | 'top' | 'bottom' | 'iso';
 // Unity weapon space: muzzle along +Z, up +Y, right +X.
@@ -199,7 +200,7 @@ function CameraRig() {
       <GizmoHelper alignment="top-right" margin={[64, 64]} renderPriority={2}>
         <GizmoViewcube
           faces={cubeFaces()}
-          font="bold 56px 'Microsoft YaHei UI', sans-serif"
+          font={`bold ${lang() === 'zh' ? 56 : 30}px 'Microsoft YaHei UI', sans-serif`}
           color="#3a3f46"
           textColor="#e9e4d8"
           strokeColor="#565c64"
@@ -242,9 +243,10 @@ function Gizmo() {
   );
 }
 
-const SEE_THROUGH = new Set(['glass', 'reticle']);
-
-/** Outline on the selected part's meshes (drei Outlines portalled into each mesh). */
+/**
+ * Outline of the selected part, drawn in screen space from a selection mask: only the silhouette gets an edge, whatever
+ * the mesh (an open mesh or a flat lens would fill solid with an outline hull).
+ */
 function SelectionOutline() {
   const selection = useStore((s) => s.selection);
   const preview = useStore((s) => s.preview);
@@ -257,33 +259,17 @@ function SelectionOutline() {
   const meshes = useMemo(() => {
     void preview;
     void version;
-    const out: Mesh[] = [];
+    const out: Object3D[] = [];
     if (selection?.kind === 'part')
-      selectedObjects(selection.id, selection.sub).forEach((n) =>
-        n.traverse((o) => {
-          // A lens or holo surface is a flat sheet: its outline hull would fill it as a solid plate, so it gets none.
-          const mesh = o as Mesh;
-          if (
-            mesh.isMesh &&
-            !(Array.isArray(mesh.material) ? mesh.material : [mesh.material]).every((m) => SEE_THROUGH.has(preview?.params[m.name]?.kind ?? ''))
-          )
-            out.push(mesh);
-        }),
-      );
+      selectedObjects(selection.id, selection.sub).forEach((n) => n.traverse((o) => void ((o as Mesh).isMesh && out.push(o))));
     return out;
   }, [selection, preview, version]);
-  // A depth-only twin of each mesh carries the outline, so the game mesh and its material stay untouched. angle 0 reuses
-  // the mesh's own geometry: with creased normals Outlines makes a copy per mesh that it fails to free on unmount.
-  return (
-    <>
-      {meshes.map((m) => (
-        <mesh key={m.uuid} geometry={m.geometry} matrixAutoUpdate={false} matrix={m.matrixWorld} renderOrder={-1}>
-          <meshBasicMaterial colorWrite={false} depthWrite={false} />
-          <Outlines thickness={3} color="#ff7a2f" angle={0} />
-        </mesh>
-      ))}
-    </>
-  );
+  // The composer sizes its effects only when the canvas size changes, so an effect it gains later keeps a 1x1 mask.
+  const effect = useRef<OutlineEffect>(null);
+  const width = useThree((s) => s.size.width * s.viewport.dpr);
+  const height = useThree((s) => s.size.height * s.viewport.dpr);
+  useEffect(() => effect.current?.setSize(width, height), [width, height, meshes]);
+  return <Outline ref={effect} selection={meshes} visibleEdgeColor={0xff7a2f} hiddenEdgeColor={0x7a3a16} edgeStrength={4} xRay />;
 }
 
 export function Viewport() {
@@ -315,10 +301,10 @@ export function Viewport() {
         {preview && <WeaponModel key={preview.glb} preview={preview} />}
         {preview && <Attachments />}
       </Suspense>
-      <SelectionOutline />
       <Gizmo />
       <ModalTransform />
-      <EffectComposer multisampling={4} renderPriority={1}>
+      <EffectComposer multisampling={4} renderPriority={1} autoClear={false}>
+        <SelectionOutline />
         <Bloom luminanceThreshold={prefs.bloom ? 0.85 : 10} luminanceSmoothing={0.1} intensity={0.9} mipmapBlur />
       </EffectComposer>
     </Canvas>

@@ -243,7 +243,8 @@ interface State {
   setPartEnabled(partId: string, on: boolean): void;
 
   // attachments
-  addAttachment(kind: 'screen' | 'mesh', mesh?: { forgeskinmesh: string; glb: string }): void;
+  /** `init` finishes the new attachment in the same undo step (a shape's name, look and parameters). */
+  addAttachment(kind: 'screen' | 'mesh', mesh?: { forgeskinmesh: string; glb: string }, init?: (a: Attachment, editor: Record<string, unknown>) => void, id?: string): void;
   updateAttachment(id: string, fn: (a: Attachment) => void, coalesceKey?: string): void;
   removeAttachment(id: string): void;
   /** Converts the picked audio file to Ogg next to the project and adds it as a sound (one undo step). */
@@ -686,12 +687,12 @@ export const useStore = create<State>((set, get) => ({
     });
   },
 
-  addAttachment(kind, mesh) {
+  addAttachment(kind, mesh, init, givenId) {
     const item = get().catalog.find((c) => c.id === get().weaponId);
     const sel = get().selection;
     const anchor = sel?.kind === 'part' ? sel.id : (item?.parts[0]?.id ?? '');
     const transform = sel?.kind === 'part' ? (sel.sub ?? null) : null;
-    const id = uid();
+    const id = givenId ?? uid();
     get().edit((d) => {
       const n = (d.attachments?.length ?? 0) + 1;
       d.attachments!.push({
@@ -730,6 +731,7 @@ export const useStore = create<State>((set, get) => ({
         const ed = d.editor as Record<string, unknown>;
         ed.meshPreviews = { ...((ed.meshPreviews as Record<string, string>) ?? {}), [id]: mesh.glb };
       }
+      init?.(d.attachments!.at(-1)!, d.editor as Record<string, unknown>);
     });
     set({ selection: { kind: 'attachment', id } });
   },

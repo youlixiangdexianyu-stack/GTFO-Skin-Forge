@@ -226,6 +226,13 @@ public sealed class Attachment
     public AttachmentMaterial? Material { get; set; }
     public Screen? Screen { get; set; }
     public List<AttachmentEffect> Effects { get; set; } = new();
+    // Set: the model and screen are drawn as a glowing, flickering hologram in their own colours.
+    public Hologram? Hologram { get; set; }
+}
+
+public sealed class Hologram
+{
+    public float Flicker { get; set; } = 0.3f; // 0: steady, 1: drops out often
 }
 
 public enum EffectAction { Flash, Show }
@@ -256,6 +263,9 @@ public enum ScreenSource { AmmoClip, AmmoReserve, AmmoTotal, Static, Kills, Dama
 
 // Digits: the value as text; Bar: a bar filling from the left, only for sources with a maximum (ScreenSources.Bounded).
 public enum ScreenStyle { Digits, Bar }
+
+// Solid: a ring BorderWidth wide inside the edges; the others are drawn by the editor and traced into BorderMesh.
+public enum BorderStyle { Solid, Corners, Double, Notched, Ticks }
 
 public static class ScreenSources
 {
@@ -289,6 +299,7 @@ public sealed class Screen
     public float[] PanelColor { get; set; } = { 0, 0, 0, 0.85f };
     public float[] BorderColor { get; set; } = { 0.73f, 0.98f, 1, 1 };
     public float BorderWidth { get; set; } = 0.0008f;
+    public BorderStyle BorderStyle { get; set; }
     public float[] TextColor { get; set; } = { 0.73f, 0.98f, 1, 1 };
     public float TextScale { get; set; } = 0.8f;
     public float Glow { get; set; } = 1.5f;
@@ -312,4 +323,7 @@ public sealed class Screen
     // the whole text as one mesh, height 1, width TextAspect, facing -Z.
     public string? TextMesh { get; set; }
     public float TextAspect { get; set; }
+    // Filled when packing a styled border from what the app draws (.frames/<id>-border.png): height 1, width Size[0] /
+    // Size[1], facing -Z.
+    public string? BorderMesh { get; set; }
 }

@@ -119,6 +119,7 @@ surfaceGap?: number
 panelColor?: number[]
 borderColor?: number[]
 borderWidth?: number
+borderStyle?: ("solid" | "corners" | "double" | "notched" | "ticks")
 textColor?: number[]
 textScale?: number
 glow?: number
@@ -132,6 +133,7 @@ glyphMeshes?: ((string | null)[] | null)
 glyphAspect?: number
 textMesh?: (string | null)
 textAspect?: number
+borderMesh?: (string | null)
 } | null)
 effects?: ({
 trigger?: ("always" | "kill" | "hit" | "fire" | "dryFire" | "reloadStart" | "reloadEnd" | "equip" | "unequip" | "aim" | "aimEnd" | "lowAmmo" | "empty" | "ammoPickup" | "flashlightOn" | "flashlightOff" | "miss")
@@ -140,6 +142,9 @@ color?: number[]
 intensity?: number
 seconds?: number
 } | null)[]
+hologram?: ({
+flicker?: number
+} | null)
 } | null)[]
 parts?: ({
 part?: string

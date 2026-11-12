@@ -350,6 +350,75 @@ export function screenTextCanvas(font: string | null | undefined, text: string, 
   return c;
 }
 
+/**
+ * A screen's border in white on transparent, `px` wide at the screen's aspect, BorderWidth thick (PLAN §3.1
+ * Screen.BorderStyle): the 3D view tints it, packing traces a styled one into the border mesh.
+ */
+export function borderCanvas(s: Screen, px: number): HTMLCanvasElement {
+  const [w, h] = s.size ?? [0.03, 0.015];
+  const c = document.createElement('canvas');
+  c.width = px;
+  c.height = Math.max(8, Math.round((px * h) / w));
+  const W = c.width;
+  const H = c.height;
+  const b = (Math.min(s.borderWidth ?? 0.0008, Math.min(w, h) / 2) * px) / w;
+  const ctx = c.getContext('2d')!;
+  ctx.fillStyle = '#fff';
+  if (b <= 0) return c;
+  // The band between the rectangle inset by `i` and the one inset by `i + t`.
+  const ring = (i: number, t: number) => {
+    ctx.beginPath();
+    ctx.rect(i, i, W - 2 * i, H - 2 * i);
+    ctx.rect(i + t, i + t, W - 2 * (i + t), H - 2 * (i + t));
+    ctx.fill('evenodd');
+  };
+  switch (s.borderStyle ?? 'solid') {
+    case 'solid':
+      ring(0, b);
+      break;
+    case 'double':
+      ring(0, b);
+      ring(b * 2.5, b * 0.6);
+      break;
+    case 'corners': {
+      // An L bracket in each corner, its arms a third of the shorter side.
+      const L = Math.min(W, H) * 0.3;
+      for (const [x, y] of [[0, 0], [1, 0], [0, 1], [1, 1]]) {
+        ctx.fillRect(x ? W - L : 0, y ? H - b : 0, L, b);
+        ctx.fillRect(x ? W - b : 0, y ? H - L : 0, b, L);
+      }
+      break;
+    }
+    case 'notched': {
+      // An octagon: the corners cut at 45°; the inner edge keeps the band `b` wide on the cuts too.
+      const k = Math.min(W, H) * 0.2;
+      ctx.beginPath();
+      for (const i of [0, b]) {
+        const n = k - i * (Math.SQRT2 - 1);
+        const pts = [[i + n, i], [W - i - n, i], [W - i, i + n], [W - i, H - i - n], [W - i - n, H - i], [i + n, H - i], [i, H - i - n], [i, i + n]];
+        ctx.moveTo(pts[0][0], pts[0][1]);
+        for (const [x, y] of pts.slice(1)) ctx.lineTo(x, y);
+        ctx.closePath();
+      }
+      ctx.fill('evenodd');
+      break;
+    }
+    case 'ticks': {
+      // A thin frame with ruler ticks along the top and bottom, every third one longer.
+      ring(0, b * 0.5);
+      const n = 12;
+      for (let i = 1; i < n; i++) {
+        const len = b * (i % 3 === 0 ? 3 : 1.8);
+        const x = (W * i) / n - b * 0.25;
+        ctx.fillRect(x, 0, b * 0.5, len);
+        ctx.fillRect(x, H - len, b * 0.5, len);
+      }
+      break;
+    }
+  }
+  return c;
+}
+
 type Source = Screen['source'];
 /** Ammo counts (the low-ammo colour applies); percentages (shown with '%'); sources with a maximum (can be a bar). */
 export const isAmmo = (s: Source) => !s || s === 'ammoClip' || s === 'ammoReserve' || s === 'ammoTotal';
@@ -383,6 +452,7 @@ export async function bakeGlyphs(doc: SkinDocument, projectPath: string): Promis
     // Twice the preview resolution: the backend traces the outlines, and finer pixels give smoother strokes.
     if (a.screen.source === 'static') await writePng(`${dir}\\${a.id}-text.png`, screenTextCanvas(a.screen.font, a.screen.staticText ?? '', 192));
     else await writePng(`${dir}\\${a.id}-glyphs.png`, glyphCanvas(a.screen.font, 128, 192));
+    if ((a.screen.borderStyle ?? 'solid') !== 'solid') await writePng(`${dir}\\${a.id}-border.png`, borderCanvas(a.screen, 1024));
   }
 }
 

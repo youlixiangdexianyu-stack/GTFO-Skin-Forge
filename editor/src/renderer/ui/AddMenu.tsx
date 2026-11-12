@@ -10,6 +10,7 @@ import { addLayer } from './DynamicInspector';
 import { FEATURE } from './Features';
 import { addLiveryLayer, LIVERY_KINDS } from './LiveryPanel';
 import { hasOwnModel, replacePartModel } from './PartModel';
+import { ShapeMenuItems } from './ShapePanel';
 import { t } from '../i18n';
 
 const LAYERS: { kind: LayerKind; label: () => string; icon: typeof IconPhoto }[] = [
@@ -53,6 +54,7 @@ export function PartAddMenu({ part, path, children }: { part: CatalogPart; path?
         <Menu.Item leftSection={<IconBox size={14} color={FEATURE.attachment.color} />} onClick={() => (here(), void importMesh())}>
           {t('leftRail.k19')}
         </Menu.Item>
+        <ShapeMenuItems color={FEATURE.attachment.color} before={here} />
         {hasOwnModel(part.id, path) && (
           <>
             <Menu.Divider />

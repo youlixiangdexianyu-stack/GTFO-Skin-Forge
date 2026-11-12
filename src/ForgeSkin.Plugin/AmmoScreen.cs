@@ -24,6 +24,7 @@ sealed class AmmoScreen
     readonly float _barWidth;
     readonly Material? _text, _border;
     readonly Material _template;
+    readonly bool _hologram; // every surface a hologram, glowing even with GlowInGame off
     readonly float[] _textColor;
     readonly float[]? _lowColor;
     // Emission per step of the Glow slider. Measured on the game's own glowing gear materials (Cell/Player gear shaders,
@@ -48,8 +49,9 @@ sealed class AmmoScreen
     float _mix; // 0 = text colour, 1 = low colour
     readonly float[] _mixed = new float[3];
 
-    public AmmoScreen(SkinnedGear gear, Skin skin, Format.Screen s, Material template, GameObject root)
+    public AmmoScreen(SkinnedGear gear, Skin skin, Format.Screen s, Material template, GameObject root, bool hologram)
     {
+        _hologram = hologram;
         _source = s.Source;
         _gear = gear;
         _label = gear.Label;
@@ -58,7 +60,10 @@ sealed class AmmoScreen
         _gain = s.GlowInGame ? s.Glow * GlowUnit : 0f;
         _textColor = s.TextColor;
         float w = s.Size[0], h = s.Size[1], bw = Math.Min(s.BorderWidth, Math.Min(w, h) * 0.5f);
-        if (s.BorderColor[3] > 0.01f && bw > 0)
+        // A styled border is a traced mesh, height 1 and as wide as the screen's aspect.
+        if (s.BorderColor[3] > 0.01f && s.BorderMesh != null)
+            gear.Child(root, "border", skin.Mesh(s.BorderMesh), _border = Surface(gear, s.BorderColor, _gain), -Step).transform.localScale = new Vector3(h, h, 1);
+        else if (s.BorderColor[3] > 0.01f && bw > 0)
             gear.Child(root, "border", gear.Own(Frame(w, h, bw)), _border = Surface(gear, s.BorderColor, _gain), -Step);
         if (s.PanelColor[3] > 0.01f)
             gear.Child(root, "panel", gear.Own(Quad(w - 2 * bw, h - 2 * bw)), Surface(gear, s.PanelColor, s.GlowInGame ? SkinnedGear.EmissionUnit : 0f), 0f);
@@ -145,6 +150,12 @@ sealed class AmmoScreen
     // as itself, no bloom); text and border the glow.
     Material Surface(SkinnedGear gear, float[] c, float gain)
     {
+        if (_hologram)
+        {
+            var holo = Holograms.Surface(gear, _template, null, new Color(c[0], c[1], c[2]), gain > 0 ? gain : Holograms.Glow);
+            Surfaces.Add(holo);
+            return holo;
+        }
         var m = gear.Own(new Material(_template) { name = "ForgeSkin screen" });
         Surfaces.Add(m);
         m.SetTexture(SkinnedGear.MetallicGlossMap, Texture2D.blackTexture);
@@ -158,6 +169,11 @@ sealed class AmmoScreen
     static void Paint(Material m, float[] c, float gain)
     {
         var colour = new Color(c[0], c[1], c[2]);
+        if (Holograms.Is(m))
+        {
+            Holograms.Paint(m, colour, gain > 0 ? gain : Holograms.Glow);
+            return;
+        }
         var albedo = m.GetTexture(SkinnedGear.MainTex).Cast<Texture2D>();
         albedo.SetPixel(0, 0, colour);
         albedo.Apply(false, false);

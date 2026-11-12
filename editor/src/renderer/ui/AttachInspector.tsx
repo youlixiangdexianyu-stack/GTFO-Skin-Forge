@@ -8,6 +8,7 @@ import { useItem, useStore } from '../store';
 import { Color, Field, Num, Slider, Vec } from './fields';
 import { SelectionLayout } from './SelectionLayout';
 import { Info } from './Features';
+import { ShapeSection } from './ShapePanel';
 import { partLabel, t } from '../i18n';
 
 const SOURCES: { value: ScreenSource; label: string }[] = [
@@ -32,6 +33,9 @@ function autoDigits(s: Screen, item: CatalogItem | undefined): string {
   if (!isBounded(s.source)) return t('attachInspector.autoDamage');
   return max != null ? t('attachInspector.autoDigits', { v0: max, v1: digits }) : t('attachInspector.autoUnknown', { v0: digits });
 }
+
+type BorderStyle = NonNullable<Screen['borderStyle']>;
+const BORDER_STYLES: BorderStyle[] = ['solid', 'corners', 'double', 'notched', 'ticks'];
 
 const PICK_FILE = '~file';
 const DIGITS = '0123456789';
@@ -151,6 +155,23 @@ function AttachmentPanel({ a }: { a: Attachment }) {
         </Field>
         <Switch mt="sm" label={t('attachInspector.k23')} checked={!!a.faceCamera} onChange={(e) => up((x) => void (x.faceCamera = e.currentTarget.checked))} />
       </div>
+      <ShapeSection id={a.id!} />
+      <div className="section">
+        <h3>
+          <span>{t('hologram.title')}</span>
+          <Info label={t('hologram.info')} />
+          <span className="grow" />
+          <Switch checked={!!a.hologram} onChange={(e) => {
+            const on = e.currentTarget.checked;
+            up((x) => void (x.hologram = on ? { flicker: 0.3 } : null));
+          }} />
+        </h3>
+        {a.hologram && (
+          <Field label={t('hologram.flicker')}>
+            <Slider value={a.hologram.flicker ?? 0.3} min={0} max={1} onChange={(v) => up((x) => void (x.hologram && (x.hologram.flicker = v)), 'flicker')} />
+          </Field>
+        )}
+      </div>
       <Effects a={a} />
       <SelectionLayout />
       {s && (
@@ -232,6 +253,14 @@ function AttachmentPanel({ a }: { a: Attachment }) {
           </Field>
           <Field label={t('attachInspector.k36')}>
             <Color alpha value={s.borderColor ?? [1, 1, 1, 1]} onChange={(c) => upScreen((x) => void (x.borderColor = c), 'bc')} />
+          </Field>
+          <Field label={t('border.style')}>
+            <Select
+              value={s.borderStyle ?? 'solid'}
+              data={BORDER_STYLES.map((v) => ({ value: v, label: t(`border.${v}`) }))}
+              allowDeselect={false}
+              onChange={(v) => v && upScreen((x) => void (x.borderStyle = v as BorderStyle))}
+            />
           </Field>
           <Field label={t('attachInspector.k37')}>
             <Num value={s.borderWidth ?? 0.0008} scale={MM} step={0.1} min={0} onChange={(v) => upScreen((x) => void (x.borderWidth = v), 'bw')} />

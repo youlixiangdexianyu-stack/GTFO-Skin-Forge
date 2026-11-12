@@ -143,20 +143,28 @@ public static class PackBuilder
                 {
                     a.Screen.Font = null;
                     a.Screen.GlyphMeshes = null; // Validate reports no-glyphs for live screens without a strip
-                    a.Screen.TextMesh = null;
-                    var text = Path.Combine(projectDir, ".frames", a.Id + "-text.png");
-                    if (a.Screen.Source == ScreenSource.Static && File.Exists(text))
+                    a.Screen.TextMesh = a.Screen.BorderMesh = null;
+                    // A traced image (static text, a styled border) as one mesh entry; null where it has no pixels.
+                    string? Traced(string png, string entry, out float aspect)
                     {
-                        using var bmp = Images.Load(text);
-                        var (mesh, aspect) = GlyphMesh.Text(bmp);
-                        if (mesh != null)
-                        {
-                            a.Screen.TextMesh = $"glyphs/{Preview.Safe(a.Id)}_text.forgeskinmesh";
-                            a.Screen.TextAspect = aspect;
-                            using var s = zip.CreateEntry(a.Screen.TextMesh).Open();
-                            s.Write(mesh.Write());
-                        }
+                        aspect = 0;
+                        if (!File.Exists(png)) return null;
+                        using var bmp = Images.Load(png);
+                        var (mesh, traced) = GlyphMesh.Text(bmp);
+                        if (mesh == null) return null;
+                        aspect = traced;
+                        using var s = zip.CreateEntry(entry).Open();
+                        s.Write(mesh.Write());
+                        return entry;
                     }
+                    var frames = Path.Combine(projectDir, ".frames", a.Id);
+                    if (a.Screen.Source == ScreenSource.Static)
+                    {
+                        a.Screen.TextMesh = Traced(frames + "-text.png", $"glyphs/{Preview.Safe(a.Id)}_text.forgeskinmesh", out var aspect);
+                        a.Screen.TextAspect = aspect;
+                    }
+                    if (a.Screen.BorderStyle != BorderStyle.Solid)
+                        a.Screen.BorderMesh = Traced(frames + "-border.png", $"glyphs/{Preview.Safe(a.Id)}_border.forgeskinmesh", out _);
                     var strip = Path.Combine(projectDir, ".frames", a.Id + "-glyphs.png");
                     if (a.Screen.Source != ScreenSource.Static && File.Exists(strip))
                     {

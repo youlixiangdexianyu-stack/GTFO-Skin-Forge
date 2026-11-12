@@ -12,6 +12,9 @@ plus one BepInEx plugin that applies them in game.
 3. **Dynamic layers and triggered effects.** Animated images, image sequences, video and text composited onto a part's
    texture, looping or played on a game event (kill, hit, fire, reload, equip, aim, low ammo, ... — §3.1) — e.g. an eye on the gun blinks on
    every kill, like COD weapon effects. Attachments can flash their emission or show for a few seconds on an event.
+5. **Holograms, for everyone.** No modelling needed: built-in shapes (line, tube, sphere, ring, arc, box, grid, cylinder,
+   cone, panel), solid or as a wireframe, assembled like any attachment; one 全息 switch per attachment draws its model and
+   screen as a glowing hologram that flickers; screens get border styles (corners, double line, notched, ticks).
 
 Scope is skins, simple models and these effects. A node's own model can be replaced (it keeps the node's place, aligns
 and materials); re-pointing muzzle, sight and hand aligns to a new model is out.
@@ -47,6 +50,10 @@ docs/PLAN.md                this file
 
 Packaging: `npm run make` in editor/ builds the Squirrel installer; its prePackage hook publishes the backend
 self-contained single file and copies the prebuilt plugin (repo prebuilt/plugin/) to `resources/publish/plugin`.
+Release: a GitHub release `v<version>` (the version in editor/package.json, raised every release) carries the
+installer, its `RELEASES` and `.nupkg`, and the plugin as a Thunderstore-layout zip. An installed editor updates
+itself from these releases (`update-electron-app` through update.electronjs.org: checks at start and hourly,
+downloads in the background, offers a restart); the plugin it installs updates with it.
 
 Dependency direction: Plugin → Format; Backend → Format; app → backend over stdio only. The Electron side never parses
 Unity files, packs or projects itself; everything about formats goes through the backend. TypeScript types for
@@ -82,6 +89,17 @@ poses with one helper (`unityToThree` / `threeToUnity` in `editor/src/renderer/s
   ammoPickup, flashlightOn, flashlightOff, miss; every one but `always` is an event). `DynamicLayer.Trigger` + `Play` (loop / once /
   loopFor seconds): a non-`always` layer shows the base texture until its event, then plays. `Attachment.Effects`: list of
   {trigger, action: flash (emission colour, intensity, seconds) / show (seconds)}.
+- `Attachment.Hologram` (`Hologram`: flicker 0–1), null = normal surfaces: the attachment's model and screen are drawn
+  unlit in their own colours, glowing, with the game's `Cell/Player/Display_Hologram` (the mine deployer's display; a
+  loaded game material with it is copied so its textures come along), or the gear shader's plain unlit glow where that
+  shader is missing or `HologramShader` is off in ForgeSkin.cfg. Flicker hides the renderers for brief random moments
+  (`forceRenderingOff`, so `show` effects keep working). The first hologram logs the shader's properties.
+- `Screen.BorderStyle`: solid (the plugin's ring), corners, double, notched, ticks. A styled border is drawn by the editor
+  in white at the screen's aspect (`.frames/<id>-border.png`, `frames.ts` `borderCanvas`, also the preview) and traced
+  into `Screen.BorderMesh` when packing (height 1, width the screen's aspect, facing -Z), as static text is.
+- Shapes (editor only): an attachment made from a built-in shape keeps its kind and parameters in `editor.shapes[id]`;
+  the editor builds it with three.js geometry (a wireframe as thin tubes along the edges), writes it as a GLB and imports
+  it like any GLB, again whenever a parameter changes. The pack sees an ordinary mesh attachment.
 - `ScreenSource`: ammoClip, ammoReserve, ammoTotal, static, and for the local player over the current level (reset when the
   next level starts generating): kills and damageDealt with this weapon, damageDealtAll with all their weapons, damageTaken,
   accuracy (percent of this gun's shots that hit an enemy; 0 before the first shot); health and infection are their current
@@ -150,7 +168,7 @@ app moves its pre-rename Electron profile (`%APPDATA%/GTFO Skin Forge`) to `%APP
 | `project.list` | `{dir}` → `[{path, id, name, modified}]`, newest first; a file that does not parse is listed under its file name |
 | `project.delete` | `{path}` → deletes one `.forgeskinproj` and its `<name>.snapshots/` folder |
 | `project.missing` | `{project}` → `{files}`: the files the document names (every reference `project.save` maps; a font only when it is a font file, not a family name) that are not on disk |
-| `mesh.import` | `{glb}` → `{forgeskinmesh (cache path), preview glb, bounds}` |
+| `mesh.import` | `{glb}` → `{forgeskinmesh (cache path), glb (the preview written back from it), bounds}` |
 | `pack.build` | `{project, projectPath, out, sizeMode: keep/original/1k/2k/4k}` → `{pack, warnings}`; resizes keeping aspect, bakes layer atlases from frame PNGs the renderer wrote and traces screen glyph strips and static texts into meshes |
 | `pack.install` | `{pack, profile, activate}` → writes skin + active.json (a running game picks it up only with the development switch on) |
 | `pack.list / pack.remove / pack.activate` | manage installed skins in a profile |
@@ -334,7 +352,8 @@ Skin workspace
   from the chosen profile), switch which one is edited, and choose which one the game uses. Each skin is its own project
   with its own skin id, autosaved to `<dataDir>/autosave/<item>/<skinId>.forgeskinproj`. "Apply to game" installs the edited skin
   and makes it the item's active one; the item's other installed skins stay installed but inactive (one active per item).
-- Log panel; log file under the data dir; portable data dir next to the exe (`GTFO_UserData`).
+- Log panel; log file under the data dir; data dir `GTFO_UserData` next to the exe, or for an installed copy (which runs
+  from `app-<version>/`, replaced by every update) in the install folder above it.
 
 Layout (every mode)
 - Select any part, sub-part (from the 3D view or the part tree) or attachment and move/rotate/scale it with the same gizmos,
@@ -358,6 +377,8 @@ Attachment and screen workspace (replaces DLY, generalised to every weapon)
 - Fixed views (front/back/left/right/top/bottom/iso), numpad 1/3/7, 5 perspective/ortho, Alt+right-drag snaps to nearest view.
 - "Snap to surface": click places the screen at the hit point facing the hit triangle.
 - Import GLB models as attachments.
+- 添加形状: line, tube, sphere, ring, arc, box, grid, cylinder, cone, panel; a few plain parameters each (length, radius,
+  thickness, segments, 线框 wireframe). 全息 switch with 闪烁 (flicker) on every attachment; screen 边框样式.
 - Presets autosave; "apply to test profile" hot-reloads in game with the development switch on.
 
 Dynamic layer workspace
@@ -395,3 +416,6 @@ Install
 2. In-game skin picker (§3.4): verify in game.
 3. Run ForgeSkin together with ForgeCore and the other Forge mods in one profile; if they conflict (both patch the same
    game methods or replace the same gun meshes), move ForgeSkin into the Forge repository as a standalone mod on its libraries.
+4. Holograms: check in game how `Cell/Player/Display_Hologram` draws a shape and a screen (the plugin logs its properties
+   on the first hologram) and set the colour properties it really has; compare with `HologramShader` off; check styled
+   borders and flicker.

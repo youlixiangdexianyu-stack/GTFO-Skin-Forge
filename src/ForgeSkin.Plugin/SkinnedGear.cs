@@ -710,16 +710,19 @@ sealed class SkinnedGear
         var glowing = new List<Material>();
         if (a.Mesh != null)
         {
-            var surface = Surface(skin, a.Material ?? new AttachmentMaterial(), template);
+            var surface = Surface(skin, a.Material ?? new AttachmentMaterial(), template, a.Hologram != null);
             Child(root, "mesh", skin.Mesh(a.Mesh), surface, 0f);
             glowing.Add(surface);
         }
         if (a.Screen != null)
         {
-            var screen = new AmmoScreen(this, skin, a.Screen, template, root);
+            var screen = new AmmoScreen(this, skin, a.Screen, template, root, a.Hologram != null);
             _screens.Add(screen);
             glowing.AddRange(screen.Surfaces);
         }
+        if (a.Hologram is { Flicker: > 0 } holo) _animated.Add(new Flicker(root.GetComponentsInChildren<Renderer>(true).ToArray(), holo.Flicker));
+        // The game's hologram shader has no emission colour for Flash to drive.
+        glowing.RemoveAll(m => !m.HasProperty(EmissiveColor));
         foreach (var e in a.Effects)
         {
             ITriggered effect;
@@ -1006,11 +1009,12 @@ sealed class SkinnedGear
     }
 
     // A copy of the anchor part's material keeps the gear shader and its first-person projection.
-    Material Surface(Skin skin, AttachmentMaterial spec, Material template)
+    Material Surface(Skin skin, AttachmentMaterial spec, Material template, bool hologram)
     {
-        var m = Own(new Material(template) { name = "ForgeSkin attachment" });
         Texture? Tex(TextureChannel c) => spec.Textures.TryGetValue(c, out var p) ? skin.Texture(p, Skin.Linear(c)) : null;
         var color = new Color(spec.Color[0], spec.Color[1], spec.Color[2], spec.Color[3]);
+        if (hologram) return Holograms.Surface(this, template, Tex(TextureChannel.Albedo), color, Holograms.Glow * (spec.Params.EmissiveIntensity ?? 1f));
+        var m = Own(new Material(template) { name = "ForgeSkin attachment" });
         m.SetTexture(BumpMap, Tex(TextureChannel.Normal));
         m.SetTexture(MetallicGlossMap, Tex(TextureChannel.MetallicSmoothness) ?? Texture2D.blackTexture);
         if (spec.Unlit)

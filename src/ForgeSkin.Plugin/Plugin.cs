@@ -50,6 +50,8 @@ public sealed class ForgeSkinPlugin : BasePlugin
         Skins.Watch(skins, Paths.PluginPath, Path.Combine(Paths.ConfigPath, "ForgeSkin.choices.json"), dev);
         Picker.Key = Config.Bind("General", "PickerKey", KeyCode.F8,
             "Opens and closes the in-game skin picker (Esc also closes it). The picks are kept in BepInEx/config/ForgeSkin.choices.json.").Value;
+        Holograms.UseShader = Config.Bind("General", "HologramShader", true,
+            "Draw holograms with the game's hologram shader (Cell/Player/Display_Hologram). Off: the gear shader's plain unlit glow.").Value;
         var harmony = new Harmony(Guid);
         // One hook class at a time: a target a game update renamed (the compiler-generated reload callback) loses that
         // event only, not the plugin.

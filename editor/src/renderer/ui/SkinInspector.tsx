@@ -2,6 +2,7 @@ import { ActionIcon, Badge, Button, Chip, Group, Menu, Select, SimpleGrid, Switc
 import { Dropzone, type FileWithPath } from '@mantine/dropzone';
 import { IconBox, IconCheck, IconChevronRight, IconDeviceDesktop, IconFolderOpen, IconPlayerPlay, IconPlus, IconTrash, IconX } from '@tabler/icons-react';
 import { importMesh } from '../actions';
+import { ShapeItems, ShapeMenuItems } from './ShapePanel';
 import { FEATURE, FeatureHead, FeatureTile, Info } from './Features';
 import { PartLayers } from './DynamicInspector';
 import { PartLivery } from './LiveryPanel';
@@ -217,6 +218,7 @@ function AddAttachmentMenu({ children }: { children: ReactElement }) {
         <Menu.Item leftSection={<IconBox size={14} />} onClick={() => void importMesh()}>
           {t('leftRail.k19')}
         </Menu.Item>
+        <ShapeMenuItems />
       </Menu.Dropdown>
     </Menu>
   );
@@ -364,6 +366,22 @@ function Overview() {
   const attachments = (doc.attachments ?? []).filter(Boolean).length;
   const sounds = (doc.sounds ?? []).filter(Boolean).length;
   const layers = (doc.materials ?? []).reduce((n, m) => n + (m?.layers ?? []).filter(Boolean).length, 0);
+  const liveries = (doc.materials ?? []).reduce((n, m) => n + (m?.livery ?? []).filter(Boolean).length, 0);
+  const holograms = (doc.attachments ?? []).filter((a) => a?.hologram).length;
+  // Texture, livery and layers live on a part: the tile asks which part, then opens it.
+  const onPart = (tile: ReactElement) => (
+    <Menu position="bottom-start">
+      <Menu.Target>{tile}</Menu.Target>
+      <Menu.Dropdown>
+        <Menu.Label>{t('skinInspector.pickPart')}</Menu.Label>
+        {item?.parts.map((p) => (
+          <Menu.Item key={p.id} onClick={() => select({ kind: 'part', id: p.id })}>
+            {partLabel(p)}
+          </Menu.Item>
+        ))}
+      </Menu.Dropdown>
+    </Menu>
+  );
   return (
     <>
       <div className="insp-head">
@@ -430,22 +448,20 @@ function Overview() {
       <div className="section">
         <h3>{t('skinInspector.addMore')}</h3>
         <SimpleGrid cols={2} spacing={8}>
+          {onPart(<FeatureTile feature="texture" title={t('addMenu.texture')} count={replaced} />)}
+          {onPart(<FeatureTile feature="livery" title={t('livery.title')} count={liveries} />)}
           <AddAttachmentMenu>
             <FeatureTile feature="attachment" title={t('skinInspector.attachTile')} count={attachments} />
           </AddAttachmentMenu>
           <Menu position="bottom-start">
             <Menu.Target>
-              <FeatureTile feature="layer" title={t('dynamicInspector.k33')} count={layers} />
+              <FeatureTile feature="hologram" title={t('shapes.tile')} count={holograms} />
             </Menu.Target>
             <Menu.Dropdown>
-              <Menu.Label>{t('skinInspector.pickPart')}</Menu.Label>
-              {item?.parts.map((p) => (
-                <Menu.Item key={p.id} onClick={() => select({ kind: 'part', id: p.id })}>
-                  {partLabel(p)}
-                </Menu.Item>
-              ))}
+              <ShapeItems color={FEATURE.hologram.color} />
             </Menu.Dropdown>
           </Menu>
+          {onPart(<FeatureTile feature="layer" title={t('dynamicInspector.k33')} count={layers} />)}
           <FeatureTile feature="sound" title={t('skinInspector.k31')} count={sounds} onClick={() => void pickSound()} />
         </SimpleGrid>
       </div>

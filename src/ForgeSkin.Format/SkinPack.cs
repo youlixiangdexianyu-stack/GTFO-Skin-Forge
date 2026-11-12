@@ -176,6 +176,8 @@ public sealed class SkinPack : IDisposable
                     throw new SkinFormatException("bad-trigger", $"{a.Id}: an effect needs an event trigger and seconds > 0");
                 Vec(e.Color ?? Array.Empty<float>(), 3, a.Id);
             }
+            if (a.Hologram != null && !Fraction(a.Hologram.Flicker))
+                throw new SkinFormatException("bad-vector", $"{a.Id}: hologram flicker 0 to 1");
             if (a.Material != null)
             {
                 foreach (var t in a.Material.Textures.Values) File(t, a.Id, true);
@@ -204,6 +206,7 @@ public sealed class SkinPack : IDisposable
                     foreach (var g in glyphs) File(g, a.Id, mesh: true);
                 }
                 File(a.Screen.TextMesh, a.Id, mesh: true);
+                File(a.Screen.BorderMesh, a.Id, mesh: true);
             }
         }
     }

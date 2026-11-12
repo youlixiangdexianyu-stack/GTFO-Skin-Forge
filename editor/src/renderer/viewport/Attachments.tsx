@@ -2,6 +2,7 @@ import { Edges, useGLTF } from '@react-three/drei';
 import { createPortal, useFrame, type ThreeEvent } from '@react-three/fiber';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
+  AdditiveBlending,
   CanvasTexture,
   Color,
   DoubleSide,
@@ -13,7 +14,7 @@ import {
   type MeshStandardMaterial,
   type Object3D,
 } from 'three';
-import { glyphCanvas, GLYPHS, isAmmo, isBounded, isPercent, screenDigits, screenTextCanvas } from '../frames';
+import { borderCanvas, glyphCanvas, GLYPHS, isAmmo, isBounded, isPercent, screenDigits, screenTextCanvas } from '../frames';
 import { loadFont } from '../fonts';
 import { fileUrl, type Attachment, type Screen, type TriggerEffect } from '../protocol';
 import { unityToThree } from '../space';
@@ -26,7 +27,7 @@ const mix = (a: number[], b: number[], t: number) => a.map((v, i) => v + (b[i] -
 const PERCENT_SAMPLE = 87; // what a percentage screen shows in the editor
 
 /** Screen preview: panel, inner border and a sample value drawn with the glyph strip, or as a bar. */
-function ScreenMesh({ screen, selected, onPick }: { screen: Screen; selected: boolean; onPick: (e: ThreeEvent<MouseEvent>) => void }) {
+function ScreenMesh({ screen, hologram, selected, onPick }: { screen: Screen; hologram: boolean; selected: boolean; onPick: (e: ThreeEvent<MouseEvent>) => void }) {
   const [w, h] = screen.size ?? [0.03, 0.015];
   const sample = useRef(0);
   const canvas = useMemo(() => document.createElement('canvas'), []);
@@ -84,14 +85,15 @@ function ScreenMesh({ screen, selected, onPick }: { screen: Screen; selected: bo
     }
     const border = screen.borderColor ?? [1, 1, 1, 1];
     if ((border[3] ?? 1) > 0.01 && bw > 0) {
+      const b = borderCanvas(screen, px);
+      const g = b.getContext('2d')!;
+      g.globalCompositeOperation = 'source-in';
+      g.fillStyle = rgb(border);
+      g.fillRect(0, 0, b.width, b.height);
       ctx.save();
       ctx.shadowColor = rgb(border);
       ctx.shadowBlur = glow;
-      ctx.fillStyle = rgb(border);
-      ctx.beginPath();
-      ctx.rect(0, 0, px, H);
-      ctx.rect(bw, bw, px - 2 * bw, H - 2 * bw);
-      ctx.fill('evenodd');
+      ctx.drawImage(b, 0, 0, px, H);
       ctx.restore();
     }
 
@@ -164,7 +166,7 @@ function ScreenMesh({ screen, selected, onPick }: { screen: Screen; selected: bo
     <group>
       <mesh onClick={onPick} renderOrder={2}>
         <planeGeometry args={[w, h]} />
-        <meshBasicMaterial map={texture} transparent toneMapped={false} side={DoubleSide} depthWrite={false} />
+        <meshBasicMaterial key={String(hologram)} map={texture} transparent toneMapped={false} side={DoubleSide} depthWrite={false} blending={hologram ? AdditiveBlending : undefined} />
         {selected && <Edges color="#ff7a2f" renderOrder={3} />}
       </mesh>
     </group>
@@ -183,14 +185,17 @@ function MeshModel({ glb, attachment, onPick }: { glb: string; attachment: Attac
       if (!mesh.isMesh) return;
       const src = mesh.material as MeshStandardMaterial;
       const original = (mesh.userData.original ??= src) as MeshStandardMaterial;
-      const next = m?.unlit ? new MeshBasicMaterial({ map: original.map, toneMapped: false }) : original.clone();
+      // A hologram glows additively in its colour (the game's hologram shader is checked in game, PLAN §6).
+      const next = attachment.hologram
+        ? new MeshBasicMaterial({ map: original.map, toneMapped: false, transparent: true, blending: AdditiveBlending, depthWrite: false, side: DoubleSide })
+        : m?.unlit ? new MeshBasicMaterial({ map: original.map, toneMapped: false }) : original.clone();
       next.color.setRGB(c[0], c[1], c[2]);
       mesh.material = next;
       made.push(next);
     });
     // The next look (or leaving) replaces these copies; the loaded originals stay with the glTF.
     return () => made.forEach((x) => x.dispose());
-  }, [scene, attachment.material]);
+  }, [scene, attachment.material, attachment.hologram]);
   return <primitive object={scene} onClick={onPick} />;
 }
 
@@ -239,8 +244,24 @@ function playEffects(g: Group, a: Attachment) {
   });
 }
 
+/** Hologram flicker as the plugin plays it: brief random drop-outs, more often with a higher amount. */
+function flicker(g: Group, amount: number, at: { next: number; until: number }, now: number) {
+  if (at.until >= 0) {
+    if (now < at.until) return;
+    at.until = -1;
+    g.visible = true;
+    at.next = now + (Math.random() < 0.3 ? 0.06 : (0.3 + Math.random() * 1.4) * (2.2 - 2 * amount));
+    return;
+  }
+  if (now < at.next) return;
+  at.until = now + 0.02 + Math.random() * 0.06;
+  g.visible = false;
+}
+
 function AttachmentNode({ a, anchor }: { a: Attachment; anchor: Object3D }) {
   const group = useRef<Group>(null);
+  const body = useRef<Group>(null);
+  const flick = useRef({ next: 0, until: -1 });
   const selection = useStore((s) => s.selection);
   const meshPreviews = useStore((s) => (s.doc.editor as Record<string, Record<string, string>> | undefined)?.meshPreviews);
   const selected = selection?.kind === 'attachment' && selection.id === a.id;
@@ -263,6 +284,10 @@ function AttachmentNode({ a, anchor }: { a: Attachment; anchor: Object3D }) {
     if (!g) return;
     if (a.faceCamera) g.lookAt(camera.position); // visible face (three +Z) toward camera
     playEffects(g, a);
+    if (body.current) {
+      if (a.hologram?.flicker) flicker(body.current, a.hologram.flicker, flick.current, performance.now() / 1000);
+      else body.current.visible = true;
+    }
   });
   useEffect(() => {
     const g = group.current;
@@ -280,8 +305,10 @@ function AttachmentNode({ a, anchor }: { a: Attachment; anchor: Object3D }) {
   const glb = meshPreviews?.[a.id!];
   return createPortal(
     <group ref={group} name={`attachment:${a.id}`}>
-      {a.screen && <ScreenMesh screen={a.screen} selected={selected} onPick={onPick} />}
-      {glb && <MeshModel glb={glb} attachment={a} onPick={onPick} />}
+      <group ref={body}>
+        {a.screen && <ScreenMesh screen={a.screen} hologram={!!a.hologram} selected={selected} onPick={onPick} />}
+        {glb && <MeshModel glb={glb} attachment={a} onPick={onPick} />}
+      </group>
     </group>,
     anchor,
   );

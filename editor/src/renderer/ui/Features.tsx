@@ -1,9 +1,9 @@
 // What a skin can contain, each with one colour and icon used wherever it appears (tiles, section heads, tree rows).
 import { Tooltip, UnstyledButton } from '@mantine/core';
-import { IconBrush, IconDeviceDesktop, IconInfoCircle, IconMovie, IconPhoto, IconVolume, type Icon } from '@tabler/icons-react';
+import { IconBrush, IconDeviceDesktop, IconInfoCircle, IconMovie, IconPhoto, IconSphere, IconVolume, type Icon } from '@tabler/icons-react';
 import type { ComponentProps, ReactNode } from 'react';
 
-export type Feature = 'texture' | 'attachment' | 'layer' | 'sound' | 'livery';
+export type Feature = 'texture' | 'attachment' | 'layer' | 'sound' | 'livery' | 'hologram';
 
 export const FEATURE: Record<Feature, { color: string; icon: Icon }> = {
   texture: { color: 'var(--flare)', icon: IconPhoto },
@@ -11,6 +11,7 @@ export const FEATURE: Record<Feature, { color: string; icon: Icon }> = {
   layer: { color: 'var(--violet)', icon: IconMovie },
   sound: { color: 'var(--ok)', icon: IconVolume },
   livery: { color: 'var(--paint)', icon: IconBrush },
+  hologram: { color: 'var(--holo)', icon: IconSphere },
 };
 
 /** Explanation behind a small info icon, instead of a paragraph on screen. */

@@ -375,7 +375,7 @@ export function SoundInspector() {
 
 /** Choosing a whole-gun texture folder: matches every file and applies all of them as one undo step. */
 export async function pickTextureFolder() {
-  const [dir] = await window.forge.openDialog('folder');
+  const [dir] = await window.forge.openDialog('folder', undefined, 'textures');
   if (dir) await useStore.getState().matchPaths([dir]);
 }
 

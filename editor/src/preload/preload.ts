@@ -18,8 +18,9 @@ const api = {
   onLog: (cb: (line: string) => void) => subscribe('backend:log', cb),
   onStatus: (cb: (status: 'ready' | 'restarting' | 'down') => void) => subscribe('backend:status', cb),
   dataDir: (): Promise<string> => ipcRenderer.invoke('app:dataDir'),
-  openDialog: (kind: 'folder' | 'files' | 'project', filters?: FileFilter[]): Promise<string[]> =>
-    ipcRenderer.invoke('dialog:open', kind, filters),
+  /** Opens where the last dialog of the same `purpose` (else kind and file types) was confirmed. */
+  openDialog: (kind: 'folder' | 'files' | 'project', filters?: FileFilter[], purpose?: string): Promise<string[]> =>
+    ipcRenderer.invoke('dialog:open', kind, filters, purpose),
   saveDialog: (defaultPath: string, filters: FileFilter[]): Promise<string | null> =>
     ipcRenderer.invoke('dialog:save', defaultPath, filters),
   writeFile: (path: string, data: Uint8Array): Promise<void> => ipcRenderer.invoke('files:write', path, data),

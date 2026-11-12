@@ -359,6 +359,8 @@ Skin workspace
 - The 3D view's 模拟 buttons play the event as the game would: layers, attachment effects and the skin's sounds for it.
 - 开发者模式 (settings, off by default): shows the log panel and the game log; off, logs still go to the log file and only
   errors show. Settings also has 检查更新 (the installed copy's update check on demand, with the current version).
+- Every file dialog opens where the last one of the same use was confirmed (texture folder, game folder, profile folder, OBJ
+  export folder; else the same kind and file types), kept across runs in `<dataDir>/dialogs.json`.
 - Log panel; log file under the data dir; data dir `GTFO_UserData` next to the exe, or for an installed copy (which runs
   from `app-<version>/`, replaced by every update) in the install folder above it.
 

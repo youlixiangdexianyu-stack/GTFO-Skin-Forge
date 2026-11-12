@@ -1,7 +1,7 @@
 import { app, autoUpdater, BrowserWindow, dialog, ipcMain, net, protocol, shell, type OpenDialogOptions } from 'electron';
-import { appendFileSync, cpSync, existsSync, mkdirSync, readdirSync, rmSync } from 'node:fs';
+import { appendFileSync, cpSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { mkdir, stat, writeFile } from 'node:fs/promises';
-import { dirname, isAbsolute, join, normalize, resolve, sep } from 'node:path';
+import { basename, dirname, isAbsolute, join, normalize, resolve, sep } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import squirrelStartup from 'electron-squirrel-startup';
 import { makeUserNotifier, updateElectronApp, UpdateSourceType } from 'update-electron-app';
@@ -147,18 +147,23 @@ function registerIpc() {
     ),
   );
   ipcMain.handle('app:dataDir', () => Backend.dataDir());
-  ipcMain.handle('dialog:open', async (_e, kind: 'folder' | 'files' | 'project', filters?: OpenDialogOptions['filters']) => {
+  ipcMain.handle('dialog:open', async (_e, kind: 'folder' | 'files' | 'project', filters?: OpenDialogOptions['filters'], purpose?: string) => {
     const props: OpenDialogOptions['properties'] =
       kind === 'folder' ? ['openDirectory'] : kind === 'files' ? ['openFile', 'multiSelections'] : ['openFile'];
-    const r = await dialog.showOpenDialog(win!, {
-      properties: props,
-      filters,
-    });
-    return r.canceled ? [] : r.filePaths;
+    const key = dialogKey(purpose ?? kind, filters);
+    const r = await dialog.showOpenDialog(win!, { properties: props, filters, defaultPath: lastDir(key) });
+    if (r.canceled || !r.filePaths.length) return [];
+    remember(key, kind === 'folder' ? r.filePaths[0] : dirname(r.filePaths[0]));
+    return r.filePaths;
   });
   ipcMain.handle('dialog:save', async (_e, defaultPath: string, filters: OpenDialogOptions['filters']) => {
-    const r = await dialog.showSaveDialog(win!, { defaultPath, filters });
-    return r.canceled ? null : r.filePath;
+    const key = dialogKey('save', filters);
+    // A bare file name opens in the folder this kind of file was last saved to.
+    const last = basename(defaultPath) === defaultPath ? lastDir(key) : undefined;
+    const r = await dialog.showSaveDialog(win!, { defaultPath: last ? join(last, defaultPath) : defaultPath, filters });
+    if (r.canceled || !r.filePath) return null;
+    remember(key, dirname(r.filePath));
+    return r.filePath;
   });
   ipcMain.handle('files:write', async (_e, path: string, data: Uint8Array) => {
     if (!writable(path)) throw new Error(`refused write outside frames/data dir: ${path}`);
@@ -203,6 +208,33 @@ function registerIpc() {
 }
 
 const updateLog = (message: string) => appLog('update', message);
+
+// Every file dialog opens where the last one of its kind was confirmed (a purpose, else the kind and file types), kept
+// across runs in <dataDir>/dialogs.json.
+const dialogsFile = () => join(Backend.dataDir(), 'dialogs.json');
+let dialogDirs: Record<string, string> | null = null;
+const dialogKey = (purpose: string, filters?: OpenDialogOptions['filters']) =>
+  [purpose, ...(filters ?? []).flatMap((f) => f.extensions)].join(':');
+function lastDir(key: string): string | undefined {
+  if (!dialogDirs) {
+    try {
+      dialogDirs = JSON.parse(readFileSync(dialogsFile(), 'utf8')) as Record<string, string>;
+    } catch {
+      dialogDirs = {};
+    }
+  }
+  const dir = dialogDirs[key];
+  return dir && existsSync(dir) ? dir : undefined;
+}
+function remember(key: string, dir: string) {
+  lastDir(key);
+  dialogDirs![key] = dir;
+  try {
+    writeFileSync(dialogsFile(), JSON.stringify(dialogDirs, null, 2));
+  } catch (e) {
+    appLog('dialogs', e);
+  }
+}
 
 app.whenReady().then(() => {
   protocol.handle('sf', (req) => {

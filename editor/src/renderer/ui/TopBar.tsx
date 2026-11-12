@@ -48,7 +48,7 @@ const SIZES: { value: SizeMode; label: string }[] = [
 ];
 
 async function addProfileFolder() {
-  const [folder] = await window.forge.openDialog('folder');
+  const [folder] = await window.forge.openDialog('folder', undefined, 'profile');
   if (!folder) return;
   const s = useStore.getState();
   try {

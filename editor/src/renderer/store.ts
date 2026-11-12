@@ -378,7 +378,7 @@ export const useStore = create<State>((set, get) => ({
     }
   },
   async chooseGameDir() {
-    const [dir] = await window.forge.openDialog('folder');
+    const [dir] = await window.forge.openDialog('folder', undefined, 'game');
     if (!dir) return;
     try {
       const game = await call('game.setDir', { dir });

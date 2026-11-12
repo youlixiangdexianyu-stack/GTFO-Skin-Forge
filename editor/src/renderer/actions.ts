@@ -315,7 +315,7 @@ export async function exportObj(mode: 'separate' | 'merged'): Promise<void> {
   const s = st();
   const item = currentItem();
   if (!item) return s.toast('info', t('actions.k2'));
-  const [outDir] = await window.forge.openDialog('folder');
+  const [outDir] = await window.forge.openDialog('folder', undefined, 'obj');
   if (!outDir) return;
   const ed = editorOf(s.doc);
   const parts = item.parts.filter((p) => ed.enabled[p.id] !== false).map((p) => p.id);

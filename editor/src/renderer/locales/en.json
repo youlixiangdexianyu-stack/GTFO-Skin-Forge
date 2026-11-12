@@ -574,6 +574,7 @@
   "gameFiles.w.layout": "{{v0}} position, size or hide changes",
   "app.droppedLayer": "Added as an animated layer on “{{v0}}”",
   "gameLog.notLoaded": "“{{v0}}” did not load: {{v1}}",
+  "gameLog.destroyed": "The game destroyed the vanilla material of {{v0}} while the skin was shown; the part may not draw until the weapon is re-equipped",
   "gameLog.noRenderer": "Material “{{v0}}” has no matching part in the game",
   "gameLog.noProp": "Material “{{v0}}” has no {{v1}} in the game; ignored",
   "gameLog.notMultiple": "Texture “{{v0}}” is not a multiple of 4 in size, so the game keeps it uncompressed (more video memory)",

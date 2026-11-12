@@ -423,6 +423,8 @@ sealed class SkinnedGear
                     if (i < now.Length) original[i] = now[i];
                     continue;
                 }
+                if (original[i] is not null && original[i] == null)
+                    ForgeSkinPlugin.Fail($"{_label}: revert {renderer.name}[{i}]: the game's material was destroyed while ours was shown");
                 ForgeSkinPlugin.Info($"{_label}: revert {renderer.name}[{i}]: showing {Describe(i < now.Length ? now[i] : null)}, restoring {Describe(original[i])}");
                 // The game's first-person switch since went to our material (TakeBack), so the original lacks its keyword:
                 // the renderer gets what the game would have given it, a copy of the original with the keyword.
@@ -467,7 +469,8 @@ sealed class SkinnedGear
             for (int i = 0; i < original.Length; i++)
             {
                 var source = original[i];
-                if (source == null) continue;
+                // An empty or destroyed slot is listed too: a part whose material was destroyed under it draws nothing.
+                if (source == null) { seen.Add($"{renderer.name}: mesh '{mesh}' slot {i} {Describe(source)}"); continue; }
                 var name = BaseName(source.name);
                 seen.Add($"{renderer.name}: mesh '{mesh}' material '{name}'");
                 if (!overrides.TryGetValue(name, out var o)) o = byMesh;

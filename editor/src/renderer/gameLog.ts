@@ -15,6 +15,7 @@ export function plainPluginLine(message: string): string {
   let m: RegExpMatchArray | null;
   if ((m = message.match(/^(.+?): .+?: (.+); skin not loaded$/))) return t('gameLog.notLoaded', { v0: m[1], v1: m[2] });
   if ((m = message.match(/: material (.+) matched no renderer/))) return t('gameLog.noRenderer', { v0: m[1] });
+  if ((m = message.match(/: revert (.+): the game's material was destroyed/))) return t('gameLog.destroyed', { v0: m[1] });
   if ((m = message.match(/: material (.+) has no (.+); ignored$/))) return t('gameLog.noProp', { v0: m[1], v1: m[2] });
   if ((m = message.match(/^(.+): \d+x\d+ is not a multiple of 4, left uncompressed$/))) return t('gameLog.notMultiple', { v0: m[1].split(/[\\/]/).pop() });
   if ((m = message.match(/^(.+): update failed: (.+); left vanilla$/))) return t('gameLog.updateFailed', { v0: m[1], v1: m[2] });

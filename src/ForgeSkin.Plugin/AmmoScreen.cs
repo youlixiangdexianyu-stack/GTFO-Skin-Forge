@@ -22,7 +22,13 @@ sealed class AmmoScreen
     readonly Material _template;
     readonly float[] _textColor;
     readonly float[]? _lowColor;
-    readonly float _glow; // 0: not emissive
+    // Emission per step of the Glow slider. Measured on the game's own glowing gear materials (Cell/Player gear shaders,
+    // _EmissiveColor x _EmissiveMap): the flashlight lens 1.0, HSU lights 0.54, the bio tracker / sentry screens 0.45-0.74,
+    // shotgun illumination 0.07, the dimmest sight dots 0.006-0.035. With 0.2 the default Glow 1.5 gives 0.3 (between the
+    // shotgun lights and the HSU lights) and the slider's top, 5, matches the flashlight lens.
+    const float GlowUnit = 0.2f;
+
+    readonly float _gain; // emission multiplier of text and border; 0: not emissive
     readonly float _lowFraction;
     readonly bool _hasLow;
     readonly PlayerAmmoStorage? _storage;
@@ -39,15 +45,15 @@ sealed class AmmoScreen
         _label = gear.Label;
         _pad = s.PadZero;
         _template = template;
-        _glow = s.GlowInGame ? s.Glow : 0f;
+        _gain = s.GlowInGame ? s.Glow * GlowUnit : 0f;
         _textColor = s.TextColor;
         float w = s.Size[0], h = s.Size[1], bw = Math.Min(s.BorderWidth, Math.Min(w, h) * 0.5f);
         if (s.BorderColor[3] > 0.01f && bw > 0)
-            gear.Child(root, "border", gear.Own(Frame(w, h, bw)), _border = Surface(gear, s.BorderColor, _glow), -Step);
+            gear.Child(root, "border", gear.Own(Frame(w, h, bw)), _border = Surface(gear, s.BorderColor, _gain), -Step);
         if (s.PanelColor[3] > 0.01f)
-            gear.Child(root, "panel", gear.Own(Quad(w - 2 * bw, h - 2 * bw)), Surface(gear, s.PanelColor, s.GlowInGame ? 1f : 0f), 0f);
+            gear.Child(root, "panel", gear.Own(Quad(w - 2 * bw, h - 2 * bw)), Surface(gear, s.PanelColor, s.GlowInGame ? SkinnedGear.EmissionUnit : 0f), 0f);
 
-        _text = Surface(gear, s.TextColor, _glow);
+        _text = Surface(gear, s.TextColor, _gain);
         Surfaces.Remove(_text);
         _hasLow = s.LowAmmoColor != null && s.Source is not (ScreenSource.Static or ScreenSource.Kills);
         _lowColor = _hasLow ? s.LowAmmoColor : null;
@@ -110,8 +116,9 @@ sealed class AmmoScreen
     };
 
     // Opaque gear-shader surface in one colour: the colour as albedo (a 1x1 texture; the shader has no colour
-    // property) and, with glow > 0, the same colour as emission at glow times the shader's unit.
-    Material Surface(SkinnedGear gear, float[] c, float glow)
+    // property) and, with gain > 0, the same colour times gain as emission. The panel uses the shader's unit (its colour
+    // as itself, no bloom); text and border the glow.
+    Material Surface(SkinnedGear gear, float[] c, float gain)
     {
         var m = gear.Own(new Material(_template) { name = "ForgeSkin screen" });
         Surfaces.Add(m);
@@ -119,17 +126,17 @@ sealed class AmmoScreen
         m.SetTexture(SkinnedGear.BumpMap, null);
         m.SetTexture(SkinnedGear.EmissiveMap, Texture2D.whiteTexture);
         m.SetTexture(SkinnedGear.MainTex, gear.Own(new Texture2D(1, 1, TextureFormat.RGBA32, false) { name = "ForgeSkin screen colour" }));
-        Paint(m, c, glow);
+        Paint(m, c, gain);
         return m;
     }
 
-    static void Paint(Material m, float[] c, float glow)
+    static void Paint(Material m, float[] c, float gain)
     {
         var colour = new Color(c[0], c[1], c[2]);
         var albedo = m.GetTexture(SkinnedGear.MainTex).Cast<Texture2D>();
         albedo.SetPixel(0, 0, colour);
         albedo.Apply(false, false);
-        if (glow > 0) SkinnedGear.SetEmission(m, colour * (glow * SkinnedGear.EmissionUnit));
+        if (gain > 0) SkinnedGear.SetEmission(m, colour * gain);
         else
         {
             if (m.HasProperty(SkinnedGear.EmissiveColor)) m.SetColor(SkinnedGear.EmissiveColor, Color.black);
@@ -182,7 +189,7 @@ sealed class AmmoScreen
             $"albedo {m.GetTexture(SkinnedGear.MainTex)?.TryCast<Texture2D>()?.GetPixel(0, 0).ToString() ?? "?"}, " +
             $"_EmissiveColor {(m.HasProperty(SkinnedGear.EmissiveColor) ? m.GetColor(SkinnedGear.EmissiveColor).ToString() : "-")}, " +
             $"_EnableEmissive {(m.HasProperty(SkinnedGear.EnableEmissive) ? m.GetFloat(SkinnedGear.EnableEmissive) : -1)}, ENABLE_EMISSIVE {m.IsKeywordEnabled("ENABLE_EMISSIVE")}";
-        return $"glow {_glow}, text [{M(_text)}]{(_low ? " (low)" : "")}, border [{M(_border)}], " +
+        return $"emission gain {_gain}, text [{M(_text)}]{(_low ? " (low)" : "")}, border [{M(_border)}], " +
                $"template {_template.name} / {_template.shader.name} keywords [{string.Join(" ", _template.shaderKeywords)}]";
     }
 
@@ -218,7 +225,7 @@ sealed class AmmoScreen
         bool low = max > 0 && value <= max * _lowFraction;
         if (low == _low) return;
         _low = low;
-        Paint(_text!, low ? _lowColor! : _textColor, _glow);
+        Paint(_text!, low ? _lowColor! : _textColor, _gain);
         ForgeSkinPlugin.Info($"{_label}: screen {(low ? "low" : "normal")} colour at {value}/{max}: {Describe()}");
     }
 }

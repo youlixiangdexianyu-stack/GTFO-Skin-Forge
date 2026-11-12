@@ -180,15 +180,15 @@ game is not running.
   text as real glyph meshes. The pack carries one mesh per glyph "0123456789 -" (blank has none) traced from the strip the app
   renders with the chosen font (marching squares at alpha 0.5, simplified, triangulated with holes by LibTessDotNet); a static
   screen carries its whole text, any characters, as one mesh the same way. Text shrinks to fit 95% of the inner width.
-  Colours: albedo is the colour (a 1×1 texture); with `GlowInGame` the same colour is emission at `Glow` × 0.01 (the shader's
-  emission unit), else no emission. Below the low-ammo threshold the text's albedo and emission both switch to `LowAmmoColor`.
+  Colours: albedo is the colour (a 1×1 texture); with `GlowInGame` text and border also emit the colour at `Glow` × 0.2,
+  else no emission. The 0.2 step is set from the game's own glowing gear materials (_EmissiveColor × map: flashlight lens
+  1.0, HSU lights 0.54, tool screens 0.45–0.74, shotgun lights 0.07), so the default 1.5 glows clearly and the slider's top
+  (5) matches the flashlight lens. The panel emits its colour at the shader's unit 0.01 (shown as itself, no bloom). Below the low-ammo threshold the text's albedo and emission both switch to `LowAmmoColor`.
   `Digits` 0 is automatic: the digits of the largest value the source can show (clip size, the storage's bullet max cap, or
   both); automatic kills show the value's own digits, centred, up to 4; `PadZero` pads to that width. Updates only when the
   value changes; `AmmoClip` reads the weapon's current clip, `AmmoReserve` / `AmmoTotal` the player's ammo storage.
-- The game's `GearMaterialFeeder` puts a `MaterialPropertyBlock` on every renderer under the gear, which overrides material
-  colours and emission. After creating attachments, after every feeder rescan, at first wield and after first-person
-  rendering is set, the plugin clears blocks on its own renderers and puts its own materials back, and logs one line per
-  screen with the block it found and the text and border colours actually applied.
+  After creating a screen the plugin logs one line with the text and border colours and emission actually applied and the
+  template material's shader and keywords.
 - Dynamic layers: atlas frames are copied into the target texture region with `Graphics.CopyTexture` (GPU), never a full re-upload.
 - The plugin identifies a gear by its offline gear id: `GearIDRange.PlayfabItemInstanceId` ("OfflineGear_ID_<id>"), or for a
   range rebuilt from a packet the game's own gear (`GearManager.GetAllGearForSlot`) with the same components.

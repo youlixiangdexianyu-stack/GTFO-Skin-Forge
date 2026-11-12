@@ -35,7 +35,13 @@ sealed class SkinnedGear
     readonly IntPtr _holderPointer, _feeder;
     readonly string _label;
     public string Label => _label;
-    readonly List<(Renderer Renderer, Il2CppReferenceArray<Material> Original, Il2CppReferenceArray<Material> Mine)> _swaps = new();
+    // Backup: a copy of each replaced original, used when the game destroyed the original meanwhile (see ApplyMaterials).
+    readonly List<(Renderer Renderer, Il2CppReferenceArray<Material> Original, Il2CppReferenceArray<Material> Mine, Material?[] Backup)> _swaps = new();
+    // Looks drawn with a borrowed gear shader (BlendHS parts), and the feeder blocks taken off their renderers: the
+    // feeder's block holds the BlendHS palette and would override the borrowed shader's colour and emission.
+    readonly HashSet<IntPtr> _borrowed = new();
+    readonly List<(Renderer Renderer, MaterialPropertyBlock Block)> _blocks = new();
+    static readonly MaterialPropertyBlock NoBlock = new();
     readonly List<Object> _created = new();
     readonly List<(Material Material, int Property, RenderTexture Target)> _targets = new();
     readonly List<ITriggered> _animated = new(); // layers and effects, ticked every frame
@@ -140,8 +146,12 @@ sealed class SkinnedGear
         {
             foreach (var gear in Live)
                 if (gear._feeder == feeder)
+                {
                     foreach (var swap in gear._swaps)
                         if (swap.Renderer != null) swap.Renderer.sharedMaterials = swap.Mine;
+                    foreach (var (renderer, _) in gear._blocks)
+                        if (renderer != null) renderer.SetPropertyBlock(NoBlock);
+                }
         }
         catch (Exception e) { ForgeSkinPlugin.Fail($"feeder rescan: {e.Message}"); }
     }
@@ -363,8 +373,25 @@ sealed class SkinnedGear
     {
         foreach (var pose in _poses) pose.Revert();
         _poses.Clear();
-        foreach (var swap in _swaps)
-            if (swap.Renderer != null) swap.Renderer.sharedMaterials = swap.Original;
+        foreach (var (renderer, original, _, backup) in _swaps)
+        {
+            if (renderer != null)
+            {
+                for (int i = 0; i < original.Length; i++)
+                    if (backup[i] != null && original[i] == null) // destroyed by the game while ours was shown
+                    {
+                        original[i] = backup[i];
+                        backup[i] = null;
+                    }
+                renderer.sharedMaterials = original;
+            }
+            foreach (var b in backup)
+                if (b != null) Object.Destroy(b);
+        }
+        foreach (var (renderer, block) in _blocks)
+            if (renderer != null) renderer.SetPropertyBlock(block);
+        _blocks.Clear();
+        _borrowed.Clear();
         foreach (var o in _created)
             if (o != null) Object.Destroy(o);
         _swaps.Clear();
@@ -395,6 +422,8 @@ sealed class SkinnedGear
             var mesh = BaseName(MeshOf(renderer)?.name ?? "");
             overrides.TryGetValue(mesh, out var byMesh);
             Il2CppReferenceArray<Material>? mine = null;
+            Material?[]? backup = null;
+            bool borrowed = false;
             for (int i = 0; i < original.Length; i++)
             {
                 var source = original[i];
@@ -411,10 +440,16 @@ sealed class SkinnedGear
                 }
                 mine ??= renderer.sharedMaterials;
                 mine[i] = look;
+                // A copy of every original we replace: the game may destroy its own per-gear copy while ours is shown
+                // (re-equip, loadout changes), and revert must never put a destroyed material back.
+                backup ??= new Material[original.Length];
+                backup[i] = new Material(source) { name = source.name };
+                if (_borrowed.Contains(look.Pointer)) borrowed = true;
             }
             if (mine == null) continue;
             renderer.sharedMaterials = mine;
-            _swaps.Add((renderer, original, mine));
+            _swaps.Add((renderer, original, mine, backup!));
+            if (borrowed) ClearBlock(renderer);
         }
         foreach (var (name, o) in overrides)
         {
@@ -465,21 +500,28 @@ sealed class SkinnedGear
 
     Material Look(Skin skin, MaterialOverride o, Material source)
     {
-        var look = Own(new Material(source) { name = source.name + " (ForgeSkin)" });
+        // Named after the skin's material only: the game's per-gear copies are "<name>(Clone)_unique_<n>", and ours must
+        // not pass for one of them.
+        var name = $"ForgeSkin {o.Material}";
+        Material look;
         // GTFO/BlendHS colours by vertex and samples no albedo texture, so a picture on it would never show. The skin
-        // carries the editor's baked look as its base (actions.ts packDoc); it is drawn with the gear's textured shader.
+        // carries the editor's baked look as its base (actions.ts packDoc); it is drawn with a copy of a textured gear
+        // material of this gear, stripped of everything that is the donor's own (textures, colour, emission).
         if (source.shader.name == BlendHS && o.Textures.ContainsKey(TextureChannel.Albedo))
         {
             var template = TexturedTemplate() ?? throw new InvalidOperationException($"{source.name} ({BlendHS}): the gear has no textured material to draw it with");
-            look.shader = template.shader;
-            look.CopyPropertiesFromMaterial(template);
-            look.shaderKeywords = template.shaderKeywords;
+            look = Own(new Material(template) { name = name });
+            look.SetTexture(MainTex, Texture2D.whiteTexture);
             look.SetTexture(BumpMap, null);
             look.SetTexture(MetallicGlossMap, Texture2D.blackTexture);
             look.SetTexture(EmissiveMap, null);
+            if (look.HasProperty(Color)) look.SetColor(Color, UnityEngine.Color.white);
+            SetEmission(look, UnityEngine.Color.black);
             SetEmissive(look, false);
-            ForgeSkinPlugin.Info($"{_label}: material {source.name} ({BlendHS}) drawn with {template.shader.name} from {template.name}");
+            _borrowed.Add(look.Pointer);
+            ForgeSkinPlugin.Info($"{_label}: material {source.name} ({BlendHS}) drawn with {template.shader.name} copied from {template.name}");
         }
+        else look = Own(new Material(source) { name = name });
         foreach (var (channel, path) in o.Textures) look.SetTexture(Property(channel), skin.Texture(path, Skin.Linear(channel)));
         if (o.Textures.ContainsKey(TextureChannel.Emissive) && o.Params.EmissiveEnabled != false) SetEmissive(look, true);
         Params(look, o.Params);
@@ -660,12 +702,21 @@ sealed class SkinnedGear
         }
     }
 
+    void ClearBlock(Renderer renderer)
+    {
+        var block = new MaterialPropertyBlock();
+        if (renderer.HasPropertyBlock()) renderer.GetPropertyBlock(block);
+        _blocks.Add((renderer, block));
+        renderer.SetPropertyBlock(NoBlock);
+    }
+
     // A material of this gear drawn with a textured gear shader (texture and emission slots, not BlendHS).
     Material? TexturedTemplate()
     {
         foreach (var r in (_item != null ? _item.transform : _root.transform).GetComponentsInChildren<Renderer>(true))
             foreach (var m in r.sharedMaterials)
-                if (m != null && m.shader.name != BlendHS && m.HasProperty(MainTex) && m.HasProperty(EmissiveColor)) return m;
+                if (m != null && m.shader.name != BlendHS && !m.name.StartsWith("ForgeSkin ", StringComparison.Ordinal)
+                    && m.HasProperty(MainTex) && m.HasProperty(EmissiveColor)) return m;
         return null;
     }
 

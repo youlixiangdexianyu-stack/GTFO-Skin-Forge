@@ -250,7 +250,7 @@ export interface Methods {
   'assembly.verify': [{ profile: string }, VerifyResult[]];
   'pack.remove': [{ profile: string; skinId: string }, unknown];
   'pack.activate': [{ profile: string; skinId: string; active: boolean }, unknown];
-  'pack.exportMod': [{ packs: string[]; out: string; name: string; version: string; description: string; icon: string }, { mod: string }];
+  'pack.exportMod': [{ packs: string[]; out: string; name: string; version: string; description: string; icon: string; format: 'forgeskin' | 'skins' }, { mod: string; dropped: string[] }];
   'assets.apply': [{ pack: string }, { skin: string; buildId: string; files: string[]; materials: string[]; warnings: string[] }];
   'assets.restore': [{ skinId?: string; discardStale?: boolean }, { restored: string[]; skipped: { file: string; reason: string }[]; stale: StaleAssets[] }];
   'assets.status': [Record<string, never>, AssetStatus];

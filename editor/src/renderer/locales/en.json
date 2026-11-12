@@ -750,5 +750,14 @@
   "topBar.update.dev": "A development run does not update; the installed app checks",
   "topBar.update.latest": "You have the latest version",
   "topBar.update.downloading": "A new version is downloading in the background; you will be asked to restart when it is ready",
-  "topBar.update.error": "Could not check for updates; check the network and try again"
+  "topBar.update.error": "Could not check for updates; check the network and try again",
+  "exportMod.format": "Format",
+  "exportMod.formatForge": "ForgeSkin format: every effect (dynamic layers, attachments, sounds, part changes), applied by the ForgeSkin plugin.",
+  "exportMod.formatSkins": "Skins format: for players with the Skins library (food-Skins). Still textures and material settings only; dynamic layers, attachments, sounds and part changes are left out.",
+  "exportMod.dropped": "Not in the Skins format",
+  "exportMod.doneDropped": "Thunderstore skin mod exported; {{v0}} things the Skins format cannot carry are listed in the log",
+  "skins.importGroup": "Import a Skins skin group…",
+  "skins.notGroup": "Pick the manifest.skingroup.json in the skin group folder",
+  "app.updateReady": "A new version is downloaded; restart ForgeSkin to use it (the plugin updates too).",
+  "app.restartUpdate": "Restart to update"
 }

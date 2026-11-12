@@ -53,7 +53,8 @@ self-contained single file and copies the prebuilt plugin (repo prebuilt/plugin/
 Release: a GitHub release `v<version>` (the version in editor/package.json, raised every release) carries the
 installer, its `RELEASES` and `.nupkg`, and the plugin as a Thunderstore-layout zip. An installed editor updates
 itself from these releases (`update-electron-app` through update.electronjs.org: checks at start and hourly,
-downloads in the background, offers a restart); the plugin it installs updates with it.
+downloads in the background with a status-bar progress bar, then offers a restart in the window: a toast and a
+status-bar 重启更新 button, never a system dialog); the plugin it installs updates with it.
 
 Dependency direction: Plugin → Format; Backend → Format; app → backend over stdio only. The Electron side never parses
 Unity files, packs or projects itself; everything about formats goes through the backend. TypeScript types for
@@ -164,7 +165,7 @@ app moves its pre-rename Electron profile (`%APPDATA%/GTFO Skin Forge`) to `%APP
 | `preview.weapon` | `{id}` → `{glb, parts:[{id, nodes:[...]}], textures:{material:{channel:png}}, params:{material:{...}}}`; built from the local game and cached with the catalog per game build and cache format in `%LOCALAPPDATA%/ForgeSkinCache/game/<build>-v<n>/`, shared by every copy of the app on the machine (installed, reinstalled, run from the repository; a copy's older `<dataDir>/cache/game` moves there); other builds of the same format are deleted, other formats after a month unwritten |
 | `match.folder` | `{weaponId, folder}` → per part per channel `{file, confidence, reason}` + unmatched files |
 | `match.files` | `{weaponId, files:[...]}` → same, for drag-and-drop of loose files |
-| `project.new/load/save` | SkinDocument in/out; `project.load` also imports legacy `.gtfoskin`, `.gtfdyn` and DLY presets |
+| `project.new/load/save` | SkinDocument in/out; `project.load` also imports legacy `.gtfoskin`, `.gtfdyn` and DLY presets, and a Skins library skin group (its `manifest.skingroup.json`: the first gear its filters name, each `*.mattarget.json` as a material override with `_MainTex/_BumpMap/_MetallicGlossMap/_EmissiveMap` files and `_Color`, `_Metallic`, `_Glossiness`, `_EnableEmissive`, `_EmissiveColor`; texture macros, shader swaps, texture-name variants and mesh targets are left out). In the editor a skin is always a ForgeSkin project |
 | `project.list` | `{dir}` → `[{path, id, name, modified}]`, newest first; a file that does not parse is listed under its file name |
 | `project.delete` | `{path}` → deletes one `.forgeskinproj` and its `<name>.snapshots/` folder |
 | `project.missing` | `{project}` → `{files}`: the files the document names (every reference `project.save` maps; a font only when it is a font file, not a family name) that are not on disk |
@@ -172,7 +173,7 @@ app moves its pre-rename Electron profile (`%APPDATA%/GTFO Skin Forge`) to `%APP
 | `pack.build` | `{project, projectPath, out, sizeMode: keep/original/1k/2k/4k}` → `{pack, warnings, memory}`; resizes keeping aspect, bakes layer atlases from frame PNGs the renderer wrote and traces screen glyph strips and static texts into meshes; each resized texture and atlas PNG is cached in `<dataDir>/cache/pack/` by its inputs (file path, length, write time, target size), so an apply re-encodes only what changed (entries unused for 14 days are removed) |
 | `pack.install` | `{pack, profile, activate}` → writes skin + active.json (a running game picks it up only with the development switch on) |
 | `pack.list / pack.remove / pack.activate` | manage installed skins in a profile |
-| `pack.exportMod` | `{packs, out, name, version, description, icon}` → `{mod}`: a Thunderstore skin mod zip (manifest.json, icon.png scaled to 256x256, README.md, `forgeskin.forge`, `skins/*`), depending on the base library |
+| `pack.exportMod` | `{packs, out, name, version, description, icon, format: forgeskin/skins}` → `{mod, dropped}`: a Thunderstore skin mod zip (manifest.json, icon.png scaled to 256x256, README.md). forgeskin: `forgeskin.forge` and `skins/*`, depending on the base library. skins: each pack as a skin group in `Assets/Skins/<skin id>/` (manifest.skingroup.json with one OfflineGearPersistentID filter per gear — for an attachment skin every catalog gear using its materials — and one `<material>.mattarget.json` per material with the pack's textures and params), depending on food-Skins; item skins are refused. `dropped` lists what the Skins format cannot carry (dynamic layers, attachments, part changes, sounds, a material set twice) |
 | `plugin.log` | `{profile, since?}` → `{lines:[{time, level, message}]}` from the plugin's own `forgeskin.log`, newer than `since` |
 | `plugin.install` | `{profile}` → copies plugin; refuses with `game-running` while GTFO runs and the DLL is locked. First moves a pre-rename install: `plugins/SkinForge/skins/*` (packs renamed to `.forgeskin`, `active.json` kept) into `plugins/ForgeSkin/skins`, `config/SkinForge.cfg` to `ForgeSkin.cfg`, `BepInEx/SkinForge` to `BepInEx/ForgeSkin`, then deletes the old DLLs and log and the old folder once empty |
 | `plugin.setDevelopment` | `{profile, on}` → writes `Development` in `BepInEx/config/ForgeSkin.cfg`; `{development, restartNeeded}`. `profiles.list` reports it as `development` |
@@ -426,7 +427,8 @@ Install
 - Format: pack round trip; a deliberately broken pack is rejected with its code (one per code family).
 - Matching algorithm on a fixture folder.
 - Main flow on the local game (local-resource layer, reports "not run" without GTFO): locate → catalog → preview HEL → build pack with
-  an albedo override, an ammo screen and a GLB attachment → install into a profile.
+  an albedo override, an ammo screen and a GLB attachment → install into a profile → export in the Skins format and import the
+  group back (same gear, part and texture bytes; the attachments reported as dropped).
 - In-game: plugin loads the pack and logs applied renderers, attachment, screen and sounds for the wielded weapon.
 - Asset replacement round trip on a copy of the game files the HEL needs (local-resource layer): apply an albedo override, reopen
   the patched file (every original object byte-identical except the Material, the added texture decodes to the pack image within

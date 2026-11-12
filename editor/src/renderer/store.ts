@@ -195,6 +195,8 @@ interface State {
   cache: { done: number; total: number } | null;
   /** A new version downloading in the background (total 0 when its size is unknown). */
   update: { received: number; total: number } | null;
+  /** A new version is downloaded; restarting installs it. */
+  updateReady: boolean;
   /** Video memory the last built pack of a skin takes in game (pack.build's estimate). */
   skinMemory: { id: string; bytes: number } | null;
   /** Plain message when the last autosave failed; null when it worked. */
@@ -284,6 +286,10 @@ function subscribe(f: Window['forge'], set: Set, get: () => State) {
     if (!get().update) get().toast('info', t('topBar.update.downloading'));
     set({ update: received < 0 || (total > 0 && received >= total) ? null : { received, total } });
   });
+  f.onUpdateReady(() => {
+    set({ update: null, updateReady: true });
+    get().toast('ok', t('app.updateReady'), { label: t('app.restartUpdate'), run: () => void f.restartToUpdate() });
+  });
   f.onEvent((event, data) => {
     if (event === 'progress') {
       const p = data as { done: number; total: number; text: string };
@@ -330,6 +336,7 @@ export const useStore = create<State>((set, get) => ({
   progress: null,
   cache: null,
   update: null,
+  updateReady: false,
   skinMemory: null,
   autosaveError: null,
   unmatched: [],

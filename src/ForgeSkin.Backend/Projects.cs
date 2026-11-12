@@ -33,7 +33,8 @@ public static class Projects
         try
         {
             var json = JsonNode.Parse(File.ReadAllText(path))?.AsObject() ?? throw new SkinFormatException("schema", $"{path} is empty");
-            if (json.ContainsKey("assignments")) doc = FromGtfoSkin(json, catalog);
+            if (SkinsFormat.IsGroup(path)) doc = SkinsFormat.Import(path, catalog);
+            else if (json.ContainsKey("assignments")) doc = FromGtfoSkin(json, catalog);
             else if (json.ContainsKey("layers") && json.ContainsKey("item_id")) doc = FromGtfDyn(json, catalog);
             else if (json.ContainsKey("anchor_part_id")) doc = FromDly(json, catalog);
             else doc = SkinJson.Read(json.ToJsonString());

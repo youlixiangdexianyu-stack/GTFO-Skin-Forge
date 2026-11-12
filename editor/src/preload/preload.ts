@@ -40,6 +40,8 @@ const api = {
   onMaximized: (cb: (maximized: boolean) => void) => subscribe('win:maximized', cb),
   /** A found update downloading: bytes so far and in all (0 when unknown); received -1 means it failed, = total done. */
   onUpdateProgress: (cb: (received: number, total: number) => void) => subscribe('update:progress', cb),
+  onUpdateReady: (cb: () => void) => subscribe('update:ready', cb),
+  restartToUpdate: (): Promise<void> => ipcRenderer.invoke('update:restart'),
 };
 
 export type ForgeApi = typeof api;

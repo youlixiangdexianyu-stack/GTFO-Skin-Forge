@@ -78,6 +78,19 @@ public class GameTests
         Assert.Equal("skin-flow-test", (string)installed["id"]!);
         Assert.True((bool)installed["active"]!);
         Assert.Equal("skin-flow-test", (string)JsonNode.Parse(File.ReadAllText(Path.Combine(Game.PluginDir(profile), "skins", "active.json")))!["targets"]!["gear:45"]!);
+
+        // Skins library format: the pack as a skin group in a mod zip, read back as a project of the same gear and texture.
+        var mod = Path.Combine(dir, "skins.zip");
+        var exported = Call("pack.exportMod", new { packs = new[] { pack }, @out = mod, name = "Flow", version = "1.0.0", icon = Path.Combine(dir, "front.png"), format = "skins" });
+        Assert.Contains(exported["dropped"]!.AsArray(), d => ((string)d!).Contains("2 attachments"));
+        System.IO.Compression.ZipFile.ExtractToDirectory(mod, Path.Combine(dir, "skins"));
+        var group = Path.Combine(dir, "skins", "Assets", "Skins", "skin-flow-test");
+        var imported = Call("project.load", new { path = Path.Combine(group, "manifest.skingroup.json") }).Deserialize<SkinDocument>(Program.Json)!;
+        Assert.Equal((45u, "Flow test"), (imported.Target.GearId!.Value, imported.Name));
+        var front = Assert.Single(imported.Materials);
+        Assert.Equal(("Front_UZI_2", "front"), (front.Material, front.Part));
+        using (var p = SkinPack.Open(pack))
+            Assert.Equal(p.ReadBytes("textures/Front_UZI_2_Albedo.png"), File.ReadAllBytes(front.Textures[TextureChannel.Albedo]));
     }
 
     // Resource integrity of previews: every opaque or cutout material of every catalog item has a readable albedo PNG, and

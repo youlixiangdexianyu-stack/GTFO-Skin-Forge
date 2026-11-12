@@ -28,6 +28,7 @@ function StatusBar({ onLog }: { onLog: () => void }) {
   const progress = useStore((s) => (s.busy || s.previewLoading ? s.progress : null));
   const cache = useStore((s) => s.cache);
   const update = useStore((s) => s.update);
+  const updateReady = useStore((s) => s.updateReady);
   const undo = useStore((s) => s.undo.length);
   const redo = useStore((s) => s.redo.length);
   const { undoEdit, redoEdit } = useStore.getState();
@@ -53,6 +54,13 @@ function StatusBar({ onLog }: { onLog: () => void }) {
           <span>{update.total ? t('app.updating', { v0: Math.floor((update.received / update.total) * 100) }) : t('app.updatingUnknown')}</span>
           <Progress w={120} size="xs" value={update.total ? (update.received / update.total) * 100 : 100} animated={!update.total} striped={!update.total} />
         </Group>
+      )}
+      {updateReady && (
+        <Tooltip label={t('app.updateReady')}>
+          <Button size="compact-xs" color="flare" onClick={() => void window.forge.restartToUpdate()}>
+            {t('app.restartUpdate')}
+          </Button>
+        </Tooltip>
       )}
       {cache && (
         <Tooltip label={t('app.k4')}>

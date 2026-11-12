@@ -1,9 +1,9 @@
 // The current item's skins as thumbnail cards under the item's name: switch, make, copy, rename, delete, and pick the
 // one the game uses. Each card shows the weapon wearing that skin.
 import { ActionIcon, Button, Group, Menu, Modal, Text, TextInput, Tooltip, UnstyledButton } from '@mantine/core';
-import { IconCopy, IconDeviceFloppy, IconDots, IconEraser, IconFolderOpen, IconHistory, IconPencil, IconPlus, IconTrash } from '@tabler/icons-react';
+import { IconCopy, IconDeviceFloppy, IconDots, IconEraser, IconFileImport, IconFolderOpen, IconHistory, IconPencil, IconPlus, IconTrash } from '@tabler/icons-react';
 import { useEffect, useState } from 'react';
-import { activateSkin, openProject } from '../actions';
+import { activateSkin, importSkinGroup, openProject } from '../actions';
 import type { ProjectEntry } from '../protocol';
 import { useStore } from '../store';
 import { skinThumbnail, skinThumbOf, thumbOf } from '../viewport/thumbnails';
@@ -141,6 +141,9 @@ export function SkinStrip() {
           </Menu.Item>
           <Menu.Item leftSection={<IconFolderOpen size={14} />} rightSection={<Text size="xs" c="dimmed">Ctrl O</Text>} onClick={() => void openProject()}>
             {t('topBar.k54')}
+          </Menu.Item>
+          <Menu.Item leftSection={<IconFileImport size={14} />} onClick={() => void importSkinGroup()}>
+            {t('skins.importGroup')}
           </Menu.Item>
         </Menu.Dropdown>
       </Menu>

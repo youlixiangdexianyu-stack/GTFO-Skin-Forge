@@ -300,6 +300,14 @@ export async function activateSkin(id: string, name: string): Promise<void> {
 }
 
 /** Opens a skin project (or an old preset) chosen in the file dialog. */
+/** Opens a Skins library skin group (its manifest.skingroup.json) as a new skin of ours. */
+export async function importSkinGroup(): Promise<void> {
+  const [p] = await window.forge.openDialog('files', [{ name: 'Skins (manifest.skingroup.json)', extensions: ['json'] }], 'skingroup');
+  if (!p) return;
+  if (!/manifest\.skingroup\.json$/i.test(p)) return st().toast('error', t('skins.notGroup'));
+  await st().loadProject(p);
+}
+
 export async function openProject(): Promise<void> {
   const [p] = await window.forge.openDialog('project', [{ name: t('store.k11'), extensions: ['forgeskinproj', 'gtfoskin', 'gtfdyn', 'json'] }]);
   if (p) await st().loadProject(p);
@@ -363,6 +371,8 @@ export interface ModInfo {
   icon: string;
   /** Ids of the current item's skins that go in. */
   skins: string[];
+  /** forgeskin: packs applied by ForgeSkin; skins: skin groups applied by the Skins library (still textures only). */
+  format: 'forgeskin' | 'skins';
 }
 
 /** Builds the chosen skins of the current item and packs them as a Thunderstore skin mod zip. Returns false when it stopped. */
@@ -393,8 +403,9 @@ export async function exportMod(info: ModInfo): Promise<boolean> {
       const packs: string[] = [];
       for (const { id, skin } of skins) packs.push(await build(`${s.dataDir}\\packs\\${id}.forgeskin`, skin));
       useStore.setState({ busy: t('actions.k6') });
-      const { mod } = await call('pack.exportMod', { packs, out, name: info.name, version: info.version, description: info.description, icon: info.icon });
-      s.toast('ok', t('exportMod.done'), { label: t('actions.k18'), run: () => void window.forge.showInFolder(mod) });
+      const { mod, dropped } = await call('pack.exportMod', { packs, out, name: info.name, version: info.version, description: info.description, icon: info.icon, format: info.format });
+      for (const d of dropped) s.log(`${t('exportMod.dropped')}: ${d}`);
+      s.toast('ok', dropped.length ? t('exportMod.doneDropped', { v0: dropped.length }) : t('exportMod.done'), { label: t('actions.k18'), run: () => void window.forge.showInFolder(mod) });
       return true;
     } catch (e) {
       s.fail(e, t('exportMod.failed'));

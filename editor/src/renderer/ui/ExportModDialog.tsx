@@ -1,4 +1,4 @@
-import { Button, Checkbox, Group, Image, Modal, Stack, Text, Textarea, TextInput } from '@mantine/core';
+import { Button, Checkbox, Group, Image, Modal, SegmentedControl, Stack, Text, Textarea, TextInput } from '@mantine/core';
 import { useEffect, useState } from 'react';
 import { exportMod } from '../actions';
 import { fileUrl } from '../protocol';
@@ -34,6 +34,7 @@ export function ExportModDialog() {
   const [description, setDescription] = useState('');
   const [icon, setIcon] = useState<string | null>(null);
   const [skins, setSkins] = useState<string[]>([]);
+  const [format, setFormat] = useState<'forgeskin' | 'skins'>('forgeskin');
   const [busy, setBusy] = useState(false);
   const list = useStore((s) => s.skins);
   useEffect(() => {
@@ -50,7 +51,7 @@ export function ExportModDialog() {
   };
   const go = async () => {
     setBusy(true);
-    const done = await exportMod({ name, version, description, icon: icon!, skins });
+    const done = await exportMod({ name, version, description, icon: icon!, skins, format });
     setBusy(false);
     if (done) close();
   };
@@ -58,6 +59,22 @@ export function ExportModDialog() {
   return (
     <Modal opened={open} onClose={close} title={t('exportMod.title')} centered size="lg">
       <Stack gap="sm">
+        <div>
+          <Text size="sm" fw={500} mb={6}>
+            {t('exportMod.format')}
+          </Text>
+          <SegmentedControl
+            value={format}
+            onChange={(v) => setFormat(v as typeof format)}
+            data={[
+              { value: 'forgeskin', label: 'ForgeSkin' },
+              { value: 'skins', label: 'Skins' },
+            ]}
+          />
+          <Text size="xs" c="dimmed" mt={4}>
+            {t(format === 'skins' ? 'exportMod.formatSkins' : 'exportMod.formatForge')}
+          </Text>
+        </div>
         <TextInput label={t('exportMod.name')} description={t('exportMod.nameHint')} value={name} onChange={(e) => setName(e.currentTarget.value)} error={name && !NAME.test(name)} />
         <TextInput
           label={t('exportMod.version')}

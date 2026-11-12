@@ -750,5 +750,14 @@
   "topBar.update.dev": "开发版不走自动更新，安装版才会检查",
   "topBar.update.latest": "已经是最新版本",
   "topBar.update.downloading": "发现新版本，正在后台下载，下载好后会提示重启",
-  "topBar.update.error": "检查更新失败，请检查网络后再试"
+  "topBar.update.error": "检查更新失败，请检查网络后再试",
+  "exportMod.format": "格式",
+  "exportMod.formatForge": "ForgeSkin 格式：全部效果（动态图层、附件、音效、部件调整），由 ForgeSkin 插件应用。",
+  "exportMod.formatSkins": "Skins 格式：给装了 Skins 库（food-Skins）的玩家用。只带静态贴图和材质参数，动态图层、附件、音效、部件调整不会带上。",
+  "exportMod.dropped": "Skins 格式带不上",
+  "exportMod.doneDropped": "Thunderstore 皮肤模组已导出；有 {{v0}} 项 Skins 格式带不上，详情见日志",
+  "skins.importGroup": "导入 Skins 皮肤组…",
+  "skins.notGroup": "请选皮肤组文件夹里的 manifest.skingroup.json",
+  "app.updateReady": "新版本已经下载好了，重启 ForgeSkin 就会用上（插件也一起更新）。",
+  "app.restartUpdate": "重启更新"
 }

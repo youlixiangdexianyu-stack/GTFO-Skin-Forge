@@ -33,19 +33,20 @@ First version is local only: other players see vanilla weapons.
 ## 2. Architecture
 
 ```
-app/                        Electron (Electron Forge + Vite) + React + TypeScript + three.js (react-three-fiber)
+editor/                     Electron (Electron Forge + Vite) + React + TypeScript + three.js (react-three-fiber)
   src/main/                 window, dialogs, spawns and talks to the backend
   src/preload/              typed contextBridge API
   src/renderer/             editor UI, 3D preview, video/text frame rendering
 src/ForgeSkin.Format/       net6.0. SkinDocument (project == pack manifest), SkinPack (zip + validation), ForgeSkinMesh
 src/ForgeSkin.Backend/      net10.0 console, self-contained single file, shipped as Electron extraResource
 src/ForgeSkin.Plugin/       net6.0 BepInEx 6 IL2CPP plugin
-tests/                      dotnet test project(s) + the app's own tests
+tests/                      dotnet test project
+prebuilt/plugin/            committed plugin build (refreshed by every Release build of the plugin)
 docs/PLAN.md                this file
 ```
 
-Packaging: `npm run make` in app/ builds the Squirrel installer; its prePackage hook publishes the backend
-self-contained single file and copies the prebuilt plugin (repo plugin/) to `resources/publish/plugin`.
+Packaging: `npm run make` in editor/ builds the Squirrel installer; its prePackage hook publishes the backend
+self-contained single file and copies the prebuilt plugin (repo prebuilt/plugin/) to `resources/publish/plugin`.
 
 Dependency direction: Plugin → Format; Backend → Format; app → backend over stdio only. The Electron side never parses
 Unity files, packs or projects itself; everything about formats goes through the backend. TypeScript types for
@@ -54,7 +55,7 @@ json-schema-to-typescript; never hand-written.
 
 Coordinates: everything stored is GTFO weapon space (Unity, left-handed, Y up, metres, 1.0x game scale). GLB exported for
 preview converts Unity → glTF by negating Z (positions, normals, tangents.z; winding flipped). The renderer converts
-poses with one helper (`unityToThree` / `threeToUnity` in `app/src/renderer/space.ts`); nothing else converts.
+poses with one helper (`unityToThree` / `threeToUnity` in `editor/src/renderer/space.ts`); nothing else converts.
 
 ## 3. Interfaces
 
@@ -169,7 +170,7 @@ at a time; so do the long writers (`pack.build`, `pack.exportMod`, `assets.apply
 to `<file>.tmp` and moved over the target; a stale temp is deleted first and a failed write leaves the target untouched.
 
 Plugin source for `plugin.install`: `plugin/` next to the backend exe in a packaged app; in a checkout the newest of the plugin
-project's Release/Debug output and the committed prebuilt copy in the repo's `plugin/` folder. Every Release build of the plugin
+project's Release/Debug output and the committed prebuilt copy in the repo's `prebuilt/plugin/` folder. Every Release build of the plugin
 refreshes that folder, so machines that cannot build the plugin (no BepInEx interop assemblies) still install the current one.
 The app checks `pluginCurrent` whenever a profile is chosen or listed and installs or updates the plugin on its own when the
 game is not running.
@@ -372,8 +373,7 @@ Install
 
 ## 6. Remaining work
 
-1. Remove the old Python tool and the two HEL plugins once §4 is verified.
-2. Livery: check a baked livery in game (plugin load and game-file replacement); weapon-list thumbnails do not show it yet.
-3. Move onto ForgeCore once its library merge has landed (the plugin then depends on ForgeCore): the in-game skin picker
+1. Livery: check a baked livery in game (plugin load and game-file replacement); weapon-list thumbnails do not show it yet.
+2. Move onto ForgeCore once its library merge has landed (the plugin then depends on ForgeCore): the in-game skin picker
    (choose the active skin per item from the loadout screen) on ForgeCore's UI, and the plugin's game events and sound
    playback onto ForgeCore's event and audio modules instead of its own hooks.

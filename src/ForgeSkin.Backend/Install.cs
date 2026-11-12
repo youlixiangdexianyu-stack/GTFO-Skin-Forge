@@ -106,7 +106,7 @@ public static class Install
     }
 
     // The plugin build shipped next to the backend (plugin/); in a checkout the newest of the plugin project's Release or
-    // Debug output and the committed prebuilt copy (repo plugin/, refreshed by every Release build).
+    // Debug output and the committed prebuilt copy (repo prebuilt/plugin/, refreshed by every Release build).
     static string PluginSource()
     {
         var bundled = Path.Combine(AppContext.BaseDirectory, "plugin");
@@ -114,7 +114,7 @@ public static class Install
         var candidates = new List<string>();
         for (var dir = new DirectoryInfo(AppContext.BaseDirectory); dir != null; dir = dir.Parent)
         {
-            candidates.Add(Path.Combine(dir.FullName, "plugin"));
+            candidates.Add(Path.Combine(dir.FullName, "prebuilt", "plugin"));
             foreach (var config in new[] { "Release", "Debug" })
                 candidates.Add(Path.Combine(dir.FullName, "src", "ForgeSkin.Plugin", "bin", config, "net6.0"));
         }

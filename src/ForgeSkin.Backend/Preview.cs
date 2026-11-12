@@ -43,7 +43,8 @@ public static class Preview
         var item = Catalog.Item(Catalog.Get(g), id);
         var dir = PreviewCache.Dir(g, id);
         var cached = Path.Combine(dir, "preview.json");
-        if (File.Exists(cached)) return JsonSerializer.Deserialize<PreviewResult>(File.ReadAllText(cached), Program.Json)!;
+        if (File.Exists(cached))
+            return MapPaths(JsonSerializer.Deserialize<PreviewResult>(File.ReadAllText(cached), Program.Json)!, p => Path.GetFullPath(Path.Combine(dir, p)));
 
         var clock = System.Diagnostics.Stopwatch.StartNew();
         var root = item.Build(g);
@@ -167,9 +168,17 @@ public static class Preview
         var order = Assembly.Slots.Select(s => s.Id).Concat(["ammo_speedloader", "ammo_bullet", "ammo_shell"]).ToList();
         var result = new PreviewResult(glbPath, parts.Keys.Union(transforms.Keys).OrderBy(p => order.IndexOf(p) is var i && i < 0 ? 99 : i)
             .Select(p => new PreviewPart(p, parts.GetValueOrDefault(p) ?? new(), transforms.GetValueOrDefault(p) ?? new(), ammo.GetValueOrDefault(p))).ToList(), textures, parameters);
-        AtomicFile.WriteText(cached, JsonSerializer.Serialize(result, Program.Json));
+        // Stored relative to the cache folder, so a moved data dir (portable GTFO_UserData) keeps its cache.
+        AtomicFile.WriteText(cached, JsonSerializer.Serialize(MapPaths(result, p => Path.GetRelativePath(dir, p)), Program.Json));
         return result;
     }
+
+    static PreviewResult MapPaths(PreviewResult r, Func<string, string> map) => r with
+    {
+        Glb = map(r.Glb),
+        Textures = r.Textures.ToDictionary(m => m.Key, m => m.Value.ToDictionary(c => c.Key, c => map(c.Value))),
+        Params = r.Params.ToDictionary(m => m.Key, m => m.Value with { Reticles = m.Value.Reticles.Select(x => x with { Texture = map(x.Texture) }).ToList() }),
+    };
 
     // Placeholder reticle textures (fully transparent or black, e.g. "Black", "UI_black") draw nothing in game.
     static bool Blank(string png)

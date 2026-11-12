@@ -27,11 +27,11 @@
     <Reference Include="$(GTFOBepInExPath)/interop/*.dll" Exclude="$(GTFOBepInExPath)/interop/netstandard.dll" Private="false" />
   </ItemGroup>
 
-  <!-- A Release build refreshes the committed prebuilt plugin (repo plugin/), which the backend installs on machines
+  <!-- A Release build refreshes the committed prebuilt plugin (repo prebuilt/plugin/), which the backend installs on machines
        that cannot build the plugin (no BepInEx interop assemblies). -->
   <Target Name="CopyPrebuilt" AfterTargets="Build" Condition="'$(Configuration)' == 'Release'">
     <Copy SourceFiles="$(OutDir)ForgeSkin.Plugin.dll;$(OutDir)ForgeSkin.Format.dll;$(OutDir)NVorbis.dll;licenses/NVorbis.LICENSE"
-          DestinationFolder="$(MSBuildThisFileDirectory)../../plugin" SkipUnchangedFiles="true" />
+          DestinationFolder="$(MSBuildThisFileDirectory)../../prebuilt/plugin" SkipUnchangedFiles="true" />
   </Target>
 
 </Project>

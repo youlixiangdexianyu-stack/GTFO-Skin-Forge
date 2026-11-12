@@ -1,9 +1,0 @@
-__pycache__/
-*.py[cod]
-.pytest_cache/
-.venv/
-build/
-dist/
-GTFO_UserData/
-dist/GTFOSkinForge/GTFO_UserData/
-*.log

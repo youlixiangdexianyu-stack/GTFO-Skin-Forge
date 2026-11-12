@@ -6,7 +6,7 @@ using UnityEngine;
 
 namespace ForgeSkin.Plugin;
 
-[BepInPlugin(Guid, "ForgeSkin", "1.0.0")]
+[BepInPlugin(Guid, "ForgeSkin", "1.0.1")]
 [BepInProcess("GTFO.exe")]
 public sealed class ForgeSkinPlugin : BasePlugin
 {

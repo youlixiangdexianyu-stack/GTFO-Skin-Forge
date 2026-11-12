@@ -1,4 +1,6 @@
 using System.IO.Compression;
+using System.Security.Cryptography;
+using System.Text;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 using SkiaSharp;
@@ -44,6 +46,13 @@ public static class PackBuilder
                 using var s = zip.CreateEntry(name, CompressionLevel.Fastest).Open();
                 data.SaveTo(s);
             }
+            // A resized texture or a layer atlas, encoded once per set of inputs: an apply that changed one layer
+            // re-encodes that layer only (resizing, packing and PNG encoding are nearly all of a build's time).
+            void CachedPng(string name, string key, Func<SKBitmap> make)
+            {
+                var file = PngCache(key, make);
+                zip.CreateEntryFromFile(file, name, CompressionLevel.NoCompression);
+            }
             void Copy(string name, string file)
             {
                 if (!File.Exists(file)) throw new SkinFormatException("missing-file", $"{file} missing");
@@ -67,11 +76,15 @@ public static class PackBuilder
                 foreach (var channel in m.Textures.Keys.ToList())
                 {
                     Program.Progress(requestId, done++, total, $"{m.Material} {channel}");
-                    using var src = Images.Load(Abs(m.Textures[channel]));
-                    var size = TargetSize(sizeMode, src.Width, src.Height, BaselineSize(baseline, m.Material, channel));
-                    using var bmp = Images.Resize(src, size.W, size.H);
+                    var file = Abs(m.Textures[channel]);
+                    var (sw, sh) = Images.Size(file);
+                    var size = TargetSize(sizeMode, sw, sh, BaselineSize(baseline, m.Material, channel));
                     var name = $"textures/{Preview.Safe(m.Material)}_{channel}.png";
-                    Png(name, bmp);
+                    CachedPng(name, $"texture|{Stamp(file)}|{size}", () =>
+                    {
+                        using var src = Images.Load(file);
+                        return Images.Resize(src, size.W, size.H);
+                    });
                     m.Textures[channel] = name;
                     sizes[channel] = size;
                 }
@@ -95,20 +108,23 @@ public static class PackBuilder
                     int columns = Math.Max(1, Math.Min(frames.Count, 4096 / w));
                     int rows = (frames.Count + columns - 1) / columns;
                     if (rows * h > 4096) warnings.Add($"{layer.Name}: atlas is {columns * w}x{rows * h}, larger than 4096");
-                    using var atlas = new SKBitmap(new SKImageInfo(columns * w, rows * h, SKColorType.Rgba8888, SKAlphaType.Unpremul));
-                    using (var canvas = new SKCanvas(atlas))
-                    {
-                        canvas.Clear(SKColors.Transparent);
-                        for (int i = 0; i < frames.Count; i++)
-                        {
-                            using var frame = Images.Load(frames[i]);
-                            using var scaled = Images.Resize(frame, w, h);
-                            canvas.DrawBitmap(scaled, i % columns * w, i / columns * h);
-                        }
-                    }
-                    if (layer.Channel == TextureChannel.Normal) OpaqueAlpha(atlas);
                     var name = $"layers/{Preview.Safe(layer.Id)}.png";
-                    Png(name, atlas);
+                    CachedPng(name, $"atlas|{w}x{h}x{columns}x{rows}|{layer.Channel == TextureChannel.Normal}|{string.Join("|", frames.Select(Stamp))}", () =>
+                    {
+                        var atlas = new SKBitmap(new SKImageInfo(columns * w, rows * h, SKColorType.Rgba8888, SKAlphaType.Unpremul));
+                        using (var canvas = new SKCanvas(atlas))
+                        {
+                            canvas.Clear(SKColors.Transparent);
+                            for (int i = 0; i < frames.Count; i++)
+                            {
+                                using var frame = Images.Load(frames[i]);
+                                using var scaled = Images.Resize(frame, w, h);
+                                canvas.DrawBitmap(scaled, i % columns * w, i / columns * h);
+                            }
+                        }
+                        if (layer.Channel == TextureChannel.Normal) OpaqueAlpha(atlas);
+                        return atlas;
+                    });
                     layer.Atlas = new LayerAtlas { Path = name, FrameCount = frames.Count, Columns = columns, FrameWidth = w, FrameHeight = h, TargetRect = [x, y, w, h] };
                     layer.Sources = new();
                     if (layer.Text != null) layer.Text.Font = null;
@@ -198,6 +214,38 @@ public static class PackBuilder
         temp.Commit();
         Program.Progress(requestId, total, total, "done");
         return new { pack = Path.GetFullPath(outPath), warnings };
+    }
+
+    // A file by path, length and write time: a re-baked frame or a replaced texture is a new input.
+    static string Stamp(string file)
+    {
+        var f = new FileInfo(file);
+        if (!f.Exists) throw new SkinFormatException("missing-file", $"{file} missing");
+        return $"{f.FullName}|{f.Length}|{f.LastWriteTimeUtc.Ticks}";
+    }
+
+    static readonly TimeSpan CacheAge = TimeSpan.FromDays(14);
+
+    // <cache>/pack/<hash of key>.png, made by `make` when missing; entries unused for CacheAge are removed.
+    static string PngCache(string key, Func<SKBitmap> make)
+    {
+        var dir = Path.Combine(Paths.Cache, "pack");
+        Directory.CreateDirectory(dir);
+        var file = Path.Combine(dir, Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(key)))[..24] + ".png");
+        if (File.Exists(file))
+        {
+            File.SetLastWriteTimeUtc(file, DateTime.UtcNow);
+            return file;
+        }
+        foreach (var old in Directory.EnumerateFiles(dir, "*.png"))
+            if (DateTime.UtcNow - File.GetLastWriteTimeUtc(old) > CacheAge) File.Delete(old);
+        using (var bmp = make())
+        using (var temp = new AtomicFile(file))
+        {
+            Images.SavePng(bmp, temp.Temp);
+            temp.Commit();
+        }
+        return file;
     }
 
     static (int W, int H)? BaselineSize(Dictionary<string, Dictionary<TextureChannel, string>> baseline, string material, TextureChannel channel) =>

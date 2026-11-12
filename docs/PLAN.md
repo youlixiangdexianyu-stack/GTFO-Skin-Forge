@@ -169,7 +169,7 @@ app moves its pre-rename Electron profile (`%APPDATA%/GTFO Skin Forge`) to `%APP
 | `project.delete` | `{path}` → deletes one `.forgeskinproj` and its `<name>.snapshots/` folder |
 | `project.missing` | `{project}` → `{files}`: the files the document names (every reference `project.save` maps; a font only when it is a font file, not a family name) that are not on disk |
 | `mesh.import` | `{glb}` → `{forgeskinmesh (cache path), glb (the preview written back from it), bounds}` |
-| `pack.build` | `{project, projectPath, out, sizeMode: keep/original/1k/2k/4k}` → `{pack, warnings}`; resizes keeping aspect, bakes layer atlases from frame PNGs the renderer wrote and traces screen glyph strips and static texts into meshes |
+| `pack.build` | `{project, projectPath, out, sizeMode: keep/original/1k/2k/4k}` → `{pack, warnings}`; resizes keeping aspect, bakes layer atlases from frame PNGs the renderer wrote and traces screen glyph strips and static texts into meshes; each resized texture and atlas PNG is cached in `<dataDir>/cache/pack/` by its inputs (file path, length, write time, target size), so an apply re-encodes only what changed (entries unused for 14 days are removed) |
 | `pack.install` | `{pack, profile, activate}` → writes skin + active.json (a running game picks it up only with the development switch on) |
 | `pack.list / pack.remove / pack.activate` | manage installed skins in a profile |
 | `pack.exportMod` | `{packs, out, name, version, description, icon}` → `{mod}`: a Thunderstore skin mod zip (manifest.json, icon.png scaled to 256x256, README.md, `forgeskin.forge`, `skins/*`), depending on the base library |

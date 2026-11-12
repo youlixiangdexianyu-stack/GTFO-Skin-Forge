@@ -141,7 +141,7 @@ dotnet build ForgeSkin.sln -c Release -p:GTFOBepInExPath=<档案路径>/BepInEx
 cd editor && npm install
 ```
 
-开发运行（会自动找到已编译的后端，找不到就用 `dotnet run` 启动）：
+开发运行（启动前会先按当前源码编译后端，保证编辑器和后端是同一版本）：
 
 ```bash
 cd editor && npm start

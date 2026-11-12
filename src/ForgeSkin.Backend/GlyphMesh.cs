@@ -15,6 +15,10 @@ public static class GlyphMesh
 
     public static (ForgeSkinMesh?[] Glyphs, float Aspect) Build(SKBitmap strip)
     {
+        // The app draws Screen.Glyphs in equal cells; a strip of another width was drawn for another glyph set (an editor
+        // and backend of different versions) and would be cut through its glyphs.
+        if (strip.Width % Count != 0 || strip.Width / Count * 3 != strip.Height * 2)
+            throw new BackendException("bad-screen", $"glyph strip {strip.Width}x{strip.Height} is not {Count} cells of 2:3 (\"{Screen.Glyphs}\"): the editor and backend are different versions");
         int cw = strip.Width / Count, ch = strip.Height;
         var glyphs = new ForgeSkinMesh?[Count];
         for (int g = 0; g < Count; g++) glyphs[g] = Cell(strip, g * cw, cw, ch);

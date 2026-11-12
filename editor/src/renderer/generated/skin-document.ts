@@ -73,6 +73,11 @@ angle?: number
 size?: number[]
 depth?: number
 mirror?: boolean
+fps?: (number | null)
+trigger?: ("always" | "kill" | "hit" | "fire" | "dryFire" | "reloadStart" | "reloadEnd" | "equip" | "unequip" | "aim" | "aimEnd" | "lowAmmo" | "empty" | "ammoPickup" | "flashlightOn" | "flashlightOff" | "miss")
+play?: ("loop" | "once" | "loopFor")
+playSeconds?: number
+lowAmmoFraction?: number
 strokes?: Items[]
 mask?: Items[]
 } | null)[] | null)

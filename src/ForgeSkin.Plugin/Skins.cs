@@ -148,7 +148,7 @@ sealed class Skin
 //   line relative to that folder (blank lines and `#` comments skipped). Only the marker is looked for, one level deep;
 // - code: other plugins call `SkinPacks.Register` with a pack path from their Load.
 // A mod's or registered skin is active for its target unless active.json picks a skin for that target; among them the
-// first by path wins. In development mode a watcher marks the plugins folder dirty and everything is reloaded;
+// first by path wins; the player's choice in the in-game picker (ForgeSkin.choices.json) goes before both. In development mode a watcher marks the plugins folder dirty and everything is reloaded;
 // otherwise changes wait for the next launch.
 public static class SkinPacks
 {
@@ -163,6 +163,12 @@ static class Skins
     public static readonly Dictionary<string, Skin> ById = new();
     public static readonly Dictionary<string, string> Targets = new(); // SkinTarget.Key() -> skin id
     public static readonly List<string> Globals = new();
+    public static readonly Dictionary<string, List<Skin>> Candidates = new(); // SkinTarget.Key() -> every loaded skin for it, by path
+
+    static Dictionary<string, string> _base = new(); // Targets before the player's choices: active.json, then the first by path
+    static readonly Dictionary<string, string> Choices = new(); // the picker's, "" = vanilla; kept for skins not loaded
+    static string _choicesFile = "";
+    static bool _picked;
 
     static readonly Dictionary<string, Skin> ByFile = new(StringComparer.OrdinalIgnoreCase);
     static readonly Dictionary<string, DateTime> Rejected = new(StringComparer.OrdinalIgnoreCase);
@@ -172,10 +178,16 @@ static class Skins
     static int _events, _seen, _busyRetries;
     static float _due; // 0 = load on the first tick; < 0 = nothing pending
 
-    public static void Watch(string dir, string plugins, bool hotReload)
+    public static void Watch(string dir, string plugins, string choices, bool hotReload)
     {
-        (_dir, _plugins) = (dir, plugins);
+        (_dir, _plugins, _choicesFile) = (dir, plugins, choices);
         Directory.CreateDirectory(dir);
+        try
+        {
+            if (File.Exists(choices))
+                foreach (var (key, id) in JsonSerializer.Deserialize<Dictionary<string, string>>(File.ReadAllText(choices))!) Choices[key] = id;
+        }
+        catch (Exception e) { ForgeSkinPlugin.Fail($"{Path.GetFileName(choices)}: {e.Message}; picker choices start empty"); }
         if (!hotReload) return;
         _watcher = new FileSystemWatcher(plugins) { IncludeSubdirectories = true, NotifyFilter = NotifyFilters.FileName | NotifyFilters.LastWrite | NotifyFilters.Size };
         // Only skin inputs count: the plugin's own log (and other mods' files) live in the same tree, and counting them
@@ -198,6 +210,7 @@ static class Skins
     // Main thread. True when the skins were reloaded and live gear must be re-applied.
     public static bool Poll(float now)
     {
+        if (_picked) { _picked = false; return true; }
         int events = Volatile.Read(ref _events);
         if (events != _seen) { _seen = events; _due = now + 0.3f; return false; }
         if (_due < 0 || now < _due) return false;
@@ -270,18 +283,52 @@ static class Skins
         foreach (var skin in ByFile.Values)
             if (!ById.TryAdd(skin.Doc.Id, skin)) ForgeSkinPlugin.Fail($"two packs share id {skin.Doc.Id}; one is ignored");
 
-        Targets.Clear();
-        foreach (var (key, id) in targets) Targets[key] = id;
+        _base = targets;
         Globals.Clear();
         Globals.AddRange(globals);
+        Candidates.Clear();
         var own = Path.GetFullPath(_dir) + Path.DirectorySeparatorChar;
         foreach (var (file, skin) in ByFile.OrderBy(kv => kv.Key, StringComparer.OrdinalIgnoreCase))
         {
-            if (Path.GetFullPath(file).StartsWith(own, StringComparison.OrdinalIgnoreCase) || skin.Doc.Target.Key() is not { } key) continue;
-            if (Targets.TryAdd(key, skin.Doc.Id)) ForgeSkinPlugin.Info($"{key}: {skin.Doc.Id} from {Path.GetFileName(Path.GetDirectoryName(file))} is active");
-            else if (Targets[key] != skin.Doc.Id) ForgeSkinPlugin.Info($"{key}: {skin.Doc.Id} from {Path.GetFileName(Path.GetDirectoryName(file))} not used, {Targets[key]} is active");
+            if (skin.Doc.Target.Key() is not { } key) continue;
+            if (ById[skin.Doc.Id] == skin)
+            {
+                if (!Candidates.TryGetValue(key, out var list)) Candidates[key] = list = new();
+                list.Add(skin);
+            }
+            if (Path.GetFullPath(file).StartsWith(own, StringComparison.OrdinalIgnoreCase)) continue;
+            if (_base.TryAdd(key, skin.Doc.Id)) ForgeSkinPlugin.Info($"{key}: {skin.Doc.Id} from {Path.GetFileName(Path.GetDirectoryName(file))} is active");
+            else if (_base[key] != skin.Doc.Id) ForgeSkinPlugin.Info($"{key}: {skin.Doc.Id} from {Path.GetFileName(Path.GetDirectoryName(file))} not used, {_base[key]} is active");
         }
+        Resolve();
         ForgeSkinPlugin.Info($"active: {Targets.Count} target skins, {Globals.Count} global skins");
+    }
+
+    // Targets = _base with the player's choices on top; a choice whose skin is not loaded for that target is ignored.
+    static void Resolve()
+    {
+        Targets.Clear();
+        foreach (var (key, id) in _base) Targets[key] = id;
+        foreach (var (key, id) in Choices)
+            if (id == "") Targets.Remove(key);
+            else if (ById.TryGetValue(id, out var skin) && skin.Doc.Target.Key() == key) Targets[key] = id;
+    }
+
+    // The picker's choice ("" = vanilla): kept in ForgeSkin.choices.json and re-applied to live gear on the next tick,
+    // the same way as a hot reload, without reading the packs again.
+    public static void Choose(string key, string id)
+    {
+        Choices[key] = id;
+        Resolve();
+        _picked = true;
+        ForgeSkinPlugin.Info($"picked {key}: {(id == "" ? "vanilla" : id)}");
+        try
+        {
+            var temp = _choicesFile + ".tmp";
+            File.WriteAllText(temp, JsonSerializer.Serialize(Choices, new JsonSerializerOptions { WriteIndented = true }));
+            File.Move(temp, _choicesFile, true);
+        }
+        catch (Exception e) { ForgeSkinPlugin.Fail($"{Path.GetFileName(_choicesFile)} not written: {e.Message}; the choice lasts until the game closes"); }
     }
 
     static string[] Discover()

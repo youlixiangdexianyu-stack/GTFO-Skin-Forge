@@ -297,8 +297,10 @@ export function WeaponModel({ preview }: { preview: WeaponPreview }) {
   const lastDraw = useRef(0);
   useFrame(() => {
     const now = performance.now();
-    if (!compositors.current.size || now - lastDraw.current < 1000 / 30) return;
+    if ((!compositors.current.size && !liveries.current.size) || now - lastDraw.current < 1000 / 30) return;
     lastDraw.current = now;
+    // An animated decal redraws its livery when its frame changes; the composites over it follow its version.
+    liveries.current.forEach((l) => l.tick());
     compositors.current.forEach((c) => c.draw());
   });
 

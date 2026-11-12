@@ -40,12 +40,12 @@ function ScreenMesh({ screen, selected, onPick }: { screen: Screen; selected: bo
   const [glyphs, setGlyphs] = useState(() => glyphCanvas(screen.font));
   useEffect(() => {
     let live = true;
-    loadFont(screen.font).then(
+    loadFont(screen.font, screen.source === 'static' ? screen.staticText || ' ' : GLYPHS).then(
       () => live && setGlyphs(glyphCanvas(screen.font)),
       () => useStore.getState().log(t('attachments.k1', { v0: screen.font })),
     );
     return () => void (live = false);
-  }, [screen.font]);
+  }, [screen.font, screen.source, screen.staticText]);
 
   const { digits, max, grow } = screenDigits(screen, useItem());
   const ammo = isAmmo(screen.source);

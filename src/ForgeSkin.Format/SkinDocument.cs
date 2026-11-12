@@ -109,6 +109,13 @@ public sealed class LiveryLayer
     public float[] Size { get; set; } = { 0.04f, 0.04f };
     public float Depth { get; set; } = 0.01f;
     public bool Mirror { get; set; }
+    // An animated GIF decal plays in game: the editor bakes its frames into a dynamic layer of this material, with these
+    // settings (as `DynamicLayer`). Fps null = the GIF's own frame timing.
+    public float? Fps { get; set; }
+    public Trigger Trigger { get; set; } = Trigger.Always;
+    public PlayMode Play { get; set; } = PlayMode.Loop;
+    public float PlaySeconds { get; set; }
+    public float LowAmmoFraction { get; set; } = 0.2f;
 
     // Brush strokes and the mask (strokes that hide this layer): each a polyline in texture UV space as u, v, width
     // triples (UV 0..1, top-left origin; width in UV units).

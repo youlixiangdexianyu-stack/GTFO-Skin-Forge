@@ -2,8 +2,10 @@
 // brush bar in the 3D view. Layers are listed top first: the top of the list is painted on top.
 import { ActionIcon, Alert, Button, Group, SegmentedControl, Select, SimpleGrid, Slider as MSlider, Switch, Text, TextInput, Tooltip, UnstyledButton } from '@mantine/core';
 import { IconArrowDown, IconArrowUp, IconBrush, IconBucketDroplet, IconCircle, IconEye, IconEyeOff, IconLine, IconMask, IconPhoto, IconScribble, IconSticker, IconTrash } from '@tabler/icons-react';
-import type { ComponentType } from 'react';
-import { addDecal, addLivery, BLENDS, FINISH_IDS, FINISHES, layersOf, moveLivery, removeLivery, setFinish, updateLivery } from '../livery';
+import { useEffect, useState, type ComponentType } from 'react';
+import { sourceFrames, type SourceFrames } from '../frames';
+import { addDecal, addLivery, BLENDS, FINISH_IDS, FINISHES, isGifDecal, layersOf, moveLivery, removeLivery, setFinish, updateLivery } from '../livery';
+import { Playback } from './DynamicInspector';
 import { baseName, fileUrl, type BlendMode, type CatalogPart, type LiveryKind, type LiveryLayer } from '../protocol';
 import { materialOf, useStore } from '../store';
 import { useBrush, useLiverySelection, type BrushShape } from '../viewport/LiveryTool';
@@ -154,6 +156,28 @@ function MaskSection({ material, layer }: { material: string; layer: LiveryLayer
   );
 }
 
+/** A GIF decal plays in game like a dynamic layer: when, how and how fast (its own rate unless set). */
+function DecalPlayback({ material, layer }: { material: string; layer: LiveryLayer }) {
+  const [gif, setGif] = useState<{ path: string; frames: SourceFrames } | null>(null);
+  useEffect(() => {
+    let live = true;
+    const path = layer.image!;
+    sourceFrames(path).then((frames) => live && setGif({ path, frames }), () => undefined);
+    return () => void (live = false);
+  }, [layer.image]);
+  const s = gif && gif.path === layer.image ? gif.frames : null;
+  if (!s || s.frames.length < 2) return null;
+  return (
+    <div className="section">
+      <h3>{t('livery.playback')}</h3>
+      <Playback x={layer} fps={layer.fps || +s.fps.toFixed(1)} up={(fn, key) => updateLivery(material, layer.id!, fn, key)} />
+      <p className="hint" style={{ marginTop: 8 }}>
+        {t('livery.playbackHint', { v0: s.frames.length })}
+      </p>
+    </div>
+  );
+}
+
 /** The selected paint layer. */
 export function LiveryInspector() {
   const sel = useLiverySelection();
@@ -216,6 +240,7 @@ export function LiveryInspector() {
           </p>
         </div>
       )}
+      {isGifDecal(layer) && <DecalPlayback material={material} layer={layer} />}
       {layer.kind === 'brush' && (
         <div className="section">
           <h3>{t('livery.brush')}</h3>

@@ -100,6 +100,15 @@ poses with one helper (`unityToThree` / `threeToUnity` in `editor/src/renderer/s
   decal frame (inside its width, height and depth, on faces looking at it). Before `pack.build` it writes the result as the
   material's Albedo, a finish's MetallicSmoothness, and for glow the Emissive, so packs and game-file replacement carry
   ordinary textures and the plugin needs nothing new.
+- Animated decal: a decal whose image is a GIF with more than one frame has the playback of a dynamic layer (`Fps`, null =
+  the GIF's own frame delays; `Trigger`, `Play`, `PlaySeconds`, `LowAmmoFraction`; defaults always / loop). The static bake
+  shows its first frame. The build then takes the texels its projection of an opaque image covers, grown by the 2-texel
+  gutter, and for every frame (at most 240) composes the whole livery with that decal at that frame (other animated decals at
+  their first), cuts it to that rect and writes it as a dynamic layer of the material (albedo, its id, through the same
+  frame writer as layers), so paint above and below the decal is in every frame. A rect whose frames do not fit a
+  4096×4096 atlas fails with `bad-atlas`. In game only the albedo animates (a glow finish's emissive keeps the first frame),
+  and where it overlaps another dynamic layer the last copy wins. Game-file replacement keeps the first frame (warning).
+  The 3D view plays it the same way (redrawn only when its frame changes), including 触发预览.
 
 ### 3.2 Install layout (in a BepInEx profile)
 
@@ -202,6 +211,13 @@ game is not running.
   Items with their own prefabs (packs, consumables, carry items, hacking tool) have no gear holder: they are skinned on the
   local player's first-person item when it is wielded (the wielded item is compared each frame, one pointer); their third
   person and world copies stay vanilla.
+- In-game skin picker: a hotkey (`PickerKey` in ForgeSkin.cfg, default F8) opens a small on-screen list of every target that
+  has a loaded skin: its skins by name plus 原版 (vanilla). Picking one applies it to live gear at once (the same re-apply as a
+  hot reload) and is kept in `BepInEx/config/ForgeSkin.choices.json` (`{ "<target key>": "<skinId>" | "" }`, "" = vanilla).
+  Precedence per target: the player's choice, then `active.json`, then the first by path. A choice whose skin is no longer
+  loaded is ignored (kept in the file). While the list is open the cursor is free; closing it (hotkey, Esc) gives the cursor
+  back. Drawn with Unity IMGUI by a picker component next to the runner, disabled while the list is closed, so
+  closed it costs one key check a frame.
 - Readback: debug only; with it off the plugin reads nothing on the game's spawn path for it. With `Readback = true` in ForgeSkin.cfg the plugin writes, for every assembled gear, the local TRS of every part
   root and descendant relative to the gear root to `BepInEx/ForgeSkin/readback/<gearId>.json` (vanilla, before any skin).
   The backend compares it with its own assembly (`assembly.verify`); any transform off by more than 1 mm or 0.1° fails.
@@ -350,6 +366,8 @@ Dynamic layer workspace
   step per gesture); build and install. A GTFO/BlendHS material (vertex-coloured, no albedo texture) is packed with the
   editor's baked albedo and metallic map and drawn in game with the gear's textured shader, so layers and textures show on it.
 - New: per layer trigger and play mode; per attachment trigger effects; a "触发预览" button per event that plays it in the 3D view.
+- A livery decal from an animated GIF has the same trigger, play mode and fps controls (only GIF decals show them; fps
+  defaults to the GIF's own rate) and plays in the 3D view (§3.1 Animated decal).
 
 Sounds (new)
 - Add sounds to the skin on kill, low ammo or another weapon event; pick any audio file (converted to Ogg locally), volume,
@@ -374,6 +392,6 @@ Install
 ## 6. Remaining work
 
 1. Livery: check a baked livery in game (plugin load and game-file replacement); weapon-list thumbnails do not show it yet.
-2. Move onto ForgeCore once its library merge has landed (the plugin then depends on ForgeCore): the in-game skin picker
-   (choose the active skin per item from the loadout screen) on ForgeCore's UI, and the plugin's game events and sound
-   playback onto ForgeCore's event and audio modules instead of its own hooks.
+2. In-game skin picker (§3.4): verify in game.
+3. Run ForgeSkin together with ForgeCore and the other Forge mods in one profile; if they conflict (both patch the same
+   game methods or replace the same gun meshes), move ForgeSkin into the Forge repository as a standalone mod on its libraries.

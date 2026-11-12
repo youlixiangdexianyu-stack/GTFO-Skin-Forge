@@ -47,7 +47,9 @@ public sealed class ForgeSkinPlugin : BasePlugin
         var skins = Path.Combine(Path.GetDirectoryName(typeof(ForgeSkinPlugin).Assembly.Location)!, "skins");
         bool dev = Config.Bind("General", "Development", false,
             "Development mode: reload the skins whenever the skins folder changes, so 应用到游戏 shows up in a running game. Off: skins load once when the game starts.").Value;
-        Skins.Watch(skins, Paths.PluginPath, dev);
+        Skins.Watch(skins, Paths.PluginPath, Path.Combine(Paths.ConfigPath, "ForgeSkin.choices.json"), dev);
+        Picker.Key = Config.Bind("General", "PickerKey", KeyCode.F8,
+            "Opens and closes the in-game skin picker (Esc also closes it). The picks are kept in BepInEx/config/ForgeSkin.choices.json.").Value;
         var harmony = new Harmony(Guid);
         // One hook class at a time: a target a game update renamed (the compiler-generated reload callback) loses that
         // event only, not the plugin.
@@ -56,14 +58,20 @@ public sealed class ForgeSkinPlugin : BasePlugin
             catch (Exception e) { Fail($"hook {type.Name} not installed: {(e.InnerException ?? e).Message}"); }
         foreach (var method in harmony.GetPatchedMethods()) Info($"hooked {method.DeclaringType?.Name}.{method.Name}");
         AddComponent<Runner>();
+        Picker.View = AddComponent<Picker>();
+        Picker.View.enabled = false;
         Info($"loaded, skins folder {skins}, hot reload {(dev ? "on" : "off")}");
     }
 }
 
-// Main-thread tick: hot reload, pending gear and the live screens and layers.
+// Main-thread tick: the picker key, hot reload, pending gear and the live screens and layers.
 public sealed class Runner : MonoBehaviour
 {
     public Runner(IntPtr pointer) : base(pointer) { }
 
-    public void Update() => SkinnedGear.Tick(Time.unscaledTime, Time.time);
+    public void Update()
+    {
+        Picker.Poll();
+        SkinnedGear.Tick(Time.unscaledTime, Time.time);
+    }
 }

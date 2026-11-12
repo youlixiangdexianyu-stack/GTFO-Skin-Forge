@@ -144,8 +144,37 @@ function UvCanvas({ material, layer }: { material: string; layer: DynamicLayer }
   );
 }
 
-function LayerPanel({ material, layer }: { material: string; layer: DynamicLayer }) {
+type Timing = { trigger?: Trigger; play?: PlayMode; playSeconds?: number; lowAmmoFraction?: number; fps?: number | null };
+
+/** When something animated plays in game (a dynamic layer, an animated decal): trigger, play mode and, given `fps`, its rate. */
+export function Playback({ x, fps, up }: { x: Timing; fps: number | null; up: (fn: (x: Timing) => void, key?: string) => void }) {
   const triggers = triggersFor(useItem());
+  return (
+    <>
+      <Field label={t('dynamicInspector.k18')}>
+        <Select value={x.trigger ?? 'always'} onChange={(v) => v && up((l) => void (l.trigger = v as Trigger))} data={triggers} allowDeselect={false} />
+      </Field>
+      <Field label={t('dynamicInspector.k19')}>
+        <Group gap="xs" wrap="nowrap">
+          <Select style={{ flex: 1 }} value={x.play ?? 'loop'} onChange={(v) => v && up((l) => void ((l.play = v as PlayMode), (l.playSeconds ||= 3)))} data={PLAY_MODES} allowDeselect={false} />
+          {x.play === 'loopFor' && <Num w={86} value={x.playSeconds || 3} step={0.5} decimalScale={1} min={0.1} rightSection={t('dynamicInspector.k20')} onChange={(v) => up((l) => void (l.playSeconds = v), 'ps')} />}
+        </Group>
+      </Field>
+      {x.trigger === 'lowAmmo' && (
+        <Field label={t('dynamicInspector.k21')}>
+          <Slider value={x.lowAmmoFraction ?? 0.2} min={0.05} max={0.9} onChange={(v) => up((l) => void (l.lowAmmoFraction = v), 'laf')} />
+        </Field>
+      )}
+      {fps !== null && (
+        <Field label={t('dynamicInspector.k22')}>
+          <Num value={fps} step={1} decimalScale={1} min={1} max={60} onChange={(v) => up((l) => void (l.fps = v), 'fps')} />
+        </Field>
+      )}
+    </>
+  );
+}
+
+function LayerPanel({ material, layer }: { material: string; layer: DynamicLayer }) {
   const { updateLayer, removeLayer, select } = useStore.getState();
   const up = (fn: (l: DynamicLayer) => void, key?: string) => updateLayer(material, layer.id!, fn, key && `${layer.id}-${key}`);
   const kind = KINDS.find((k) => k.id === layer.kind);
@@ -189,25 +218,7 @@ function LayerPanel({ material, layer }: { material: string; layer: DynamicLayer
       </div>
       <div className="section">
         <h3>{t('dynamicInspector.k17')}</h3>
-        <Field label={t('dynamicInspector.k18')}>
-          <Select value={layer.trigger ?? 'always'} onChange={(v) => v && up((l) => void (l.trigger = v as Trigger))} data={triggers} allowDeselect={false} />
-        </Field>
-        <Field label={t('dynamicInspector.k19')}>
-          <Group gap="xs" wrap="nowrap">
-            <Select style={{ flex: 1 }} value={layer.play ?? 'loop'} onChange={(v) => v && up((l) => void (l.play = v as PlayMode))} data={PLAY_MODES} allowDeselect={false} />
-            {layer.play === 'loopFor' && <Num w={86} value={layer.playSeconds ?? 3} step={0.5} decimalScale={1} min={0.1} rightSection={t('dynamicInspector.k20')} onChange={(v) => up((l) => void (l.playSeconds = v), 'ps')} />}
-          </Group>
-        </Field>
-        {layer.trigger === 'lowAmmo' && (
-          <Field label={t('dynamicInspector.k21')}>
-            <Slider value={layer.lowAmmoFraction ?? 0.2} min={0.05} max={0.9} onChange={(v) => up((l) => void (l.lowAmmoFraction = v), 'laf')} />
-          </Field>
-        )}
-        {layer.kind !== 'image' && layer.kind !== 'text' && (
-          <Field label={t('dynamicInspector.k22')}>
-            <Num value={layer.fps ?? 12} step={1} decimalScale={0} min={1} max={60} onChange={(v) => up((l) => void (l.fps = v), 'fps')} />
-          </Field>
-        )}
+        <Playback x={layer} fps={layer.kind !== 'image' && layer.kind !== 'text' ? (layer.fps ?? 12) : null} up={up} />
         <p className="hint" style={{ marginTop: 8 }}>
           {layer.trigger && layer.trigger !== 'always'
             ? t('dynamicInspector.k23')

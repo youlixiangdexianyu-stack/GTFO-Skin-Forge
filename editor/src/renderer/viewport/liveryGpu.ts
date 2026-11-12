@@ -87,18 +87,26 @@ const shader = new ShaderMaterial({
 });
 const hidden = new MeshBasicMaterial({ visible: false });
 const camera = new OrthographicCamera();
-const textures = new Map<HTMLImageElement, Texture>();
+// Uploaded decal images (a GIF's frames each), most recent last; the oldest are freed past the cap.
+const textures = new Map<CanvasImageSource, Texture>();
+const MAX_TEXTURES = 256;
 let target: WebGLRenderTarget | null = null;
 const out = { canvas: document.createElement('canvas') };
 
-function imageTexture(img: HTMLImageElement): Texture {
+function imageTexture(img: CanvasImageSource): Texture {
   let t = textures.get(img);
-  if (!t) {
-    t = new Texture(img);
+  if (t) textures.delete(img);
+  else {
+    t = new Texture(img as HTMLImageElement);
     t.flipY = false; // image top row at v = 0, like the game's UVs
     t.colorSpace = NoColorSpace; // sampled and written as stored, no colour conversion
     t.needsUpdate = true;
-    textures.set(img, t);
+  }
+  textures.set(img, t);
+  if (textures.size > MAX_TEXTURES) {
+    const [oldest, old] = textures.entries().next().value!;
+    old.dispose();
+    textures.delete(oldest);
   }
   return t;
 }

@@ -184,4 +184,4 @@ cd editor && npm run lint
 
 需求、格式、协议和剩余工作都在 [docs/PLAN.md](docs/PLAN.md)。
 
-接下来的主要工作是迁移到 ForgeCore：游戏内选皮肤改用 ForgeCore 的界面，插件的事件和音效改用 ForgeCore 的事件和音频模块。
+ForgeSkin 是独立插件，只依赖 BepInExPack_GTFO。接下来要和 ForgeCore 及其他 Forge 模组装在同一个档案里一起跑，确认不冲突；有冲突再并入 Forge 仓库。

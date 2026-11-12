@@ -54,25 +54,29 @@ const WEIGHT = new Map(FONT_GROUPS.flatMap((g) => g.fonts.map((f) => [f.family, 
 export const isFontFile = (font: string) => /\.(ttf|otf|woff2?)$/i.test(font);
 
 /** CSS font shorthand for drawing `font` at `px`; a font file is addressed by the family it was registered under. */
-export function cssFont(font: string | null | undefined, px: number): string {
+export function cssFont(font: string | null | undefined, px: number, weight?: number): string {
   const f = font || DEFAULT_FONT;
   const family = isFontFile(f) ? fileFamily(f) : f;
-  return `${WEIGHT.get(f) ?? 400} ${px}px "${family}", "${DEFAULT_FONT}", monospace`;
+  return `${weight ?? WEIGHT.get(f) ?? 400} ${px}px "${family}", "${DEFAULT_FONT}", "Microsoft YaHei UI", monospace`;
 }
 
 const fileFamily = (path: string) => `sf-file-${[...path].reduce((h, c) => (h * 31 + c.charCodeAt(0)) | 0, 0) >>> 0}`;
 const registered = new Map<string, Promise<void>>();
 
-/** Makes the font ready to draw on a canvas (canvas text does not wait for a font to load). */
-export function loadFont(font: string | null | undefined): Promise<void> {
+/**
+ * Makes the font ready to draw `text` on a canvas (canvas text does not wait for a font to load). A bundled font is split
+ * into character ranges loaded on demand, so the characters to draw are what gets loaded.
+ */
+export function loadFont(font: string | null | undefined, text = '0123456789'): Promise<void> {
   const f = font || DEFAULT_FONT;
-  let p = registered.get(f);
+  const key = isFontFile(f) ? f : `${f}\n${text}`;
+  let p = registered.get(key);
   if (!p) {
     p = isFontFile(f)
       ? new FontFace(fileFamily(f), `url("${fileUrl(f)}")`).load().then((face) => void document.fonts.add(face))
-      : document.fonts.load(cssFont(f, 64), '0123456789').then(() => undefined);
-    p.catch(() => registered.delete(f));
-    registered.set(f, p);
+      : document.fonts.load(cssFont(f, 64), text || ' ').then(() => undefined);
+    p.catch(() => registered.delete(key));
+    registered.set(key, p);
   }
   return p;
 }

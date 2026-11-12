@@ -8,7 +8,9 @@ import { dirName, fileUrl, type CatalogItem, type DynamicLayer, type Screen, typ
 import { t } from './i18n';
 
 export const GLYPHS = '0123456789 -%';
-const MAX_FRAMES = 240;
+export const MAX_FRAMES = 240;
+/** Largest atlas side pack.build lays frames out in (PackBuilder). */
+export const MAX_ATLAS = 4096;
 const collator = new Intl.Collator(undefined, { numeric: true, sensitivity: 'base' });
 
 export const naturalSort = (paths: string[]) => [...paths].sort(collator.compare);
@@ -50,38 +52,58 @@ export async function writePng(path: string, c: HTMLCanvasElement): Promise<void
 
 export const isGif = (path: string) => /\.gif$/i.test(path);
 
-/** The frames of one source file: every frame of a GIF (decoded with WebCodecs), else the image itself. */
-export async function loadFrames(path: string): Promise<CanvasImageSource[]> {
-  if (!isGif(path)) return [await loadImage(path)];
+export interface SourceFrames {
+  frames: CanvasImageSource[];
+  /** A GIF's own rate from its frame delays; 0 for a still image. */
+  fps: number;
+}
+
+// Decoded GIFs, most recent last (the live preview asks for a decal's frames on every redraw).
+const gifs = new Map<string, Promise<SourceFrames>>();
+
+async function decodeGif(path: string): Promise<SourceFrames> {
   const r = await fetch(fileUrl(path));
   if (!r.ok || !r.body) throw new Error(`cannot load ${path}`);
   const decoder = new ImageDecoder({ data: r.body, type: 'image/gif' });
   await decoder.completed;
-  const out: HTMLCanvasElement[] = [];
+  const frames: HTMLCanvasElement[] = [];
+  let micros = 0;
   for (let i = 0; i < decoder.tracks.selectedTrack!.frameCount; i++) {
     const { image } = await decoder.decode({ frameIndex: i });
     const c = document.createElement('canvas');
     c.width = image.displayWidth;
     c.height = image.displayHeight;
     c.getContext('2d')!.drawImage(image, 0, 0);
+    micros += image.duration || 100_000; // a frame without a delay shows 0.1 s, as browsers play it
     image.close();
-    out.push(c);
+    frames.push(c);
   }
   decoder.close();
-  return out;
+  return { frames, fps: Math.min(60, Math.max(1, frames.length / (micros / 1e6))) };
+}
+
+/** The frames of one source file: every frame of a GIF (decoded with WebCodecs, with its own rate), else the image itself. */
+export async function sourceFrames(path: string): Promise<SourceFrames> {
+  if (!isGif(path)) return { frames: [await loadImage(path)], fps: 0 };
+  let p = gifs.get(path);
+  if (p) gifs.delete(path);
+  else p = decodeGif(path).catch((e) => (gifs.delete(path), Promise.reject(e)));
+  gifs.set(path, p);
+  if (gifs.size > 4) gifs.delete(gifs.keys().next().value!);
+  return p;
 }
 
 /** Every frame of an image or sequence layer's sources, in order (a GIF counts as its frames). */
 async function stillFrames(l: DynamicLayer): Promise<CanvasImageSource[]> {
   const sources = (l.sources ?? []).filter(Boolean) as string[];
   const list = l.kind === 'sequence' ? naturalSort(sources) : sources.slice(0, 1);
-  return (await Promise.all(list.map(loadFrames))).flat();
+  return (await Promise.all(list.map(sourceFrames))).flatMap((s) => s.frames);
 }
 
 export function textCanvas(layer: DynamicLayer): HTMLCanvasElement {
   const t = layer.text ?? { content: '' };
   const size = t.sizePx ?? 64;
-  const font = `600 ${size}px ${t.font ? `"${t.font}", ` : ''}"Microsoft YaHei UI", sans-serif`;
+  const font = cssFont(t.font, size, 600);
   const c = document.createElement('canvas');
   const ctx = c.getContext('2d')!;
   ctx.font = font;
@@ -95,6 +117,12 @@ export function textCanvas(layer: DynamicLayer): HTMLCanvasElement {
   ctx.textBaseline = 'top';
   lines.forEach((l, i) => ctx.fillText(l, size * 0.1, i * size * 1.25 + size * 0.1));
   return c;
+}
+
+/** textCanvas once its font has the layer's characters (a font that fails to load draws with the fallback). */
+async function loadedTextCanvas(layer: DynamicLayer): Promise<HTMLCanvasElement> {
+  await loadFont(layer.text?.font, layer.text?.content || ' ').catch(() => undefined);
+  return textCanvas(layer);
 }
 
 /** Live source for preview: returns the drawable for a time in seconds. */
@@ -111,7 +139,7 @@ export class LayerSource {
   private async load() {
     const l = this.layer;
     const sources = (l.sources ?? []).filter(Boolean) as string[];
-    if (l.kind === 'text') this.frames = [textCanvas(l)];
+    if (l.kind === 'text') this.frames = [await loadedTextCanvas(l)];
     else if (l.kind === 'video' && sources[0]) {
       const v = document.createElement('video');
       v.src = fileUrl(sources[0]);
@@ -214,6 +242,39 @@ export function baseTexturePath(doc: SkinDocument, preview: WeaponPreview | null
   return (m?.textures?.[channel] as string | undefined) ?? preview?.textures[material]?.[channel as 'albedo'] ?? null;
 }
 
+export type Rect = { x: number; y: number; w: number; h: number };
+
+/**
+ * Writes one layer's frames and rect.json (the contract at the top). `produce` calls `frame` once per frame, in order,
+ * with a function that draws the frame in texture pixels (the canvas shows only `rect`). Returns the frames written.
+ */
+export async function writeLayerFrames(
+  projectPath: string,
+  id: string,
+  rect: Rect,
+  W: number,
+  H: number,
+  produce: (frame: (draw: (ctx: CanvasRenderingContext2D) => void) => Promise<void>) => Promise<unknown>,
+): Promise<number> {
+  const dir = `${dirName(projectPath)}\\.frames\\${id}`;
+  const canvas = document.createElement('canvas');
+  canvas.width = rect.w;
+  canvas.height = rect.h;
+  const ctx = canvas.getContext('2d')!;
+  let written = 0;
+  await produce(async (draw) => {
+    ctx.setTransform(1, 0, 0, 1, -rect.x, -rect.y);
+    ctx.clearRect(rect.x, rect.y, rect.w, rect.h);
+    draw(ctx);
+    await writePng(`${dir}\\${String(written).padStart(4, '0')}.png`, canvas);
+    written++;
+  });
+  // `frames`: how many of the folder's PNGs are this bake's (an earlier, longer bake leaves more behind).
+  const json = JSON.stringify({ ...rect, textureWidth: W, textureHeight: H, frames: written });
+  await window.forge.writeFile(`${dir}\\rect.json`, new TextEncoder().encode(json));
+  return written;
+}
+
 /** Bake every visible layer of the document. Returns the number of frames written. */
 export async function bakeLayers(
   doc: SkinDocument,
@@ -221,7 +282,6 @@ export async function bakeLayers(
   projectPath: string,
   onProgress: (text: string) => void,
 ): Promise<number> {
-  const framesDir = `${dirName(projectPath)}\\.frames`;
   let written = 0;
   for (const m of doc.materials ?? []) {
     for (const l of m?.layers ?? []) {
@@ -231,33 +291,18 @@ export async function bakeLayers(
       const base = await loadImage(basePath);
       const W = base.naturalWidth;
       const H = base.naturalHeight;
-      const rect = layerRect(l, W, H);
-      const dir = `${framesDir}\\${l.id}`;
-      const canvas = document.createElement('canvas');
-      canvas.width = rect.w;
-      canvas.height = rect.h;
-      const ctx = canvas.getContext('2d')!;
-      const writeFrame = async (src: CanvasImageSource, i: number) => {
-        ctx.setTransform(1, 0, 0, 1, 0, 0);
-        ctx.clearRect(0, 0, rect.w, rect.h);
-        ctx.drawImage(base, rect.x, rect.y, rect.w, rect.h, 0, 0, rect.w, rect.h);
-        ctx.translate(-rect.x, -rect.y);
-        drawLayer(ctx, src, l, W, H);
-        await writePng(`${dir}\\${String(i).padStart(4, '0')}.png`, canvas);
-        written++;
-      };
-      const before = written;
       onProgress(t('frames.k1', { v0: l.name }));
       const sources = (l.sources ?? []).filter(Boolean) as string[];
-      if (l.kind === 'video') await videoFrames(sources[0], l.fps || 12, writeFrame);
-      else if (l.kind === 'text') await writeFrame(textCanvas(l), 0);
-      else {
-        const list = (await stillFrames(l)).slice(0, MAX_FRAMES);
-        for (let i = 0; i < list.length; i++) await writeFrame(list[i], i);
-      }
-      // `frames`: how many of the folder's PNGs are this bake's (an earlier, longer bake leaves more behind).
-      const json = JSON.stringify({ ...rect, textureWidth: W, textureHeight: H, frames: written - before });
-      await window.forge.writeFile(`${dir}\\rect.json`, new TextEncoder().encode(json));
+      written += await writeLayerFrames(projectPath, l.id!, layerRect(l, W, H), W, H, async (frame) => {
+        const writeFrame = (src: CanvasImageSource) =>
+          frame((ctx) => {
+            ctx.drawImage(base, 0, 0);
+            drawLayer(ctx, src, l, W, H);
+          });
+        if (l.kind === 'video') await videoFrames(sources[0], l.fps || 12, writeFrame);
+        else if (l.kind === 'text') await writeFrame(await loadedTextCanvas(l));
+        else for (const src of (await stillFrames(l)).slice(0, MAX_FRAMES)) await writeFrame(src);
+      });
     }
   }
   return written;
@@ -271,12 +316,21 @@ export function glyphCanvas(font: string | null | undefined, cellW = 64, cellH =
   ctx.fillStyle = '#fff';
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
-  // Wide fonts are shrunk until every glyph fits its cell.
+  // The size is set by the digits and '-': a wide font is shrunk until they fit their cells. A wider glyph ('%' is in
+  // most fonts) is only narrowed to its cell, so adding it never shrinks the digits.
   const px = Math.round(cellH * 0.82);
+  const fit = cellW * 0.92;
   ctx.font = cssFont(font, px);
-  const widest = Math.max(...[...GLYPHS].map((g) => ctx.measureText(g).width));
-  if (widest > cellW * 0.92) ctx.font = cssFont(font, Math.floor((px * cellW * 0.92) / widest));
-  [...GLYPHS].forEach((g, i) => ctx.fillText(g, i * cellW + cellW / 2, cellH / 2 + cellH * 0.04));
+  const widest = Math.max(...[...GLYPHS].filter((g) => g !== '%').map((g) => ctx.measureText(g).width));
+  if (widest > fit) ctx.font = cssFont(font, Math.floor((px * fit) / widest));
+  [...GLYPHS].forEach((g, i) => {
+    const w = ctx.measureText(g).width;
+    ctx.save();
+    ctx.translate(i * cellW + cellW / 2, cellH / 2 + cellH * 0.04);
+    if (w > fit) ctx.scale(fit / w, 1);
+    ctx.fillText(g, 0, 0);
+    ctx.restore();
+  });
   return c;
 }
 
@@ -325,7 +379,7 @@ export async function bakeGlyphs(doc: SkinDocument, projectPath: string): Promis
   const dir = `${dirName(projectPath)}\\.frames`;
   for (const a of doc.attachments ?? []) {
     if (!a?.screen) continue;
-    await loadFont(a.screen.font);
+    await loadFont(a.screen.font, a.screen.source === 'static' ? a.screen.staticText || ' ' : GLYPHS);
     // Twice the preview resolution: the backend traces the outlines, and finer pixels give smoother strokes.
     if (a.screen.source === 'static') await writePng(`${dir}\\${a.id}-text.png`, screenTextCanvas(a.screen.font, a.screen.staticText ?? '', 192));
     else await writePng(`${dir}\\${a.id}-glyphs.png`, glyphCanvas(a.screen.font, 128, 192));

@@ -1,10 +1,11 @@
 // Live livery of one material in the 3D view: the same composeLivery the pack bakes with, at preview size, redrawn when
 // the document changes (the newest change wins; changes while a redraw runs are folded into the next one).
 import { CanvasTexture, LinearSRGBColorSpace, SRGBColorSpace, type Texture } from 'three';
-import { composeLivery, type DecalRenderer } from '../livery';
+import { cachedDecal, composeLivery, type FrameOf } from '../livery';
 import { loadImage } from '../frames';
 import type { LiveryLayer, MaterialOverride, TextureChannel } from '../protocol';
 import { decalRenderer } from './liveryGpu';
+import { playTime } from './refs';
 import { repackMetallicSmoothness } from './textures';
 
 const SIZE = 1024;
@@ -19,6 +20,12 @@ function texture(c: HTMLCanvasElement, srgb: boolean): CanvasTexture {
 
 const canvas = () => Object.assign(document.createElement('canvas'), { width: SIZE, height: SIZE });
 
+/** The frame an animated decal shows now, as the game plays its layer (its first frame while it does not play). */
+function frameNow(l: LiveryLayer, count: number, fps: number, since: number) {
+  const time = playTime(l.trigger, l.play, l.playSeconds, count / fps, since);
+  return time === null ? 0 : Math.min(count - 1, Math.floor(time * fps));
+}
+
 export class LiveryPreview {
   readonly albedo = canvas();
   private ms = canvas();
@@ -26,10 +33,15 @@ export class LiveryPreview {
   private albedoTex = texture(this.albedo, true);
   private msTex = texture(this.msShown, false);
   private next: { m: MaterialOverride; base: string | null; key: string } | null = null;
+  /** The last redraw asked for, drawn again when an animated decal moves to another frame. */
+  private last: LiveryPreview['next'] = null;
   private running = false;
   private finish: MaterialOverride['finish'] = null;
-  /** Decal renders by layer id, reused while the decal and the part layout stay the same. */
-  private decals = new Map<string, { key: string; canvas: HTMLCanvasElement }>();
+  /** Decal renders by layer id, reused while the decal, its frame and the part layout stay the same. */
+  private decals = new Map<string, { key: string; image: CanvasImageSource; canvas: HTMLCanvasElement }>();
+  /** Animated decals of the last redraw: their frame count, rate and the frame drawn. */
+  private playing = new Map<string, { l: LiveryLayer; count: number; fps: number; shown: number }>();
+  private start = performance.now();
   /** What the last redraw was asked for; an edit elsewhere in the document leaves the same objects (immer). */
   private inputs: unknown[] = [];
   /** Counts the redraws of `albedo`, for what draws over it. */
@@ -50,18 +62,36 @@ export class LiveryPreview {
     if (inputs.every((x, i) => x === this.inputs[i])) return;
     this.inputs = inputs;
     this.finish = m.finish ?? null;
-    this.next = { m, base, key: layout };
+    this.next = this.last = { m, base, key: layout };
     if (!this.running) void this.run();
   }
+
+  /** Redraws when an animated decal is due to show another frame (called each tick of the 3D view). */
+  tick() {
+    if (this.running || !this.last) return;
+    for (const p of this.playing.values())
+      if (frameNow(p.l, p.count, p.fps, this.start) !== p.shown) {
+        this.next = this.last;
+        void this.run();
+        return;
+      }
+  }
+
+  private frameOf: FrameOf = (l, count, fps) => {
+    const shown = frameNow(l, count, fps, this.start);
+    this.playing.set(l.id!, { l, count, fps, shown });
+    return shown;
+  };
 
   private async run() {
     this.running = true;
     while (this.next) {
       const { m, base, key } = this.next;
       this.next = null;
+      this.playing.clear();
       try {
         const img = base ? await loadImage(base).catch(() => null) : null;
-        await composeLivery(m, img, this.albedo, m.finish ? this.ms : null, this.cachedDecal(m, key));
+        await composeLivery(m, img, this.albedo, m.finish ? this.ms : null, cachedDecal(decalRenderer(this.material, m.part), this.decals, key), this.frameOf);
         if (m.finish) {
           const px = this.ms.getContext('2d', { willReadFrequently: true })!.getImageData(0, 0, SIZE, SIZE);
           this.msShown.getContext('2d', { willReadFrequently: true })!.putImageData(px, 0, 0);
@@ -76,20 +106,6 @@ export class LiveryPreview {
       }
     }
     this.running = false;
-  }
-
-  private cachedDecal(m: MaterialOverride, layout: string): DecalRenderer {
-    const render = decalRenderer(this.material, m.part);
-    return (l: LiveryLayer, img, w, h) => {
-      const key = JSON.stringify([l.image, l.position, l.rotation, l.angle, l.size, l.depth, l.mirror, l.color, w, h, layout]);
-      const hit = this.decals.get(l.id!);
-      if (hit?.key === key) return hit.canvas;
-      const c = hit?.canvas ?? document.createElement('canvas');
-      [c.width, c.height] = [w, h];
-      c.getContext('2d')!.drawImage(render(l, img, w, h), 0, 0);
-      this.decals.set(l.id!, { key, canvas: c });
-      return c;
-    };
   }
 
   dispose() {

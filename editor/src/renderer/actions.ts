@@ -141,9 +141,11 @@ async function build(out: string, skin?: { doc: SkinDocument; path: string }): P
   const projectPath = skin?.path ?? s.projectPath ?? autosavePath(s.weaponId!);
   const doc = packDoc(skin?.doc);
   useStore.setState({ busy: t('actions.k5') });
-  // The livery first: it becomes the base the dynamic layers play over.
-  await bakeLivery(doc, s.preview, projectPath, (m) => decalRenderer(m.material ?? '', m.part), (t) => useStore.setState({ busy: t }));
+  // The livery first: it becomes the base the dynamic layers play over. Its animated decals' frames are written already,
+  // so their layers join the material only after its own layers are baked.
+  const animated = await bakeLivery(doc, s.preview, projectPath, (m) => decalRenderer(m.material ?? '', m.part), (t) => useStore.setState({ busy: t }));
   await bakeLayers(doc, s.preview, projectPath, (t) => useStore.setState({ busy: t }));
+  for (const { m, layers } of animated) m.layers = [...layers, ...(m.layers ?? [])];
   await bakeGlyphs(doc, projectPath);
   useStore.setState({ busy: t('actions.k6') });
   const r = await call('pack.build', { project: doc, projectPath, out, sizeMode: s.prefs.sizeMode });

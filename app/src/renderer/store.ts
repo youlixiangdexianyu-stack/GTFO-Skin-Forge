@@ -97,9 +97,29 @@ export function editorOf(doc: SkinDocument): EditorState {
 function normalize(doc: SkinDocument): SkinDocument {
   doc.materials ??= [];
   doc.attachments ??= [];
-  // Effect colours are RGB; skins saved before this fix carry an alpha the pack check refuses.
-  for (const a of doc.attachments) for (const e of a?.effects ?? []) if (e?.color && e.color.length > 3) e.color = e.color.slice(0, 3);
   doc.parts ??= [];
+  // Every vector the pack check reads (SkinPack.Validate `bad-vector`) gets its length and finite numbers back: an
+  // effect colour saved with an alpha, a transform written missing or as NaN by an older build.
+  const vec = <T extends number[] | null | undefined>(v: T, n: number, fallback: number[] | null) =>
+    (Array.isArray(v) && v.length >= n && v.slice(0, n).every(Number.isFinite) ? v.slice(0, n) : fallback) as T;
+  for (const a of doc.attachments) {
+    if (!a) continue;
+    a.position = vec(a.position, 3, [0, 0, 0]);
+    a.rotation = vec(a.rotation, 3, [0, 0, 0]);
+    a.scale = vec(a.scale, 3, [1, 1, 1]);
+    for (const e of a.effects ?? []) if (e) e.color = vec(e.color, 3, [1, 1, 1]);
+  }
+  for (const p of doc.parts) {
+    if (!p) continue;
+    p.position = vec(p.position, 3, null);
+    p.rotation = vec(p.rotation, 3, null);
+    p.scale = vec(p.scale, 3, null);
+  }
+  for (const m of doc.materials) {
+    if (!m?.params) continue;
+    m.params.emissiveColor = vec(m.params.emissiveColor, 3, null);
+    m.params.tint = vec(m.params.tint, 4, null);
+  }
   doc.sounds ??= [];
   doc.target ??= {};
   // The skin id is made once with the project and kept, so applying again overwrites the same pack in game.
@@ -108,8 +128,15 @@ function normalize(doc: SkinDocument): SkinDocument {
   return doc;
 }
 
+// A hole in an array (an undefined from a half-written vector) would save as null and fail the same way.
 const allFinite = (x: unknown): boolean =>
-  typeof x === 'number' ? Number.isFinite(x) : x !== null && typeof x === 'object' ? Object.values(x).every(allFinite) : true;
+  typeof x === 'number'
+    ? Number.isFinite(x)
+    : Array.isArray(x)
+      ? Array.from(x).every((v) => v !== undefined && allFinite(v))
+      : x !== null && typeof x === 'object'
+        ? Object.values(x).every(allFinite)
+        : true;
 
 /** Layout entry of a part root (`path` null) or of the child at `path`. */
 export function partTransformOf(doc: SkinDocument, part: string, path?: string | null): PartTransform | undefined {

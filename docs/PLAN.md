@@ -289,8 +289,10 @@ Attachment and screen workspace (replaces DLY, generalised to every weapon)
 - Presets autosave; "apply to test profile" hot-reloads in game with the development switch on.
 
 Dynamic layer workspace
-- Layers: image, natural-sorted image sequence, MP4 (frames extracted), text; per layer fps, loop, opacity, crop, rotation, scale,
-  UV position; 3D decal preview and 2D UV canvas; build and install.
+- Layers: image, natural-sorted image sequence (an animated GIF counts as its frames), MP4 (frames extracted), text; per layer
+  fps, loop, opacity, crop, rotation, scale, UV position; 3D decal preview and 2D UV canvas that follow a drag live (one undo
+  step per gesture); build and install. A GTFO/BlendHS material (vertex-coloured, no albedo texture) is packed with the
+  editor's baked albedo and metallic map and drawn in game with the gear's textured shader, so layers and textures show on it.
 - New: per layer trigger and play mode; per attachment trigger effects; a "触发预览" button per event that plays it in the 3D view.
 
 Sounds (new)

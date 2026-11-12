@@ -3,7 +3,7 @@ import { useFrame, type ThreeEvent } from '@react-three/fiber';
 import { useEffect, useMemo, useRef } from 'react';
 import { CanvasTexture, Mesh, Vector3, SRGBColorSpace, type MeshStandardMaterial, type Object3D } from 'three';
 import { drawLayer, LayerSource, loadImage } from '../frames';
-import { CHANNELS, fileUrl, type DynamicLayer, type WeaponPreview } from '../protocol';
+import { fileUrl, type DynamicLayer, type TextureChannel, type WeaponPreview } from '../protocol';
 import { editorOf, useStore } from '../store';
 import { poseWith, unityDirToThree, unityToThree } from '../space';
 import { releaseTextures } from './textures';
@@ -15,26 +15,51 @@ import { t } from '../i18n';
 class Compositor {
   canvas = document.createElement('canvas');
   texture = new CanvasTexture(this.canvas);
-  private sources: [DynamicLayer, LayerSource][] = [];
+  /** Per layer id: its source and what it was loaded from. Kept across edits that do not change what it plays. */
+  private sources = new Map<string, { key: string; src: LayerSource }>();
+  private order: LayerSource[] = [];
+  private basePath: string | null = null;
   private base: HTMLImageElement | null = null;
+  private fill = '#ffffff';
   private start = performance.now();
 
-  constructor(basePath: string | null, layers: DynamicLayer[]) {
+  constructor() {
     this.texture.flipY = false;
     this.texture.colorSpace = SRGBColorSpace;
-    this.sources = layers.map((l) => [l, new LayerSource(l)]);
-    if (basePath) void loadImage(basePath).then((img) => (this.base = img));
     this.canvas.width = this.canvas.height = 1024;
+  }
+
+  /** Takes the document's current base and layers; placement and timing edits keep the loaded sources (no reload, no flicker). */
+  set(ch: TextureChannel, basePath: string | null, layers: DynamicLayer[]) {
+    // Without a base texture the plugin draws on white (albedo) or black, so the preview does too.
+    this.fill = ch === 'albedo' ? '#ffffff' : '#000000';
+    if (basePath !== this.basePath) {
+      this.basePath = basePath;
+      this.base = null;
+      if (basePath) void loadImage(basePath).then((img) => this.basePath === basePath && (this.base = img), () => undefined);
+    }
+    const next = new Map<string, { key: string; src: LayerSource }>();
+    this.order = layers.map((l) => {
+      const key = JSON.stringify([l.kind, l.sources, l.text]);
+      const old = this.sources.get(l.id!);
+      const entry = old?.key === key ? old : { key, src: new LayerSource(l) };
+      entry.src.layer = l;
+      next.set(l.id!, entry);
+      return entry.src;
+    });
+    for (const [id, e] of this.sources) if (next.get(id) !== e) e.src.dispose();
+    this.sources = next;
   }
 
   draw() {
     const ctx = this.canvas.getContext('2d')!;
     const W = this.canvas.width;
     const H = this.canvas.height;
-    ctx.fillStyle = '#808080';
+    ctx.fillStyle = this.fill;
     ctx.fillRect(0, 0, W, H);
     if (this.base) ctx.drawImage(this.base, 0, 0, W, H);
-    for (const [l, src] of this.sources) {
+    for (const src of this.order) {
+      const l = src.layer;
       const time = playTime(l.trigger, l.play, l.playSeconds, src.duration, this.start);
       const f = time === null ? null : src.at(time);
       if (f) drawLayer(ctx, f, l, W, H);
@@ -43,7 +68,7 @@ class Compositor {
   }
 
   dispose() {
-    this.sources.forEach(([, s]) => s.dispose());
+    this.sources.forEach((e) => e.src.dispose());
     this.texture.dispose();
   }
 }
@@ -141,11 +166,8 @@ export function WeaponModel({ preview }: { preview: WeaponPreview }) {
     let cancelled = false;
     const keep = new Set<string>();
     const loads: Promise<unknown>[] = [];
+    const used = new Set<string>();
     for (const [name, mat] of materials.current) {
-      for (const ch of CHANNELS) {
-        compositors.current.get(`${name}|${ch}`)?.dispose();
-        compositors.current.delete(`${name}|${ch}`);
-      }
       loads.push(
         ...paintMaterial(
           mat,
@@ -156,13 +178,21 @@ export function WeaponModel({ preview }: { preview: WeaponPreview }) {
           () => cancelled,
           (path) => useStore.getState().log(t('weaponModel.k3', { v0: path })),
           (ch, base, layers) => {
-            const c = new Compositor(base, layers);
-            compositors.current.set(`${name}|${ch}`, c);
+            const key = `${name}|${ch}`;
+            let c = compositors.current.get(key);
+            if (!c) compositors.current.set(key, (c = new Compositor()));
+            c.set(ch, base, layers);
+            used.add(key);
             return c.texture;
           },
         ),
       );
     }
+    for (const [key, c] of compositors.current)
+      if (!used.has(key)) {
+        c.dispose();
+        compositors.current.delete(key);
+      }
     // Once the materials hold this document's textures, free the ones nothing uses any more (replaced or undone images).
     void Promise.allSettled(loads).then(() => !cancelled && releaseTextures(keep));
     return () => {
@@ -170,7 +200,13 @@ export function WeaponModel({ preview }: { preview: WeaponPreview }) {
     };
   }, [doc, preview]);
 
-  useEffect(() => () => compositors.current.forEach((c) => c.dispose()), []);
+  useEffect(
+    () => () => {
+      compositors.current.forEach((c) => c.dispose());
+      compositors.current.clear();
+    },
+    [],
+  );
 
   // Leaving this weapon frees its GPU copies (geometry, the editable materials) and drops the previous glTF from the
   // loader cache; a later visit reloads it. Disposed objects that are drawn again are simply re-uploaded (StrictMode).

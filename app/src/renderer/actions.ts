@@ -14,6 +14,18 @@ function packDoc(doc = st().doc): SkinDocument {
   const off = new Set(item?.parts.filter((p) => ed.enabled[p.id] === false).flatMap((p) => p.materials) ?? []);
   const out = structuredClone(doc);
   out.materials = (out.materials ?? []).filter((m) => m && !off.has(m.material ?? ''));
+  // Hidden layers are not baked, so they stay out of the pack.
+  for (const m of out.materials) if (m) m.layers = (m.layers ?? []).filter((l) => l && l.visible !== false);
+  // A GTFO/BlendHS material (vertex-coloured, no albedo texture) can only show a picture once the plugin draws it with a
+  // textured gear shader: it gets the editor's baked look as its base wherever the skin draws on it.
+  const preview = st().preview;
+  for (const m of out.materials) {
+    if (!m?.material || preview?.params[m.material]?.shader !== 'GTFO/BlendHS') continue;
+    if (!m.layers?.length && !Object.keys(m.textures ?? {}).length) continue;
+    const baked = preview.textures[m.material] ?? {};
+    m.textures ??= {};
+    for (const ch of ['albedo', 'metallicSmoothness'] as const) if (!m.textures[ch] && baked[ch]) m.textures[ch] = baked[ch];
+  }
   out.target = { ...out.target, weapon: item?.id ?? out.target?.weapon, gearId: item?.gearId ?? null, itemId: item?.itemId ?? null };
   return out;
 }

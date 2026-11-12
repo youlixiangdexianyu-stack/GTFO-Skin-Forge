@@ -329,7 +329,12 @@ sealed class SkinnedGear
         // First-person gear only: the third-person copy of the same weapon would play every sound a second time.
         int sounds = 0;
         if (weapon != null && _item != null && _item.m_isFirstPerson)
-            foreach (var s in weapon.Doc.Sounds) { On(s.Trigger, new SoundCue(weapon.Sound(s.File), s.Volume), s.LowAmmoFraction); sounds++; }
+            foreach (var s in weapon.Doc.Sounds)
+            {
+                On(s.Trigger, new SoundCue(weapon.Sound(s.File), s.Volume), s.LowAmmoFraction);
+                sounds++;
+                ForgeSkinPlugin.Info($"{_label}: sound {s.Id} ({s.Name}) {s.File} -> {s.Trigger}, volume {s.Volume}");
+            }
         // After the attachments, so hiding a part also hides what is mounted under it. Other parts mounted under it
         // (a sight on the receiver's sight align) are theirs to hide.
         int hidden = 0;
@@ -456,14 +461,38 @@ sealed class SkinnedGear
         }
     }
 
+    const string BlendHS = "GTFO/BlendHS";
+
     Material Look(Skin skin, MaterialOverride o, Material source)
     {
         var look = Own(new Material(source) { name = source.name + " (ForgeSkin)" });
+        // GTFO/BlendHS colours by vertex and samples no albedo texture, so a picture on it would never show. The skin
+        // carries the editor's baked look as its base (actions.ts packDoc); it is drawn with the gear's textured shader.
+        if (source.shader.name == BlendHS && o.Textures.ContainsKey(TextureChannel.Albedo))
+        {
+            var template = TexturedTemplate() ?? throw new InvalidOperationException($"{source.name} ({BlendHS}): the gear has no textured material to draw it with");
+            look.shader = template.shader;
+            look.CopyPropertiesFromMaterial(template);
+            look.shaderKeywords = template.shaderKeywords;
+            look.SetTexture(BumpMap, null);
+            look.SetTexture(MetallicGlossMap, Texture2D.blackTexture);
+            look.SetTexture(EmissiveMap, null);
+            SetEmissive(look, false);
+            ForgeSkinPlugin.Info($"{_label}: material {source.name} ({BlendHS}) drawn with {template.shader.name} from {template.name}");
+        }
         foreach (var (channel, path) in o.Textures) look.SetTexture(Property(channel), skin.Texture(path, Skin.Linear(channel)));
         if (o.Textures.ContainsKey(TextureChannel.Emissive) && o.Params.EmissiveEnabled != false) SetEmissive(look, true);
         Params(look, o.Params);
+        // One line per layer: where it went (AddLayer) or why it was left out; one bad layer leaves the others drawn.
         foreach (var layer in o.Layers)
-            if (layer.Visible) AddLayer(skin, look, layer);
+        {
+            if (!layer.Visible) { ForgeSkinPlugin.Info($"{_label}: layer {layer.Id} ({layer.Name}) on {source.name}: skipped, hidden"); continue; }
+            try { AddLayer(skin, look, layer); }
+            catch (Exception e) when (e is InvalidOperationException or SkinFormatException)
+            {
+                ForgeSkinPlugin.Fail($"{_label}: layer {layer.Id} ({layer.Name}) on {source.name}: skipped, {e.Message}");
+            }
+        }
         return look;
     }
 
@@ -629,6 +658,15 @@ sealed class SkinnedGear
             _animated.Add(effect);
             On(e.Trigger, effect, 0.2f);
         }
+    }
+
+    // A material of this gear drawn with a textured gear shader (texture and emission slots, not BlendHS).
+    Material? TexturedTemplate()
+    {
+        foreach (var r in (_item != null ? _item.transform : _root.transform).GetComponentsInChildren<Renderer>(true))
+            foreach (var m in r.sharedMaterials)
+                if (m != null && m.shader.name != BlendHS && m.HasProperty(MainTex) && m.HasProperty(EmissiveColor)) return m;
+        return null;
     }
 
     // The part's gear-shader surface (an enabled renderer with the gear's texture and emission slots), else its first material.

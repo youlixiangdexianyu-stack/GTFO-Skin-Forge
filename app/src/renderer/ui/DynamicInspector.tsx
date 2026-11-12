@@ -4,7 +4,7 @@ import { IconEye, IconEyeOff, IconLetterT, IconMovie, IconPhoto, IconStack2, Ico
 import type Konva from 'konva';
 import { useEffect, useRef, useState, type ComponentType } from 'react';
 import { Image as KImage, Layer, Stage, Transformer } from 'react-konva';
-import { baseTexturePath, LayerSource, loadImage, naturalSort, sourceSize } from '../frames';
+import { baseTexturePath, isGif, LayerSource, loadImage, naturalSort, sourceSize } from '../frames';
 import { baseName, CHANNELS, triggersFor, type CatalogPart, type DynamicLayer, type LayerKind, type PlayMode, type TextureChannel, type Trigger } from '../protocol';
 import { materialOf, useItem, useStore } from '../store';
 import { Color, Field, Num, Slider, Vec } from './fields';
@@ -36,13 +36,13 @@ export async function addLayer(material: string, part: string, kind: LayerKind) 
 const isVideo = (p: string) => VIDEOS[0].extensions.some((e) => p.toLowerCase().endsWith(`.${e}`));
 const isImage = (p: string) => IMAGES[0].extensions.some((e) => p.toLowerCase().endsWith(`.${e}`));
 
-/** New layer from files: a video, one image, or several images as a sequence (natural order). False when none fit. */
+/** New layer from files: a video, one image, or several images or an animated GIF as a sequence (natural order). False when none fit. */
 export function layerFromFiles(material: string, part: string, paths: string[]): boolean {
   const video = paths.find(isVideo);
   const images = naturalSort(paths.filter(isImage));
   const sources = video ? [video] : images;
   if (!sources.length) return false;
-  const kind: LayerKind = video ? 'video' : images.length > 1 ? 'sequence' : 'image';
+  const kind: LayerKind = video ? 'video' : images.length > 1 || images.some(isGif) ? 'sequence' : 'image';
   useStore.getState().addLayer(material, part, { kind, name: baseName(sources[0]).replace(/\.[^.]+$/, ''), sources });
   return true;
 }
@@ -98,16 +98,19 @@ function UvCanvas({ material, layer }: { material: string; layer: DynamicLayer }
   const w = su * S;
   const h = sv * S;
   const { updateLayer } = useStore.getState();
-  const commit = (key: string) => {
+  // Every move of a drag or resize goes to the document (the 3D view follows live) under one gesture key: one undo step.
+  const gesture = useRef('');
+  const begin = () => void (gesture.current = `gesture:${layer.id}-${performance.now()}`);
+  const commit = () => {
     const n = node.current!;
     const nw = n.width() * n.scaleX();
     const nh = n.height() * n.scaleY();
     n.scale({ x: 1, y: 1 });
     updateLayer(material, layer.id!, (l) => {
       l.uvCenter = [n.x() / S, 1 - n.y() / S];
-      l.uvSize = [nw / S, nh / S];
+      l.uvSize = [Math.max(nw, 1) / S, Math.max(nh, 1) / S];
       l.rotation = -n.rotation();
-    }, `${layer.id}-${key}`);
+    }, gesture.current);
   };
 
   return (
@@ -128,10 +131,12 @@ function UvCanvas({ material, layer }: { material: string; layer: DynamicLayer }
               rotation={-(layer.rotation ?? 0)}
               opacity={layer.opacity ?? 1}
               draggable
-              onDragMove={() => commit('uvc')}
-              onTransformEnd={() => commit('uvt')}
+              onDragStart={begin}
+              onDragMove={commit}
+              onTransformStart={begin}
+              onTransform={commit}
             />
-            <Transformer ref={tr} rotateEnabled keepRatio={false} borderStroke="#ff7a2f" anchorStroke="#ff7a2f" anchorFill="#1a1d21" anchorSize={8} rotateAnchorOffset={18} />
+            <Transformer ref={tr} rotateEnabled keepRatio={false} boundBoxFunc={(old, box) => (Math.abs(box.width) < 2 || Math.abs(box.height) < 2 ? old : box)} borderStroke="#ff7a2f" anchorStroke="#ff7a2f" anchorFill="#1a1d21" anchorSize={8} rotateAnchorOffset={18} />
           </Layer>
         </Stage>
       )}

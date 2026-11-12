@@ -21,12 +21,43 @@ export function loadImage(path: string): Promise<HTMLImageElement> {
       const img = new Image();
       img.crossOrigin = 'anonymous';
       img.onload = () => resolve(img);
-      img.onerror = () => reject(new Error(`cannot load ${path}`));
+      // A failure is not kept: the file may be written again (preview cache rebuilt) and the next view retries.
+      img.onerror = () => (images.delete(path), reject(new Error(`cannot load ${path}`)));
       img.src = fileUrl(path);
     });
     images.set(path, p);
   }
   return p;
+}
+
+export const isGif = (path: string) => /\.gif$/i.test(path);
+
+/** The frames of one source file: every frame of a GIF (decoded with WebCodecs), else the image itself. */
+export async function loadFrames(path: string): Promise<CanvasImageSource[]> {
+  if (!isGif(path)) return [await loadImage(path)];
+  const r = await fetch(fileUrl(path));
+  if (!r.ok || !r.body) throw new Error(`cannot load ${path}`);
+  const decoder = new ImageDecoder({ data: r.body, type: 'image/gif' });
+  await decoder.completed;
+  const out: HTMLCanvasElement[] = [];
+  for (let i = 0; i < decoder.tracks.selectedTrack!.frameCount; i++) {
+    const { image } = await decoder.decode({ frameIndex: i });
+    const c = document.createElement('canvas');
+    c.width = image.displayWidth;
+    c.height = image.displayHeight;
+    c.getContext('2d')!.drawImage(image, 0, 0);
+    image.close();
+    out.push(c);
+  }
+  decoder.close();
+  return out;
+}
+
+/** Every frame of an image or sequence layer's sources, in order (a GIF counts as its frames). */
+async function stillFrames(l: DynamicLayer): Promise<CanvasImageSource[]> {
+  const sources = (l.sources ?? []).filter(Boolean) as string[];
+  const list = l.kind === 'sequence' ? naturalSort(sources) : sources.slice(0, 1);
+  return (await Promise.all(list.map(loadFrames))).flat();
 }
 
 export function textCanvas(layer: DynamicLayer): HTMLCanvasElement {
@@ -54,7 +85,8 @@ export class LayerSource {
   private video: HTMLVideoElement | null = null;
   ready: Promise<void>;
 
-  constructor(private layer: DynamicLayer) {
+  /** The layer it plays; may be replaced by a newer copy with the same sources (placement and timing edits). */
+  constructor(public layer: DynamicLayer) {
     this.ready = this.load();
   }
 
@@ -71,8 +103,7 @@ export class LayerSource {
       v.playsInline = true;
       await v.play().catch(() => undefined);
       this.video = v;
-    } else if (l.kind === 'sequence') this.frames = await Promise.all(naturalSort(sources).map(loadImage));
-    else if (sources[0]) this.frames = [await loadImage(sources[0])];
+    } else this.frames = await stillFrames(l);
   }
 
   /** Length of one pass in seconds; a still image counts as one second. */
@@ -118,9 +149,10 @@ export function layerRect(l: DynamicLayer, w: number, h: number) {
   const s = Math.abs(Math.sin(q.rot));
   const bw = q.w * c + q.h * s;
   const bh = q.w * s + q.h * c;
-  const x = Math.max(0, Math.floor(q.cx - bw / 2));
-  const y = Math.max(0, Math.floor(q.cy - bh / 2));
-  return { x, y, w: Math.min(w, Math.ceil(q.cx + bw / 2)) - x, h: Math.min(h, Math.ceil(q.cy + bh / 2)) - y };
+  // At least one pixel inside the texture, also for a layer moved off it or shrunk to nothing.
+  const x = Math.min(w - 1, Math.max(0, Math.floor(q.cx - bw / 2)));
+  const y = Math.min(h - 1, Math.max(0, Math.floor(q.cy - bh / 2)));
+  return { x, y, w: Math.max(1, Math.min(w, Math.ceil(q.cx + bw / 2)) - x), h: Math.max(1, Math.min(h, Math.ceil(q.cy + bh / 2)) - y) };
 }
 
 /** Draw one layer frame into a context whose coordinates are texture pixels. */
@@ -202,15 +234,17 @@ export async function bakeLayers(
         await window.forge.writeFile(`${dir}\\${String(i).padStart(4, '0')}.png`, await toPng(canvas));
         written++;
       };
+      const before = written;
       onProgress(t('frames.k1', { v0: l.name }));
       const sources = (l.sources ?? []).filter(Boolean) as string[];
       if (l.kind === 'video') await videoFrames(sources[0], l.fps || 12, writeFrame);
       else if (l.kind === 'text') await writeFrame(textCanvas(l), 0);
       else {
-        const list = l.kind === 'sequence' ? naturalSort(sources).slice(0, MAX_FRAMES) : sources.slice(0, 1);
-        for (let i = 0; i < list.length; i++) await writeFrame(await loadImage(list[i]), i);
+        const list = (await stillFrames(l)).slice(0, MAX_FRAMES);
+        for (let i = 0; i < list.length; i++) await writeFrame(list[i], i);
       }
-      const json = JSON.stringify({ ...rect, textureWidth: W, textureHeight: H });
+      // `frames`: how many of the folder's PNGs are this bake's (an earlier, longer bake leaves more behind).
+      const json = JSON.stringify({ ...rect, textureWidth: W, textureHeight: H, frames: written - before });
       await window.forge.writeFile(`${dir}\\rect.json`, new TextEncoder().encode(json));
     }
   }

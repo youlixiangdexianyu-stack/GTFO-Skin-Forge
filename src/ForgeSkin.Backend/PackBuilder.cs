@@ -10,7 +10,8 @@ namespace ForgeSkin.Backend;
 // into meshes, meshes copied, manifest validated by opening the written pack.
 public static class PackBuilder
 {
-    sealed record FrameRect(int X, int Y, int W, int H, int TextureWidth, int TextureHeight);
+    // Frames: how many of the folder's PNGs the last bake wrote (an earlier, longer bake leaves more behind).
+    sealed record FrameRect(int X, int Y, int W, int H, int TextureWidth, int TextureHeight, int? Frames);
 
     // `baseline`: the game's texture per material and channel (preview.weapon), for "original" size and layer targets.
     public static object Build(SkinDocument project, string projectPath, string outPath, string sizeMode, List<CatalogItem> catalog,
@@ -72,6 +73,7 @@ public static class PackBuilder
                     if (frames.Count == 0 || !File.Exists(rectFile))
                         throw new SkinFormatException("no-atlas", $"{m.Material}/{layer.Name}: no rendered frames in {frameDir}");
                     var rect = JsonSerializer.Deserialize<FrameRect>(File.ReadAllText(rectFile), Program.Json)!;
+                    if (rect.Frames is int count) frames = frames.Take(count).ToList();
                     var target = sizes.TryGetValue(layer.Channel, out var s) ? s : BaselineSize(baseline, m.Material, layer.Channel) ?? (rect.TextureWidth, rect.TextureHeight);
                     double sx = (double)target.W / rect.TextureWidth, sy = (double)target.H / rect.TextureHeight;
                     int x = (int)Math.Round(rect.X * sx), y = (int)Math.Round(rect.Y * sy);

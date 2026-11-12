@@ -5,12 +5,14 @@ import { IconArrowBackUp, IconArrowForwardUp, IconFileText, IconFolderDown } fro
 import { useEffect, useRef, useState } from 'react';
 import { Group as PanelGroup, Panel, Separator, useDefaultLayout } from 'react-resizable-panels';
 import { applyToGame, ensurePlugin, openProject } from './actions';
+import { useGameWarnings } from './gameLog';
 import { call } from './protocol';
 import { useStore } from './store';
 import { AttachInspector } from './ui/AttachInspector';
 import { RailHost } from './ui/InspectorTabs';
 import { LayerInspector, layerFromFiles } from './ui/DynamicInspector';
 import { CheckDialog } from './ui/CheckDialog';
+import { Welcome } from './ui/Welcome';
 import { ExportModDialog } from './ui/ExportModDialog';
 import { LeftRail } from './ui/LeftRail';
 import { LiveryInspector } from './ui/LiveryPanel';
@@ -152,6 +154,7 @@ function useShortcuts() {
 
 /** Keeps the 游戏运行中 badge live: asks every 2 s while the window has focus, and right away when it gets focus. */
 function useGameRunning() {
+  useGameWarnings();
   useEffect(() => {
     const check = async () => {
       const s = useStore.getState();
@@ -224,6 +227,7 @@ export function App() {
           <LeftRail />
           <ExportModDialog />
           <CheckDialog />
+          <Welcome />
         </Panel>
         <Separator className="sep-v" />
         <Panel id="stage" minSize={400}>

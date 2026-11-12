@@ -244,7 +244,7 @@ export interface Methods {
   'project.delete': [{ path: string }, unknown];
   'project.missing': [{ project: SkinDocument }, { files: string[] }];
   'mesh.import': [{ glb: string }, MeshImport];
-  'pack.build': [{ project: SkinDocument; projectPath: string; out: string; sizeMode: SizeMode }, { pack: string; warnings: string[] }];
+  'pack.build': [{ project: SkinDocument; projectPath: string; out: string; sizeMode: SizeMode }, { pack: string; warnings: string[]; memory: number }];
   'pack.install': [{ pack: string; profile: string; activate: boolean }, unknown];
   'pack.list': [{ profile: string }, InstalledPack[]];
   'assembly.verify': [{ profile: string }, VerifyResult[]];

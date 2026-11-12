@@ -169,7 +169,7 @@ app moves its pre-rename Electron profile (`%APPDATA%/GTFO Skin Forge`) to `%APP
 | `project.delete` | `{path}` → deletes one `.forgeskinproj` and its `<name>.snapshots/` folder |
 | `project.missing` | `{project}` → `{files}`: the files the document names (every reference `project.save` maps; a font only when it is a font file, not a family name) that are not on disk |
 | `mesh.import` | `{glb}` → `{forgeskinmesh (cache path), glb (the preview written back from it), bounds}` |
-| `pack.build` | `{project, projectPath, out, sizeMode: keep/original/1k/2k/4k}` → `{pack, warnings}`; resizes keeping aspect, bakes layer atlases from frame PNGs the renderer wrote and traces screen glyph strips and static texts into meshes; each resized texture and atlas PNG is cached in `<dataDir>/cache/pack/` by its inputs (file path, length, write time, target size), so an apply re-encodes only what changed (entries unused for 14 days are removed) |
+| `pack.build` | `{project, projectPath, out, sizeMode: keep/original/1k/2k/4k}` → `{pack, warnings, memory}`; resizes keeping aspect, bakes layer atlases from frame PNGs the renderer wrote and traces screen glyph strips and static texts into meshes; each resized texture and atlas PNG is cached in `<dataDir>/cache/pack/` by its inputs (file path, length, write time, target size), so an apply re-encodes only what changed (entries unused for 14 days are removed) |
 | `pack.install` | `{pack, profile, activate}` → writes skin + active.json (a running game picks it up only with the development switch on) |
 | `pack.list / pack.remove / pack.activate` | manage installed skins in a profile |
 | `pack.exportMod` | `{packs, out, name, version, description, icon}` → `{mod}`: a Thunderstore skin mod zip (manifest.json, icon.png scaled to 256x256, README.md, `forgeskin.forge`, `skins/*`), depending on the base library |
@@ -357,8 +357,14 @@ Skin workspace
   attachment: placement, look, screen, effects, sounds); the last category per kind is remembered. Sounds belong to the
   whole skin and are reached there, not from the part tree. The part tree has a search over parts, layers and attachments.
 - The 3D view's 模拟 buttons play the event as the game would: layers, attachment effects and the skin's sounds for it.
-- 开发者模式 (settings, off by default): shows the log panel and the game log; off, logs still go to the log file and only
-  errors show. Settings also has 检查更新 (the installed copy's update check on demand, with the current version).
+- 开发者模式 (settings, off by default): shows the log panel and the game log, and while the game runs puts every plugin
+  warning (a part left vanilla, a destroyed material, a skin not loaded) into the log with an alert at the bottom right; off,
+  logs still go to the log file and only errors show.
+- 显存: the skin overview shows the video memory its last built pack takes in game (`pack.build` returns `memory`: textures
+  DXT5 with mips, layer atlases and region bases RGBA32, one RGBA32 render target per material channel with layers); over
+  256 MB it turns yellow, over 512 MB red with one alert when it first goes over.
+- First start: a four-step guide (weapon, look, attachments and effects, apply) with 做一个示例皮肤 (a new skin on the open
+  gun: a livery fill on the receiver or first part, an ammo screen, a hologram ring); settings reopens it. Settings also has 检查更新 (the installed copy's update check on demand, with the current version).
 - Every file dialog opens where the last one of the same use was confirmed (texture folder, game folder, profile folder, OBJ
   export folder; else the same kind and file types), kept across runs in `<dataDir>/dialogs.json`.
 - Log panel; log file under the data dir; data dir `GTFO_UserData` next to the exe, or for an installed copy (which runs

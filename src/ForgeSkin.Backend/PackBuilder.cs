@@ -37,6 +37,12 @@ public static class PackBuilder
         Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(outPath))!);
         using var temp = new AtomicFile(outPath);
         int total = doc.Materials.Sum(m => m.Textures.Count + m.Layers.Count) + doc.Attachments.Count, done = 0;
+        // Video memory the skin takes in game, as the plugin loads it: textures DXT5 with mips (a byte a pixel, a third more
+        // for the mips), layer atlases and their regions' bases RGBA32 without mips, one RGBA32 render target per
+        // material channel that plays layers.
+        long memory = 0;
+        static long Dxt(int w, int h) => (long)w * h * 4 / 3;
+        static long Rgba(int w, int h) => (long)w * h * 4;
 
         using (var zip = ZipFile.Open(temp.Temp, ZipArchiveMode.Create))
         {
@@ -87,7 +93,11 @@ public static class PackBuilder
                     });
                     m.Textures[channel] = name;
                     sizes[channel] = size;
+                    memory += Dxt(size.W, size.H);
                 }
+                foreach (var channel in m.Layers.Select(l => l.Channel).Distinct())
+                    if ((sizes.TryGetValue(channel, out var ts) ? ts : BaselineSize(baseline, m.Material, channel)) is { } target)
+                        memory += Rgba(target.W, target.H);
                 foreach (var layer in m.Layers)
                 {
                     Program.Progress(requestId, done++, total, $"{m.Material} {layer.Name}");
@@ -125,6 +135,7 @@ public static class PackBuilder
                         if (layer.Channel == TextureChannel.Normal) OpaqueAlpha(atlas);
                         return atlas;
                     });
+                    memory += Rgba(columns * w, rows * h) + Rgba(w, h);
                     layer.Atlas = new LayerAtlas { Path = name, FrameCount = frames.Count, Columns = columns, FrameWidth = w, FrameHeight = h, TargetRect = [x, y, w, h] };
                     layer.Sources = new();
                     if (layer.Text != null) layer.Text.Font = null;
@@ -153,6 +164,7 @@ public static class PackBuilder
                         var name = $"textures/{Preview.Safe(a.Id)}_{channel}.png";
                         using var src = Images.Load(Abs(a.Material.Textures[channel]));
                         Png(name, src);
+                        memory += Dxt(src.Width, src.Height);
                         a.Material.Textures[channel] = name;
                     }
                 if (a.Screen != null)
@@ -213,7 +225,7 @@ public static class PackBuilder
         using (SkinPack.Open(temp.Temp)) { }
         temp.Commit();
         Program.Progress(requestId, total, total, "done");
-        return new { pack = Path.GetFullPath(outPath), warnings };
+        return new { pack = Path.GetFullPath(outPath), warnings, memory };
     }
 
     // A file by path, length and write time: a re-baked frame or a replaced texture is a new input.

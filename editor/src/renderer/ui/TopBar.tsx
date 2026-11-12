@@ -17,6 +17,7 @@ import {
   IconPackageExport,
   IconPlug,
   IconPlugOff,
+  IconHelp,
   IconRefresh,
   IconRestore,
   IconSend,
@@ -237,6 +238,9 @@ function SettingsMenu() {
           <Switch size="sm" labelPosition="left" styles={{ body: { justifyContent: 'space-between', gap: 12 }, labelWrapper: { flex: 1 } }} label={<Group gap={4} wrap="nowrap">{t('topBar.developer')}<Info label={t('topBar.developerInfo')} /></Group>} checked={developer} onChange={(e) => setPrefs({ developer: e.currentTarget.checked })} />
           <Button variant="default" size="xs" leftSection={<IconFolder size={14} />} onClick={() => void window.forge.openPath(dataDir)}>
             {t('topBar.k58')}
+          </Button>
+          <Button variant="default" size="xs" leftSection={<IconHelp size={14} />} onClick={() => setPrefs({ welcomed: false })}>
+            {t('welcome.reopen')}
           </Button>
           <Button variant="default" size="xs" leftSection={<IconRefresh size={14} />} loading={checking} onClick={() => void check()}>
             {t('topBar.checkUpdate', { v0: version })}

@@ -54,6 +54,8 @@ export interface Prefs {
   lang: Lang | null;
   /** 开发者模式: shows the log panel and the game log; off, only errors reach the user (the log file is always written). */
   developer: boolean;
+  /** The first-start guide was closed (settings reopens it). */
+  welcomed: boolean;
 }
 
 /** Editor-only state persisted in the project's `editor` field. */
@@ -80,6 +82,7 @@ const DEFAULT_PREFS: Prefs = {
   profilePath: null,
   lang: null,
   developer: false,
+  welcomed: false,
 };
 
 function loadPrefs(): Prefs {
@@ -192,6 +195,8 @@ interface State {
   cache: { done: number; total: number } | null;
   /** A new version downloading in the background (total 0 when its size is unknown). */
   update: { received: number; total: number } | null;
+  /** Video memory the last built pack of a skin takes in game (pack.build's estimate). */
+  skinMemory: { id: string; bytes: number } | null;
   /** Plain message when the last autosave failed; null when it worked. */
   autosaveError: string | null;
   /** Files the last texture match could not place, shown in the 换皮 overview. */
@@ -325,6 +330,7 @@ export const useStore = create<State>((set, get) => ({
   progress: null,
   cache: null,
   update: null,
+  skinMemory: null,
   autosaveError: null,
   unmatched: [],
   busy: null,

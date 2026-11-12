@@ -1,7 +1,7 @@
 import { ActionIcon, Badge, Button, Chip, Group, Menu, Select, SimpleGrid, Switch, Text, Tooltip, UnstyledButton } from '@mantine/core';
 import { Dropzone, type FileWithPath } from '@mantine/dropzone';
 import { IconArrowsMove, IconBox, IconLayoutDashboard, IconCheck, IconChevronRight, IconDeviceDesktop, IconFolderOpen, IconPlayerPlay, IconPlus, IconTrash, IconX } from '@tabler/icons-react';
-import { importMesh } from '../actions';
+import { importMesh, MEMORY_FINE, MEMORY_HEAVY, mb } from '../actions';
 import { ShapeItems, ShapeMenuItems } from './ShapePanel';
 import { FEATURE, FeatureHead, FeatureTile, Info } from './Features';
 import { InspectorTabs, type InspectorTab } from './InspectorTabs';
@@ -379,6 +379,19 @@ export async function pickTextureFolder() {
   if (dir) await useStore.getState().matchPaths([dir]);
 }
 
+/** 显存: what the skin takes in game, from its last build (an apply or an export). */
+function SkinMemory() {
+  const id = useStore((s) => s.doc.id);
+  const memory = useStore((s) => (s.skinMemory?.id === id ? s.skinMemory?.bytes : null));
+  if (memory == null) return null;
+  const color = memory > MEMORY_HEAVY ? 'var(--mantine-color-red-5)' : memory > MEMORY_FINE ? 'var(--mantine-color-yellow-5)' : undefined;
+  return (
+    <div className="meta" style={{ color }}>
+      {t('skinInspector.memory', { v0: mb(memory) })} <Info label={t('skinInspector.memoryInfo', { v0: mb(MEMORY_FINE), v1: mb(MEMORY_HEAVY) })} />
+    </div>
+  );
+}
+
 /** Nothing selected: the start of the texture flow. */
 function Overview() {
   const doc = useStore((s) => s.doc);
@@ -415,6 +428,7 @@ function Overview() {
         </div>
         <div className="title">{item ? localName(item) : t('skinInspector.k40')}</div>
         <div className="meta">{replaced ? t('skinInspector.k41', { v0: replaced }) : t('skinInspector.k42')}</div>
+        <SkinMemory />
       </div>
       <InspectorTabs
         id="skin"

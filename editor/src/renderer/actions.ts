@@ -9,6 +9,11 @@ import { confirmInGame } from './gameLog';
 
 const st = () => useStore.getState();
 
+/** A skin's video memory in game: up to MEMORY_FINE is light, past MEMORY_HEAVY it can make the game stutter. */
+export const MEMORY_FINE = 256 * 2 ** 20;
+export const MEMORY_HEAVY = 512 * 2 ** 20;
+export const mb = (bytes: number) => Math.round(bytes / 2 ** 20);
+
 /** Document as packed: parts switched off keep vanilla, so their overrides are left out. */
 function packDoc(doc = st().doc): SkinDocument {
   const item = currentItem();
@@ -150,6 +155,11 @@ async function build(out: string, skin?: { doc: SkinDocument; path: string }): P
   useStore.setState({ busy: t('actions.k6') });
   const r = await call('pack.build', { project: doc, projectPath, out, sizeMode: s.prefs.sizeMode });
   for (const w of r.warnings ?? []) s.log(t('actions.k7', { v0: w }));
+  // Warned when the skin first goes over the budget, not on every automatic apply after.
+  const prev = useStore.getState().skinMemory;
+  const id = doc.id ?? '';
+  useStore.setState({ skinMemory: { id, bytes: r.memory } });
+  if (r.memory > MEMORY_HEAVY && (prev?.id !== id || prev.bytes <= MEMORY_HEAVY)) s.toast('error', t('actions.memoryHeavy', { v0: mb(r.memory) }));
   return r.pack;
 }
 

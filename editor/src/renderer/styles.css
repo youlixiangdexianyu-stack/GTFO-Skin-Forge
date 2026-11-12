@@ -183,7 +183,7 @@ body {
 /* ---------- left rail ---------- */
 .rail {
   display: grid;
-  grid-template-rows: auto 1fr;
+  grid-template-rows: auto auto 1fr;
   height: 100%;
   background: var(--panel);
 }
@@ -273,6 +273,9 @@ body {
   font-size: 11px;
   letter-spacing: 0.08em;
   color: var(--dust);
+}
+.tree-search {
+  padding: 2px 12px 8px;
 }
 .parts {
   padding: 0 6px 10px;
@@ -506,17 +509,6 @@ body {
   grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
   gap: 4px;
 }
-.tree-group {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  margin-top: 10px;
-  padding: 6px 8px 2px;
-  border-top: 1px solid var(--line-soft);
-  font-size: 11px;
-  letter-spacing: 0.08em;
-  color: var(--dust);
-}
 .part.layer {
   grid-template-columns: 16px 1fr;
   font-size: 12px;
@@ -612,6 +604,65 @@ body {
 }
 
 /* ---------- inspector ---------- */
+.inspector-pane {
+  display: flex;
+  height: 100%;
+}
+.inspector-pane .inspector {
+  flex: 1;
+  min-width: 0;
+}
+/* The right side panel: one icon per category of the selected thing; hidden when it has none. */
+.insp-rail {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  width: 58px;
+  padding: 10px 5px;
+  border-left: 1px solid var(--line-soft);
+  background: var(--ground);
+}
+.insp-rail:empty {
+  display: none;
+}
+.rail-tab {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  padding: 8px 2px 6px;
+  border-radius: var(--mantine-radius-sm);
+  color: var(--dust);
+}
+.rail-tab:hover {
+  color: var(--bone);
+  background: var(--line-soft);
+}
+.rail-tab[aria-selected='true'] {
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+  box-shadow: inset 2px 0 0 var(--accent);
+}
+.rail-label {
+  font-size: 10.5px;
+  line-height: 1.15;
+  text-align: center;
+}
+.rail-count {
+  position: absolute;
+  top: 3px;
+  right: 5px;
+  min-width: 15px;
+  padding: 0 4px;
+  border-radius: 8px;
+  background: var(--accent);
+  color: #111;
+  font-size: 9.5px;
+  font-weight: 700;
+  line-height: 15px;
+  text-align: center;
+}
 .inspector {
   height: 100%;
   overflow-y: auto;

@@ -4,8 +4,16 @@
 // channels only. Loudness and length are never changed; longer than MAX_SECONDS is refused.
 import { createOggEncoder } from 'wasm-media-encoders';
 import { t } from './i18n';
+import { fileUrl, type SkinSound } from './protocol';
 
 export const MAX_SECONDS = 10;
+
+/** Plays a skin sound locally, as the game does when its event happens. */
+export function playSound(x: SkinSound) {
+  const a = new Audio(fileUrl(x.file ?? ''));
+  a.volume = x.volume ?? 1;
+  void a.play();
+}
 const DECODE_RATE = 48000;
 const BLOCK = 65536;
 

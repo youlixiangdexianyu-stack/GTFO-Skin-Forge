@@ -197,7 +197,16 @@ function TargetMenu() {
  * in the test profile.) */
 function SettingsMenu() {
   const lang = useLang();
-  const { setPrefs, dataDir } = useStore.getState();
+  const developer = useStore((s) => s.prefs.developer);
+  const { setPrefs, dataDir, toast } = useStore.getState();
+  const [version, setVersion] = useState('');
+  const [checking, setChecking] = useState(false);
+  useEffect(() => void window.forge.version().then(setVersion), []);
+  const check = async () => {
+    setChecking(true);
+    const r = await window.forge.checkUpdate().finally(() => setChecking(false));
+    toast(r === 'error' ? 'error' : 'ok', t(`topBar.update.${r}`));
+  };
   return (
     <Popover position="bottom-end" width={300} shadow="md">
       <Popover.Target>
@@ -224,8 +233,12 @@ function SettingsMenu() {
               ]}
             />
           </Stack>
+          <Switch size="sm" labelPosition="left" styles={{ body: { justifyContent: 'space-between', gap: 12 }, labelWrapper: { flex: 1 } }} label={t('topBar.developer')} description={t('topBar.developerInfo')} checked={developer} onChange={(e) => setPrefs({ developer: e.currentTarget.checked })} />
           <Button variant="default" size="xs" leftSection={<IconFolder size={14} />} onClick={() => void window.forge.openPath(dataDir)}>
             {t('topBar.k58')}
+          </Button>
+          <Button variant="default" size="xs" leftSection={<IconRefresh size={14} />} loading={checking} onClick={() => void check()}>
+            {t('topBar.checkUpdate', { v0: version })}
           </Button>
         </Stack>
       </Popover.Dropdown>
@@ -429,9 +442,11 @@ function ApplyButton() {
             <Menu.Item leftSection={<IconChecklist size={14} />} onClick={() => setVerify(true)}>
               {t('topBar.k48')}
             </Menu.Item>
-            <Menu.Item leftSection={<IconFileText size={14} />} onClick={() => setLog(true)}>
-              {t('gameLog.title')}
-            </Menu.Item>
+            {prefs.developer && (
+              <Menu.Item leftSection={<IconFileText size={14} />} onClick={() => setLog(true)}>
+                {t('gameLog.title')}
+              </Menu.Item>
+            )}
             <Menu.Divider />
             <Menu.Label>{t('topBar.k52')}</Menu.Label>
             <div style={{ padding: '0 8px 8px' }}>

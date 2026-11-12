@@ -514,14 +514,15 @@ sealed class SkinnedGear
         renderer.TryCast<SkinnedMeshRenderer>()?.sharedMesh ?? renderer.GetComponent<MeshFilter>()?.sharedMesh;
 
     // Unity appends " (Instance)" to runtime copies of materials and meshes, " (Clone)" to instantiated objects.
+    // The asset name under Unity's copy suffixes and the game's first-person copies (MakeUnique: "X(Clone)_unique_221",
+    // "Flashlight_LensA (Instance)(Clone)_unique_529"). Without the last, a hot reload after the game's switch matched only
+    // renderers whose mesh is named like the material (a revolver's drum, a bolt kept the vanilla look).
+    static readonly System.Text.RegularExpressions.Regex CopySuffix = new(@"(\s?\((Clone|Instance)\)|_unique_\d+)$");
+
     static string BaseName(string name)
     {
-        while (true)
-        {
-            if (name.EndsWith(" (Instance)", StringComparison.Ordinal)) name = name[..^11];
-            else if (name.EndsWith(" (Clone)", StringComparison.Ordinal)) name = name[..^8];
-            else return name;
-        }
+        for (var m = CopySuffix.Match(name); m.Success; m = CopySuffix.Match(name)) name = name[..m.Index];
+        return name;
     }
 
     const string BlendHS = "GTFO/BlendHS";

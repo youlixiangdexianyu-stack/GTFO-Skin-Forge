@@ -283,7 +283,7 @@ export function PartLayers({ part }: { part: CatalogPart }) {
                 {mat}
               </Text>
             )}
-            <SimpleGrid cols={4} spacing={4} mb={6}>
+            <SimpleGrid cols={2} spacing={4} mb={6}>
               {KINDS.map((k) => (
                 <Button key={k.id} size="xs" variant="light" color="violet" px={4} leftSection={<k.icon size={13} />} onClick={() => void addLayer(mat, part.id, k.id)}>
                   {k.label}

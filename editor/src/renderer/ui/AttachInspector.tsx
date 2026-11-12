@@ -1,12 +1,14 @@
 import { ActionIcon, Button, Checkbox, Group, SegmentedControl, Select, Switch, TextInput } from '@mantine/core';
 import { useState } from 'react';
 import { cssFont, DEFAULT_FONT, FONT_GROUPS, isFontFile, loadFont, systemFonts } from '../fonts';
-import { IconPlus, IconTrash, IconX } from '@tabler/icons-react';
+import { IconArrowsMove, IconDeviceDesktop, IconPalette, IconPlus, IconSparkles, IconTrash, IconX } from '@tabler/icons-react';
+import { InspectorTabs } from './InspectorTabs';
 import { baseName, triggersFor, type Attachment, type CatalogItem, type Screen, type ScreenSource, type Trigger, type TriggerEffect } from '../protocol';
 import { isBounded, isPercent, screenDigits } from '../frames';
 import { useItem, useStore } from '../store';
 import { Color, Field, Num, Slider, Vec } from './fields';
 import { SelectionLayout } from './SelectionLayout';
+import { useSoundsTab } from './SkinInspector';
 import { Info } from './Features';
 import { ShapeSection } from './ShapePanel';
 import { partLabel, t } from '../i18n';
@@ -142,12 +144,10 @@ function AttachmentPanel({ a }: { a: Attachment }) {
   const up = (fn: (a: Attachment) => void, key?: string) => updateAttachment(a.id!, fn, key && `${a.id}-${key}`);
   const upScreen = (fn: (s: Screen) => void, key?: string) => up((x) => void (x.screen && fn(x.screen)), key);
   const s = a.screen;
-  return (
+  const sounds = useSoundsTab();
+  // 位置: where it is mounted and its pose; 外观: shape, hologram, colours; 屏幕: what a screen shows; 特效: events.
+  const place = (
     <>
-      <div className="insp-head">
-        <div className="kind">{s ? t('attachInspector.k19') : t('attachInspector.k20')}</div>
-        <TextInput mt={4} size="sm" fw={650} value={a.name ?? ''} onChange={(e) => up((x) => void (x.name = e.currentTarget.value), 'name')} />
-      </div>
       <div className="section">
         <h3>{t('attachInspector.k21')}</h3>
         <Field label={t('attachInspector.k22')}>
@@ -155,6 +155,16 @@ function AttachmentPanel({ a }: { a: Attachment }) {
         </Field>
         <Switch mt="sm" label={t('attachInspector.k23')} checked={!!a.faceCamera} onChange={(e) => up((x) => void (x.faceCamera = e.currentTarget.checked))} />
       </div>
+      <SelectionLayout />
+      <div className="section">
+        <Button variant="default" color="red" leftSection={<IconTrash size={14} />} onClick={() => removeAttachment(a.id!)}>
+          {t('attachInspector.k43')}
+        </Button>
+      </div>
+    </>
+  );
+  const look = (
+    <>
       <ShapeSection id={a.id!} />
       <div className="section">
         <h3>
@@ -172,76 +182,6 @@ function AttachmentPanel({ a }: { a: Attachment }) {
           </Field>
         )}
       </div>
-      <Effects a={a} />
-      <SelectionLayout />
-      {s && (
-        <div className="section">
-          <h3>{t('attachInspector.k19')}</h3>
-          <Field label={t('attachInspector.k15')}>
-            <Select
-              value={s.source ?? 'ammoClip'}
-              data={SOURCES}
-              onChange={(v) =>
-                v &&
-                upScreen((x) => {
-                  x.source = v as ScreenSource;
-                  if (!isBounded(x.source)) x.style = 'digits'; // only a source with a maximum can fill a bar
-                })
-              }
-            />
-          </Field>
-          {isBounded(s.source) && (
-            <Field label={t('attachInspector.style')}>
-              <SegmentedControl
-                size="xs"
-                value={s.style ?? 'digits'}
-                data={[{ value: 'digits', get label() { return t('attachInspector.styleDigits'); } }, { value: 'bar', get label() { return t('attachInspector.styleBar'); } }]}
-                onChange={(v) => upScreen((x) => void (x.style = v as 'digits' | 'bar'))}
-              />
-            </Field>
-          )}
-          {s.style === 'bar' && isBounded(s.source) ? null : s.source === 'static' ? (
-            <Field label={t('attachInspector.k24')}>
-              <TextInput
-                value={s.staticText ?? ''}
-                onChange={(e) => {
-                  const text = e.currentTarget.value;
-                  upScreen((x) => void (x.staticText = text), 'text');
-                }}
-              />
-            </Field>
-          ) : (
-            <Field label={t('attachInspector.k26')}>
-              <Group gap="sm" wrap="nowrap">
-                <Select
-                  w={110}
-                  value={String(s.digits ?? 0)}
-                  data={[{ value: '0', label: t('attachInspector.k25') }, ...['1', '2', '3', '4', '5', '6'].map((d) => ({ value: d, label: d }))]}
-                  onChange={(v) => v && upScreen((x) => void (x.digits = Number(v)))}
-                />
-                <Checkbox size="xs" label={t('attachInspector.k27')} checked={s.padZero !== false} onChange={(e) => upScreen((x) => void (x.padZero = e.currentTarget.checked))} />
-                {!s.digits && <Info label={autoDigits(s, item)} />}
-              </Group>
-            </Field>
-          )}
-          <Field label={t('attachInspector.k28')}>
-            <Vec value={s.size ?? [0.03, 0.015]} labels={[t('attachInspector.k29'), t('attachInspector.k30')]} scale={MM} step={0.5} decimalScale={1} min={0.5} onChange={(v) => upScreen((x) => void (x.size = v), 'size')} />
-          </Field>
-          <Field label={t('attachInspector.k31')}>
-            <Num value={s.surfaceGap ?? 0.0005} scale={MM} step={0.1} min={0} onChange={(v) => upScreen((x) => void (x.surfaceGap = v), 'gap')} />
-          </Field>
-          <Field label={t('attachInspector.k32')}>
-            <Slider value={s.textScale ?? 0.8} min={0.2} max={1} onChange={(v) => upScreen((x) => void (x.textScale = v), 'ts')} />
-          </Field>
-          <Field label={t('attachInspector.k33')}>
-            <Slider value={s.glow ?? 1.5} min={0} max={5} step={0.05} onChange={(v) => upScreen((x) => void (x.glow = v), 'glow')} />
-          </Field>
-          <Switch mt="xs" label={t('attachInspector.glowInGame')} checked={s.glowInGame !== false} onChange={(e) => upScreen((x) => void (x.glowInGame = e.currentTarget.checked))} />
-          <Field label={t('attachInspector.k10')}>
-            <FontPicker value={s.font ?? null} onChange={(f) => upScreen((x) => void (x.font = f))} />
-          </Field>
-        </div>
-      )}
       {s && (
         <div className="section">
           <h3>{t('attachInspector.k34')}</h3>
@@ -315,11 +255,96 @@ function AttachmentPanel({ a }: { a: Attachment }) {
           }} />
         </div>
       )}
-      <div className="section">
-        <Button variant="default" color="red" leftSection={<IconTrash size={14} />} onClick={() => removeAttachment(a.id!)}>
-          {t('attachInspector.k43')}
-        </Button>
+    </>
+  );
+  const screen = (
+    <>
+      {s && (
+        <div className="section">
+          <h3>{t('attachInspector.k19')}</h3>
+          <Field label={t('attachInspector.k15')}>
+            <Select
+              value={s.source ?? 'ammoClip'}
+              data={SOURCES}
+              onChange={(v) =>
+                v &&
+                upScreen((x) => {
+                  x.source = v as ScreenSource;
+                  if (!isBounded(x.source)) x.style = 'digits'; // only a source with a maximum can fill a bar
+                })
+              }
+            />
+          </Field>
+          {isBounded(s.source) && (
+            <Field label={t('attachInspector.style')}>
+              <SegmentedControl
+                size="xs"
+                value={s.style ?? 'digits'}
+                data={[{ value: 'digits', get label() { return t('attachInspector.styleDigits'); } }, { value: 'bar', get label() { return t('attachInspector.styleBar'); } }]}
+                onChange={(v) => upScreen((x) => void (x.style = v as 'digits' | 'bar'))}
+              />
+            </Field>
+          )}
+          {s.style === 'bar' && isBounded(s.source) ? null : s.source === 'static' ? (
+            <Field label={t('attachInspector.k24')}>
+              <TextInput
+                value={s.staticText ?? ''}
+                onChange={(e) => {
+                  const text = e.currentTarget.value;
+                  upScreen((x) => void (x.staticText = text), 'text');
+                }}
+              />
+            </Field>
+          ) : (
+            <Field label={t('attachInspector.k26')}>
+              <Group gap="sm" wrap="nowrap">
+                <Select
+                  w={110}
+                  value={String(s.digits ?? 0)}
+                  data={[{ value: '0', label: t('attachInspector.k25') }, ...['1', '2', '3', '4', '5', '6'].map((d) => ({ value: d, label: d }))]}
+                  onChange={(v) => v && upScreen((x) => void (x.digits = Number(v)))}
+                />
+                <Checkbox size="xs" label={t('attachInspector.k27')} checked={s.padZero !== false} onChange={(e) => upScreen((x) => void (x.padZero = e.currentTarget.checked))} />
+                {!s.digits && <Info label={autoDigits(s, item)} />}
+              </Group>
+            </Field>
+          )}
+          <Field label={t('attachInspector.k28')}>
+            <Vec value={s.size ?? [0.03, 0.015]} labels={[t('attachInspector.k29'), t('attachInspector.k30')]} scale={MM} step={0.5} decimalScale={1} min={0.5} onChange={(v) => upScreen((x) => void (x.size = v), 'size')} />
+          </Field>
+          <Field label={t('attachInspector.k31')}>
+            <Num value={s.surfaceGap ?? 0.0005} scale={MM} step={0.1} min={0} onChange={(v) => upScreen((x) => void (x.surfaceGap = v), 'gap')} />
+          </Field>
+          <Field label={t('attachInspector.k32')}>
+            <Slider value={s.textScale ?? 0.8} min={0.2} max={1} onChange={(v) => upScreen((x) => void (x.textScale = v), 'ts')} />
+          </Field>
+          <Field label={t('attachInspector.k33')}>
+            <Slider value={s.glow ?? 1.5} min={0} max={5} step={0.05} onChange={(v) => upScreen((x) => void (x.glow = v), 'glow')} />
+          </Field>
+          <Switch mt="xs" label={t('attachInspector.glowInGame')} checked={s.glowInGame !== false} onChange={(e) => upScreen((x) => void (x.glowInGame = e.currentTarget.checked))} />
+          <Field label={t('attachInspector.k10')}>
+            <FontPicker value={s.font ?? null} onChange={(f) => upScreen((x) => void (x.font = f))} />
+          </Field>
+        </div>
+      )}
+    </>
+  );
+  return (
+    <>
+      <div className="insp-head">
+        <div className="kind">{s ? t('attachInspector.k19') : t('attachInspector.k20')}</div>
+        <TextInput mt={4} size="sm" fw={650} value={a.name ?? ''} onChange={(e) => up((x) => void (x.name = e.currentTarget.value), 'name')} />
       </div>
+      <InspectorTabs
+        id="attachment"
+        tabs={[
+          { id: 'place', label: t('tabs.place'), icon: IconArrowsMove, content: place },
+          { id: 'look', label: t('tabs.look'), icon: IconPalette, color: a.hologram ? 'var(--holo)' : undefined, content: look },
+          ...(s ? [{ id: 'screen', label: t('tabs.screen'), icon: IconDeviceDesktop, color: 'var(--scan)', content: screen }] : []),
+          { id: 'effects', label: t('tabs.effects'), icon: IconSparkles, count: (a.effects ?? []).filter(Boolean).length, content: <Effects a={a} /> },
+          sounds,
+        ]}
+      />
     </>
   );
 }

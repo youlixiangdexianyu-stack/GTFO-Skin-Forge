@@ -17,7 +17,8 @@ import {
   Tooltip,
 } from '@mantine/core';
 import { IconArrowsMove, IconFocusCentered, IconFolder, IconMagnet, IconRotate, IconRotate360, IconSun, IconZoomScan } from '@tabler/icons-react';
-import { triggersFor } from '../protocol';
+import { playSound } from '../audio';
+import { triggersFor, type Trigger } from '../protocol';
 import { useItem, useStore } from '../store';
 import { simulate } from '../viewport/refs';
 import { LiveryBar } from './LiveryPanel';
@@ -242,15 +243,19 @@ function ModalHint() {
   );
 }
 
-/** Plays game events in the 3D view, exactly as the game triggers layers and attachment effects. */
+/** Plays game events in the 3D view, exactly as the game triggers layers, attachment effects and sounds. */
 function EventBar() {
   const item = useItem();
+  const play = (x: Trigger) => {
+    simulate(x);
+    for (const s of useStore.getState().doc.sounds ?? []) if (s?.trigger === x && s.file) playSound(s);
+  };
   return (
     <Group className="overlay events" gap={2}>
       {triggersFor(item)
         .filter((x) => x.simulate)
         .map((x) => (
-          <Button key={x.value} size="compact-xs" variant="subtle" color="flare" onClick={() => simulate(x.value)}>
+          <Button key={x.value} size="compact-xs" variant="subtle" color="flare" onClick={() => play(x.value)}>
             {t('stage.simulate', { v0: x.label })}
           </Button>
         ))}

@@ -1,4 +1,4 @@
-import { app, BrowserWindow, dialog, ipcMain, net, protocol, shell, type OpenDialogOptions } from 'electron';
+import { app, autoUpdater, BrowserWindow, dialog, ipcMain, net, protocol, shell, type OpenDialogOptions } from 'electron';
 import { appendFileSync, cpSync, existsSync, mkdirSync, readdirSync, rmSync } from 'node:fs';
 import { mkdir, stat, writeFile } from 'node:fs/promises';
 import { dirname, isAbsolute, join, normalize, resolve, sep } from 'node:path';
@@ -178,6 +178,28 @@ function registerIpc() {
   ipcMain.on('win:toggleMaximize', () => (win?.isMaximized() ? win.unmaximize() : win?.maximize()));
   ipcMain.on('win:close', () => win?.close());
   ipcMain.handle('win:isMaximized', () => !!win?.isMaximized());
+  // 检查更新: the same check the installed copy runs at start and hourly; a found update downloads and then offers the
+  // restart as usual. A development run has no update feed.
+  ipcMain.handle(
+    'update:check',
+    () =>
+      new Promise<'dev' | 'latest' | 'downloading' | 'error'>((done) => {
+        if (!app.isPackaged) return done('dev');
+        const off = () => {
+          autoUpdater.off('update-available', found);
+          autoUpdater.off('update-not-available', latest);
+          autoUpdater.off('error', failed);
+        };
+        const found = () => (off(), done('downloading'));
+        const latest = () => (off(), done('latest'));
+        const failed = (e: Error) => (off(), updateLog(`check failed: ${e.message}`), done('error'));
+        autoUpdater.on('update-available', found);
+        autoUpdater.on('update-not-available', latest);
+        autoUpdater.on('error', failed);
+        autoUpdater.checkForUpdates();
+      }),
+  );
+  ipcMain.handle('app:version', () => app.getVersion());
 }
 
 const updateLog = (message: string) => appLog('update', message);

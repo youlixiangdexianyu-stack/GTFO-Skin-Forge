@@ -1,8 +1,7 @@
-import { ActionIcon, Badge, Checkbox, ScrollArea, TextInput, Tooltip } from '@mantine/core';
-import { IconBox, IconChevronDown, IconChevronRight, IconCopy, IconDeviceDesktop, IconEye, IconEyeOff, IconMovie, IconPencil, IconPlus, IconTrash, IconVolume } from '@tabler/icons-react';
+import { ActionIcon, Badge, Checkbox, CloseButton, ScrollArea, TextInput, Tooltip } from '@mantine/core';
+import { IconBox, IconChevronDown, IconChevronRight, IconCopy, IconDeviceDesktop, IconEye, IconEyeOff, IconMovie, IconPencil, IconPlus, IconSearch, IconTrash } from '@tabler/icons-react';
 import { useState } from 'react';
-import { pickSound } from './SkinInspector';
-import { baseName, type Attachment, CHANNELS, type DynamicLayer, type SkinSound } from '../protocol';
+import { type Attachment, CHANNELS, type DynamicLayer } from '../protocol';
 import { editorOf, materialOf, partTransformOf, pendingKey, useItem, useStore } from '../store';
 import { PartAddMenu } from './AddMenu';
 import { kindOf } from './LiveryPanel';
@@ -90,7 +89,7 @@ function AttachmentRow({ a, depth }: { a: Attachment; depth: number }) {
   );
 }
 
-function PartTree() {
+function PartTree({ query }: { query: string }) {
   const item = useItem();
   const doc = useStore((s) => s.doc);
   const selection = useStore((s) => s.selection);
@@ -98,6 +97,9 @@ function PartTree() {
   const [open, setOpen] = useState<Record<string, boolean>>({});
   const { select, setPartEnabled } = useStore.getState();
   if (!item) return <div />;
+  // The search box: a part shows when its name or anything on it matches; a matching part shows all it holds.
+  const q = query.trim().toLowerCase();
+  const hit = (name: string | null | undefined) => !q || (name ?? '').toLowerCase().includes(q);
   const ed = editorOf(doc);
   const attachments = (doc.attachments ?? []).filter((a): a is Attachment => !!a);
   const attachedTo = (part: string, sub: string | null) => attachments.filter((a) => a.part === part && (a.transform ?? null) === sub);
@@ -115,8 +117,14 @@ function PartTree() {
         const extra: string[] = [];
         for (const a of attachments) if (a.part === p.id && a.transform && !subs.some((x) => x.path === a.transform) && !extra.includes(a.transform)) extra.push(a.transform);
         const rows = [...subs, ...extra.map((path) => ({ path, name: path.split('/').pop()!, depth: 0 }))];
+        const partHit = hit(partLabel(p));
+        const show = <T extends { name?: string | null }>(x: T) => partHit || hit(x.name);
+        const liveries = p.materials.flatMap((m) => [...layersOf(materialOf(doc, m))].reverse().filter(show).map((l) => ({ m, l })));
+        const dynamic = p.materials.flatMap((m) => ((materialOf(doc, m)?.layers ?? []).filter(Boolean) as DynamicLayer[]).filter(show).map((l) => ({ m, l })));
+        const mounted = attachments.filter((a) => a.part === p.id).filter(show);
+        if (!partHit && !liveries.length && !dynamic.length && !mounted.length) return null;
         const expanded =
-          !!open[p.id] ||
+          (!q && !!open[p.id]) ||
           (selection?.kind === 'part' && selection.id === p.id && !!selection.sub) ||
           (selectedAttachment?.part === p.id && !!selectedAttachment.transform);
         return (
@@ -150,8 +158,7 @@ function PartTree() {
                 </ActionIcon>
               </PartAddMenu>
             </div>
-            {p.materials.flatMap((m) =>
-              [...layersOf(materialOf(doc, m))].reverse().map((l) => {
+            {liveries.map(({ m, l }) => {
                 const K = kindOf(l.kind);
                 return (
                   <div
@@ -165,10 +172,8 @@ function PartTree() {
                     <span className="label">{l.name}</span>
                   </div>
                 );
-              }),
-            )}
-            {p.materials.flatMap((m) =>
-              ((materialOf(doc, m)?.layers ?? []).filter(Boolean) as DynamicLayer[]).map((l) => (
+              })}
+            {dynamic.map(({ m, l }) => (
                 <div
                   key={l.id}
                   className="part layer"
@@ -179,9 +184,8 @@ function PartTree() {
                   <IconMovie size={13} color={FEATURE.layer.color} />
                   <span className="label">{l.name}</span>
                 </div>
-              )),
-            )}
-            {attachedTo(p.id, null).map((a) => (
+              ))}
+            {(q ? mounted : attachedTo(p.id, null)).map((a) => (
               <AttachmentRow key={a.id} a={a} depth={0} />
             ))}
             {expanded &&
@@ -207,37 +211,13 @@ function PartTree() {
           </div>
         );
       })}
-      <SoundRows />
     </ScrollArea>
-  );
-}
-
-/** The skin's sounds, at the end of the tree: they belong to the whole skin, not to a part. */
-function SoundRows() {
-  const sounds = useStore((s) => s.doc.sounds ?? []).filter((x): x is SkinSound => !!x);
-  const selected = useStore((s) => (s.selection?.kind === 'sound' ? s.selection.id : null));
-  const { select } = useStore.getState();
-  return (
-    <>
-      <div className="tree-group">
-        <IconVolume size={13} color={FEATURE.sound.color} />
-        <span>{t('skinInspector.k31')}</span>
-        <ActionIcon variant="subtle" size="sm" color="green" ml="auto" aria-label={t('skinInspector.k32')} onClick={() => void pickSound()}>
-          <IconPlus size={14} />
-        </ActionIcon>
-      </div>
-      {sounds.map((x) => (
-        <div key={x.id} className="part layer" style={{ paddingLeft: 14 }} aria-selected={selected === x.id} onClick={() => select({ kind: 'sound', id: x.id! })}>
-          <IconVolume size={13} color={FEATURE.sound.color} />
-          <span className="label">{x.name || baseName(x.file ?? '')}</span>
-        </div>
-      ))}
-    </>
   );
 }
 
 export function LeftRail() {
   const item = useItem();
+  const [query, setQuery] = useState('');
   const pending = useStore((s) => Object.keys(editorOf(s.doc).pending).length);
   const { select } = useStore.getState();
   return (
@@ -254,7 +234,16 @@ export function LeftRail() {
           </Tooltip>
         )}
       </div>
-      <PartTree />
+      <TextInput
+        className="tree-search"
+        size="xs"
+        placeholder={t('leftRail.search')}
+        leftSection={<IconSearch size={13} />}
+        value={query}
+        onChange={(e) => setQuery(e.currentTarget.value)}
+        rightSection={query ? <CloseButton size="xs" onClick={() => setQuery('')} aria-label={t('leftRail.clearSearch')} /> : null}
+      />
+      <PartTree query={query} />
     </aside>
   );
 }

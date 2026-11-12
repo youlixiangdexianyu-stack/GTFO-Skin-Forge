@@ -8,6 +8,7 @@ import { applyToGame, ensurePlugin, openProject } from './actions';
 import { call } from './protocol';
 import { useStore } from './store';
 import { AttachInspector } from './ui/AttachInspector';
+import { RailHost } from './ui/InspectorTabs';
 import { LayerInspector, layerFromFiles } from './ui/DynamicInspector';
 import { CheckDialog } from './ui/CheckDialog';
 import { ExportModDialog } from './ui/ExportModDialog';
@@ -32,13 +33,16 @@ function StatusBar({ onLog }: { onLog: () => void }) {
   const saveError = useStore((s) => s.autosaveError);
   // Only plain status here; backend log lines stay in the log panel.
   const text = down ? t('app.k1') : (progress?.text ?? busy ?? t('app.k2'));
+  const developer = useStore((s) => s.prefs.developer);
   return (
     <footer className="status">
-      <Tooltip label={t('app.k3')}>
-        <ActionIcon variant="subtle" color="gray" size="sm" onClick={onLog} aria-label={t('app.k3')}>
-          <IconFileText size={14} />
-        </ActionIcon>
-      </Tooltip>
+      {developer && (
+        <Tooltip label={t('app.k3')}>
+          <ActionIcon variant="subtle" color="gray" size="sm" onClick={onLog} aria-label={t('app.k3')}>
+            <IconFileText size={14} />
+          </ActionIcon>
+        </Tooltip>
+      )}
       <span className="grow">{text}</span>
       {progress && <Progress w={120} size="xs" value={(progress.done / Math.max(1, progress.total)) * 100} />}
       {cache && (
@@ -198,6 +202,8 @@ export function App() {
   useLang(); // the whole tree re-renders in the new language
   const [log, setLog] = useState(false);
   const layout = useDefaultLayout({ id: 'sf.layout', storage: localStorage });
+  const [rail, setRail] = useState<HTMLElement | null>(null);
+  const developer = useStore((s) => s.prefs.developer);
   useShortcuts();
   useEffect(() => void useStore.getState().init(), []);
   useGameRunning();
@@ -218,13 +224,18 @@ export function App() {
         </Panel>
         <Separator className="sep-v" />
         <Panel id="right" defaultSize={360} minSize={300} maxSize={560}>
-          <aside className="inspector">
-            <Inspector />
-          </aside>
+          <div className="inspector-pane">
+            <aside className="inspector">
+              <RailHost.Provider value={rail}>
+                <Inspector />
+              </RailHost.Provider>
+            </aside>
+            <nav className="insp-rail" ref={setRail} />
+          </div>
         </Panel>
       </PanelGroup>
       <StatusBar onLog={() => setLog(!log)} />
-      <LogDrawer opened={log} onClose={() => setLog(false)} />
+      <LogDrawer opened={log && developer} onClose={() => setLog(false)} />
       <Dropzone.FullScreen onDrop={onGlobalDrop} getFilesFromEvent={nativeFiles} activateOnClick={false} zIndex={300}>
         <div className="drop-veil">
           <IconFolderDown size={44} stroke={1.3} color="var(--flare)" />

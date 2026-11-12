@@ -1,14 +1,15 @@
 import { ActionIcon, Badge, Button, Chip, Group, Menu, Select, SimpleGrid, Switch, Text, Tooltip, UnstyledButton } from '@mantine/core';
 import { Dropzone, type FileWithPath } from '@mantine/dropzone';
-import { IconBox, IconCheck, IconChevronRight, IconDeviceDesktop, IconFolderOpen, IconPlayerPlay, IconPlus, IconTrash, IconX } from '@tabler/icons-react';
+import { IconArrowsMove, IconBox, IconLayoutDashboard, IconCheck, IconChevronRight, IconDeviceDesktop, IconFolderOpen, IconPlayerPlay, IconPlus, IconTrash, IconX } from '@tabler/icons-react';
 import { importMesh } from '../actions';
 import { ShapeItems, ShapeMenuItems } from './ShapePanel';
 import { FEATURE, FeatureHead, FeatureTile, Info } from './Features';
+import { InspectorTabs, type InspectorTab } from './InspectorTabs';
 import { PartLayers } from './DynamicInspector';
 import { PartLivery } from './LiveryPanel';
 import { PartModel } from './PartModel';
 import { useState, type ReactElement } from 'react';
-import { MAX_SECONDS } from '../audio';
+import { MAX_SECONDS, playSound } from '../audio';
 import { baseName, CHANNELS, fileUrl, triggersFor, type Attachment, type CatalogPart, type SkinSound, type TextureChannel, type Trigger } from '../protocol';
 import { editorOf, materialOf, pendingKey, useItem, useStore } from '../store';
 import { Color, Field, Slider } from './fields';
@@ -152,22 +153,17 @@ function MaterialParams({ material }: { material: string }) {
 function PartPanel({ part }: { part: CatalogPart }) {
   const [mi, setMi] = useState(0);
   const material = part.materials[Math.min(mi, part.materials.length - 1)];
+  const doc = useStore((s) => s.doc);
+  const sounds = useSoundsTab();
   if (!material) return <p className="hint section">{t('skinInspector.k25')}</p>;
-  return (
+  // Counts on the side-panel icons: what this part already has of each kind.
+  const mats = part.materials.map((m) => materialOf(doc, m));
+  const textures = mats.reduce((n, m) => n + Object.values(m?.textures ?? {}).filter(Boolean).length, 0);
+  const liveries = mats.reduce((n, m) => n + (m?.livery ?? []).filter(Boolean).length, 0);
+  const layers = mats.reduce((n, m) => n + (m?.layers ?? []).filter(Boolean).length, 0);
+  const attachments = (doc.attachments ?? []).filter((a) => a?.part === part.id).length;
+  const textureTab = (
     <>
-      {part.materials.length > 1 && (
-        <div className="section" style={{ paddingBottom: 10 }}>
-          <Chip.Group value={String(mi)} onChange={(v) => setMi(+v)}>
-            <Group gap={4}>
-              {part.materials.map((m, i) => (
-                <Chip key={m} value={String(i)} size="xs" variant="outline">
-                  {m}
-                </Chip>
-              ))}
-            </Group>
-          </Chip.Group>
-        </div>
-      )}
       <div className="section">
         <FeatureHead feature="texture" title={t('skinInspector.k26')}>
           <Tooltip label={t('skinInspector.k27')}>
@@ -186,21 +182,50 @@ function PartPanel({ part }: { part: CatalogPart }) {
         <h3>{t('skinInspector.k13')}</h3>
         <EmissiveSection material={material} />
       </div>
-      <PartLivery part={part} />
-      <PartLayers part={part} />
-      <PartAttachments part={part.id} />
       <div className="section">
         <h3>{t('skinInspector.k29')}</h3>
         <MaterialParams material={material} />
       </div>
-      <PartModel part={part.id} />
+    </>
+  );
+  return (
+    <>
+      {part.materials.length > 1 && (
+        <div className="section" style={{ paddingBottom: 10 }}>
+          <Chip.Group value={String(mi)} onChange={(v) => setMi(+v)}>
+            <Group gap={4}>
+              {part.materials.map((m, i) => (
+                <Chip key={m} value={String(i)} size="xs" variant="outline">
+                  {m}
+                </Chip>
+              ))}
+            </Group>
+          </Chip.Group>
+        </div>
+      )}
+      <InspectorTabs
+        id="part"
+        tabs={[
+          { id: 'texture', label: t('tabs.texture'), icon: FEATURE.texture.icon, color: FEATURE.texture.color, count: textures, content: textureTab },
+          { id: 'livery', label: t('tabs.livery'), icon: FEATURE.livery.icon, color: FEATURE.livery.color, count: liveries, content: <PartLivery part={part} /> },
+          { id: 'layers', label: t('tabs.layers'), icon: FEATURE.layer.icon, color: FEATURE.layer.color, count: layers, content: <PartLayers part={part} /> },
+          { id: 'attach', label: t('tabs.attach'), icon: FEATURE.attachment.icon, color: FEATURE.attachment.color, count: attachments, content: (
+            <>
+              <PartAttachments part={part.id} />
+              <PartModel part={part.id} />
+            </>
+          ) },
+          { id: 'place', label: t('tabs.place'), icon: IconArrowsMove, content: <SelectionLayout /> },
+          sounds,
+        ]}
+      />
     </>
   );
 }
 
 const AUDIO_EXT = ['wav', 'mp3', 'ogg', 'flac', 'm4a', 'aac', 'opus', 'webm'];
 
-export async function pickSound() {
+async function pickSound() {
   const [f] = await window.forge.openDialog('files', [{ get name() { return t('skinInspector.k30'); }, extensions: AUDIO_EXT }]);
   if (f) await useStore.getState().addSound(f);
 }
@@ -257,12 +282,11 @@ function PartAttachments({ part }: { part: string }) {
   );
 }
 
-/** Sounds played in game (locally) when an event happens. */
-const playSound = (x: SkinSound) => {
-  const a = new Audio(fileUrl(x.file ?? ''));
-  a.volume = x.volume ?? 1;
-  void a.play();
-};
+/** 音效: the skin's sounds are skin-wide, so every inspector's side panel offers them. */
+export function useSoundsTab(): InspectorTab {
+  const count = useStore((s) => (s.doc.sounds ?? []).filter(Boolean).length);
+  return { id: 'sounds', label: t('tabs.sounds'), icon: FEATURE.sound.icon, color: FEATURE.sound.color, count, content: <Sounds /> };
+}
 
 /** The skin's sounds as a list; clicking one opens it. */
 function Sounds() {
@@ -364,7 +388,8 @@ function Overview() {
   const replaced = (doc.materials ?? []).reduce((n, m) => n + Object.keys(m?.textures ?? {}).length, 0);
   const unmatched = useStore((s) => s.unmatched);
   const attachments = (doc.attachments ?? []).filter(Boolean).length;
-  const sounds = (doc.sounds ?? []).filter(Boolean).length;
+  const soundsTab = useSoundsTab();
+  const sounds = soundsTab.count ?? 0;
   const layers = (doc.materials ?? []).reduce((n, m) => n + (m?.layers ?? []).filter(Boolean).length, 0);
   const liveries = (doc.materials ?? []).reduce((n, m) => n + (m?.livery ?? []).filter(Boolean).length, 0);
   const holograms = (doc.attachments ?? []).filter((a) => a?.hologram).length;
@@ -391,81 +416,90 @@ function Overview() {
         <div className="title">{item ? localName(item) : t('skinInspector.k40')}</div>
         <div className="meta">{replaced ? t('skinInspector.k41', { v0: replaced }) : t('skinInspector.k42')}</div>
       </div>
-      <div className="section">
-        <UnstyledButton className="drop-card" onClick={pickTextureFolder}>
-          <IconFolderOpen size={26} stroke={1.4} />
-          <b>{t('skinInspector.k43')}</b>
-          {t('skinInspector.k44')}
-        </UnstyledButton>
-      </div>
-      {unmatched.length > 0 && (
-        <div className="section">
-          <h3>
-            <span className="grow">{t('skinInspector.k45')} {unmatched.length}</span>
-          </h3>
-          <p className="hint">{t('skinInspector.k46')}</p>
-          <div className="list">
-            {unmatched.map((f) => (
-              <Text key={f} size="xs" c="dimmed" truncate title={f}>
-                {baseName(f)}
-              </Text>
-            ))}
-          </div>
-        </div>
-      )}
-      {pending.length > 0 && (
-        <div className="section">
-          <h3>
-            <span className="grow" style={{ color: 'var(--warn)' }}>
-              {t('skinInspector.k47')} {pending.length}
-            </span>
-            <Button size="compact-xs" variant="light" color="yellow" onClick={confirmAllPending}>
-              {t('skinInspector.k48')}
-            </Button>
-          </h3>
-          <div className="list">
-            {pending.map(([key, cell]) => {
-              const [mat, ch] = key.split('|') as [string, TextureChannel];
-              const part = item?.parts.find((p) => p.materials.includes(mat));
-              return (
-                <UnstyledButton key={key} className="item" onClick={() => part && select({ kind: 'part', id: part.id })} style={{ gridTemplateColumns: '36px 1fr auto' }}>
-                  <img src={fileUrl(cell.file ?? '')} alt="" style={{ width: 36, height: 36, objectFit: 'cover', borderRadius: 4 }} />
-                  <div style={{ minWidth: 0 }}>
-                    <div>
-                      {part ? partLabel(part) : mat} · {CHANNEL_LABEL[ch]}
-                    </div>
-                    <Text size="xs" c="dimmed" truncate>
-                      {baseName(cell.file ?? '')} · {Math.round(cell.confidence * 100)}%
-                    </Text>
-                  </div>
-                  <IconChevronRight size={14} />
+      <InspectorTabs
+        id="skin"
+        tabs={[
+          { id: 'overview', label: t('tabs.overview'), icon: IconLayoutDashboard, content: (
+            <>
+              <div className="section">
+                <UnstyledButton className="drop-card" onClick={pickTextureFolder}>
+                  <IconFolderOpen size={26} stroke={1.4} />
+                  <b>{t('skinInspector.k43')}</b>
+                  {t('skinInspector.k44')}
                 </UnstyledButton>
-              );
-            })}
-          </div>
-        </div>
-      )}
-      <div className="section">
-        <h3>{t('skinInspector.addMore')}</h3>
-        <SimpleGrid cols={2} spacing={8}>
-          {onPart(<FeatureTile feature="texture" title={t('addMenu.texture')} count={replaced} />)}
-          {onPart(<FeatureTile feature="livery" title={t('livery.title')} count={liveries} />)}
-          <AddAttachmentMenu>
-            <FeatureTile feature="attachment" title={t('skinInspector.attachTile')} count={attachments} />
-          </AddAttachmentMenu>
-          <Menu position="bottom-start">
-            <Menu.Target>
-              <FeatureTile feature="hologram" title={t('shapes.tile')} count={holograms} />
-            </Menu.Target>
-            <Menu.Dropdown>
-              <ShapeItems color={FEATURE.hologram.color} />
-            </Menu.Dropdown>
-          </Menu>
-          {onPart(<FeatureTile feature="layer" title={t('dynamicInspector.k33')} count={layers} />)}
-          <FeatureTile feature="sound" title={t('skinInspector.k31')} count={sounds} onClick={() => void pickSound()} />
-        </SimpleGrid>
-      </div>
-      <Sounds />
+              </div>
+              {unmatched.length > 0 && (
+                <div className="section">
+                  <h3>
+                    <span className="grow">{t('skinInspector.k45')} {unmatched.length}</span>
+                  </h3>
+                  <p className="hint">{t('skinInspector.k46')}</p>
+                  <div className="list">
+                    {unmatched.map((f) => (
+                      <Text key={f} size="xs" c="dimmed" truncate title={f}>
+                        {baseName(f)}
+                      </Text>
+                    ))}
+                  </div>
+                </div>
+              )}
+              {pending.length > 0 && (
+                <div className="section">
+                  <h3>
+                    <span className="grow" style={{ color: 'var(--warn)' }}>
+                      {t('skinInspector.k47')} {pending.length}
+                    </span>
+                    <Button size="compact-xs" variant="light" color="yellow" onClick={confirmAllPending}>
+                      {t('skinInspector.k48')}
+                    </Button>
+                  </h3>
+                  <div className="list">
+                    {pending.map(([key, cell]) => {
+                      const [mat, ch] = key.split('|') as [string, TextureChannel];
+                      const part = item?.parts.find((p) => p.materials.includes(mat));
+                      return (
+                        <UnstyledButton key={key} className="item" onClick={() => part && select({ kind: 'part', id: part.id })} style={{ gridTemplateColumns: '36px 1fr auto' }}>
+                          <img src={fileUrl(cell.file ?? '')} alt="" style={{ width: 36, height: 36, objectFit: 'cover', borderRadius: 4 }} />
+                          <div style={{ minWidth: 0 }}>
+                            <div>
+                              {part ? partLabel(part) : mat} · {CHANNEL_LABEL[ch]}
+                            </div>
+                            <Text size="xs" c="dimmed" truncate>
+                              {baseName(cell.file ?? '')} · {Math.round(cell.confidence * 100)}%
+                            </Text>
+                          </div>
+                          <IconChevronRight size={14} />
+                        </UnstyledButton>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+              <div className="section">
+                <h3>{t('skinInspector.addMore')}</h3>
+                <SimpleGrid cols={2} spacing={8}>
+                  {onPart(<FeatureTile feature="texture" title={t('addMenu.texture')} count={replaced} />)}
+                  {onPart(<FeatureTile feature="livery" title={t('livery.title')} count={liveries} />)}
+                  <AddAttachmentMenu>
+                    <FeatureTile feature="attachment" title={t('skinInspector.attachTile')} count={attachments} />
+                  </AddAttachmentMenu>
+                  <Menu position="bottom-start">
+                    <Menu.Target>
+                      <FeatureTile feature="hologram" title={t('shapes.tile')} count={holograms} />
+                    </Menu.Target>
+                    <Menu.Dropdown>
+                      <ShapeItems color={FEATURE.hologram.color} />
+                    </Menu.Dropdown>
+                  </Menu>
+                  {onPart(<FeatureTile feature="layer" title={t('dynamicInspector.k33')} count={layers} />)}
+                  <FeatureTile feature="sound" title={t('skinInspector.k31')} count={sounds} onClick={() => void pickSound()} />
+                </SimpleGrid>
+              </div>
+            </>
+          ) },
+          soundsTab,
+        ]}
+      />
     </>
   );
 }
@@ -485,7 +519,6 @@ export function SkinInspector() {
         </div>
       </div>
       <PartPanel key={part.id} part={part} />
-      <SelectionLayout />
     </>
   );
 }

@@ -352,6 +352,13 @@ Skin workspace
   from the chosen profile), switch which one is edited, and choose which one the game uses. Each skin is its own project
   with its own skin id, autosaved to `<dataDir>/autosave/<item>/<skinId>.forgeskinproj`. "Apply to game" installs the edited skin
   and makes it the item's active one; the item's other installed skins stay installed but inactive (one active per item).
+- Right panel: the selection's inspector split into categories shown one at a time, picked from a vertical icon bar on its
+  right edge with counts (skin: overview, sounds; part: texture, livery, layers, attachments, placement, sounds;
+  attachment: placement, look, screen, effects, sounds); the last category per kind is remembered. Sounds belong to the
+  whole skin and are reached there, not from the part tree. The part tree has a search over parts, layers and attachments.
+- The 3D view's 模拟 buttons play the event as the game would: layers, attachment effects and the skin's sounds for it.
+- 开发者模式 (settings, off by default): shows the log panel and the game log; off, logs still go to the log file and only
+  errors show. Settings also has 检查更新 (the installed copy's update check on demand, with the current version).
 - Log panel; log file under the data dir; data dir `GTFO_UserData` next to the exe, or for an installed copy (which runs
   from `app-<version>/`, replaced by every update) in the install folder above it.
 

@@ -34,6 +34,8 @@ const api = {
   toggleMaximize: (): void => ipcRenderer.send('win:toggleMaximize'),
   close: (): void => ipcRenderer.send('win:close'),
   isMaximized: (): Promise<boolean> => ipcRenderer.invoke('win:isMaximized'),
+  checkUpdate: (): Promise<'dev' | 'latest' | 'downloading' | 'error'> => ipcRenderer.invoke('update:check'),
+  version: (): Promise<string> => ipcRenderer.invoke('app:version'),
   onMaximized: (cb: (maximized: boolean) => void) => subscribe('win:maximized', cb),
 };
 

@@ -52,6 +52,8 @@ export interface Prefs {
   profilePath: string | null;
   /** UI language; null follows the system. */
   lang: Lang | null;
+  /** 开发者模式: shows the log panel and the game log; off, only errors reach the user (the log file is always written). */
+  developer: boolean;
 }
 
 /** Editor-only state persisted in the project's `editor` field. */
@@ -77,6 +79,7 @@ const DEFAULT_PREFS: Prefs = {
   allowMissing: true,
   profilePath: null,
   lang: null,
+  developer: false,
 };
 
 function loadPrefs(): Prefs {

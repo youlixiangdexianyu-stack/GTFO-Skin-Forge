@@ -95,7 +95,7 @@ function onGlobalDrop(files: File[]) {
   const paths = files.map((f) => window.forge.pathOf(f)).filter(Boolean);
   if (!paths.length) return;
   const s = useStore.getState();
-  const project = paths.find((p) => /\.(sfproj|gtfoskin|gtfdyn)$/i.test(p));
+  const project = paths.find((p) => /\.(forgeskinproj|gtfoskin|gtfdyn)$/i.test(p));
   if (project) return void s.loadProject(project);
   if (paths.some((p) => /\.(glb|gltf)$/i.test(p))) return s.toast('info', t('app.k14'));
   // A video or gif dropped while a part is selected becomes a dynamic layer on it (still images stay textures).

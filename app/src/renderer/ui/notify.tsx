@@ -9,11 +9,11 @@ export interface NotifyAction {
 
 const COLOR: Record<NotifyKind, string> = { info: 'cyan', ok: 'green', error: 'red' };
 
-/** Plain-language toast; errors stay until closed. */
+/** Plain-language toast; every kind, errors included, closes after 5 s (hovering keeps it open). */
 export function notify(kind: NotifyKind, text: string, action?: NotifyAction) {
   const id = notifications.show({
     color: COLOR[kind],
-    autoClose: kind === 'error' ? false : 4500,
+    autoClose: 5000,
     withBorder: true,
     message: (
       <Group gap="sm" wrap="nowrap" align="flex-start">

@@ -165,7 +165,7 @@ export interface MatchResult {
 }
 
 export interface MeshImport {
-  sfmesh: string;
+  forgeskinmesh: string;
   glb: string;
   bounds: { min: number[]; max: number[] };
 }

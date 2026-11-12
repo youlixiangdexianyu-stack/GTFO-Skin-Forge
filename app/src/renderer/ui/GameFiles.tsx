@@ -42,7 +42,7 @@ export function plainWarning(w: string): string {
 
 const packPath = () => {
   const s = useStore.getState();
-  return `${s.dataDir}\\packs\\${s.weaponId}.gtfskin`;
+  return `${s.dataDir}\\packs\\${s.weaponId}.forgeskin`;
 };
 
 /** Builds the pack, previews what the game files would get (an export into the data folder; the game is untouched), then writes on confirm. */

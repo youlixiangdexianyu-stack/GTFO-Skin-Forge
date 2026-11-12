@@ -1,9 +1,21 @@
 import { app, BrowserWindow, dialog, ipcMain, net, protocol, shell, type OpenDialogOptions } from 'electron';
-import { appendFileSync, existsSync, mkdirSync } from 'node:fs';
+import { appendFileSync, cpSync, existsSync, mkdirSync, rmSync } from 'node:fs';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { dirname, isAbsolute, join, normalize, resolve, sep } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { Backend } from './backend';
+
+// Moves the pre-rename Electron profile (GTFO Skin Forge -> ForgeSkin: preferences, panel layout, last weapon) to the
+// new app name before Chromium opens it; once moved there is nothing left to move. Electron has already created the new
+// folder by now, so the old one is copied in and then removed.
+function movePreRenameUserData(): void {
+  const old = join(app.getPath('appData'), 'GTFO Skin Forge');
+  const now = app.getPath('userData');
+  if (!existsSync(old) || existsSync(join(now, 'Local Storage'))) return;
+  cpSync(old, now, { recursive: true });
+  rmSync(old, { recursive: true, force: true });
+}
+movePreRenameUserData();
 
 // Dev only: SF_CDP=<port> exposes DevTools protocol so the running app can be inspected and screenshotted.
 if (!app.isPackaged && process.env.SF_CDP) app.commandLine.appendSwitch('remote-debugging-port', process.env.SF_CDP);
@@ -67,7 +79,7 @@ function createWindow() {
     minWidth: 1180,
     minHeight: 720,
     backgroundColor: '#15171a',
-    title: 'GTFO Skin Forge',
+    title: 'ForgeSkin',
     // The packaged exe carries the icon (packagerConfig.icon); from source the window takes it from assets/.
     icon: app.isPackaged ? undefined : join(app.getAppPath(), 'assets', 'icon.ico'),
     // Frameless; the top bar draws its own minimize / maximize / close (see `win:*` below).

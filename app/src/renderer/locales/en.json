@@ -319,7 +319,7 @@
   "topBar.k30": "Shared attachment skin",
   "topBar.k31": "Skin deleted",
   "topBar.k32": "Delete",
-  "topBar.k33": "No readings from the game yet. Turn on Readback in this profile’s SkinForge settings, take out each weapon to check once in game, then come back and check.",
+  "topBar.k33": "No readings from the game yet. Turn on Readback in this profile’s ForgeSkin settings, take out each weapon to check once in game, then come back and check.",
   "topBar.k34": "Unknown weapon ({{v0}})",
   "topBar.k35": "All {{v0}} part positions match the game",
   "topBar.k36": "Does not match the game",

@@ -1,4 +1,4 @@
-// Spawns SkinForge.Backend and speaks PLAN §3.3: one JSON object per line on stdio.
+// Spawns ForgeSkin.Backend and speaks PLAN §3.3: one JSON object per line on stdio.
 import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
 import { existsSync, statSync } from 'node:fs';
 import { dirname, join } from 'node:path';
@@ -34,18 +34,18 @@ export class Backend {
   private command(): { file: string; args: string[]; cwd: string } {
     const dataArgs = ['--data-dir', Backend.dataDir()];
     if (app.isPackaged) {
-      const file = join(process.resourcesPath, 'publish', 'SkinForge.Backend.exe');
+      const file = join(process.resourcesPath, 'publish', 'ForgeSkin.Backend.exe');
       return { file, args: dataArgs, cwd: dirname(file) };
     }
     const repo = join(app.getAppPath(), '..');
     const dllOf = (exe: string) => (existsSync(exe.replace(/\.exe$/, '.dll')) ? exe.replace(/\.exe$/, '.dll') : exe);
     const built = ['Debug', 'Release']
-      .flatMap((c) => ['', 'win-x64/'].map((rid) => join(repo, `src/SkinForge.Backend/bin/${c}/net10.0/${rid}SkinForge.Backend.exe`)))
+      .flatMap((c) => ['', 'win-x64/'].map((rid) => join(repo, `src/ForgeSkin.Backend/bin/${c}/net10.0/${rid}ForgeSkin.Backend.exe`)))
       .filter(existsSync)
       // The newest build wins: a Debug copy can go stale while a running backend locks it.
       .sort((a, b) => statSync(dllOf(b)).mtimeMs - statSync(dllOf(a)).mtimeMs)[0];
     if (built) return { file: built, args: dataArgs, cwd: dirname(built) };
-    const project = join(repo, 'src/SkinForge.Backend');
+    const project = join(repo, 'src/ForgeSkin.Backend');
     return { file: 'dotnet', args: ['run', '--project', project, '--', ...dataArgs], cwd: project };
   }
 

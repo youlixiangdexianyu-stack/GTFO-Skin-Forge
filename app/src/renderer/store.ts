@@ -206,7 +206,7 @@ interface State {
   setPartEnabled(partId: string, on: boolean): void;
 
   // attachments
-  addAttachment(kind: 'screen' | 'mesh', mesh?: { sfmesh: string; glb: string }): void;
+  addAttachment(kind: 'screen' | 'mesh', mesh?: { forgeskinmesh: string; glb: string }): void;
   updateAttachment(id: string, fn: (a: Attachment) => void, coalesceKey?: string): void;
   removeAttachment(id: string): void;
   /** Converts the picked audio file to Ogg next to the project and adds it as a sound (one undo step). */
@@ -224,7 +224,7 @@ interface State {
   setPartTransform(part: string, path: string | null | undefined, fn: (t: PartTransform) => void, coalesceKey?: string): void;
   resetPartTransform(part: string, path: string | null | undefined, row?: 'position' | 'rotation' | 'scale'): void;
   /** Replaces a node's own model (null puts the game's back); the 3D view shows `glb` in its place. */
-  setPartMesh(part: string, path: string | null | undefined, mesh: { sfmesh: string; glb: string } | null): void;
+  setPartMesh(part: string, path: string | null | undefined, mesh: { forgeskinmesh: string; glb: string } | null): void;
 }
 
 let initialised = false;
@@ -493,7 +493,7 @@ export const useStore = create<State>((set, get) => ({
         set({ weaponId: null });
         await get().selectWeapon(weapon);
       }
-      set({ doc, projectPath: path.endsWith('.sfproj') ? path : null, undo: [], redo: [] });
+      set({ doc, projectPath: path.endsWith('.forgeskinproj') ? path : null, undo: [], redo: [] });
       get().autosave();
       get().toast('ok', t('store.k9', { v0: doc.name }));
     } catch (e) {
@@ -503,7 +503,7 @@ export const useStore = create<State>((set, get) => ({
   async saveProject(saveAs) {
     let path = get().projectPath;
     if (!path || saveAs) {
-      path = await window.forge.saveDialog(`${get().doc.name || 'skin'}.sfproj`, [{ name: t('store.k11'), extensions: ['sfproj'] }]);
+      path = await window.forge.saveDialog(`${get().doc.name || 'skin'}.forgeskinproj`, [{ name: t('store.k11'), extensions: ['forgeskinproj'] }]);
       if (!path) return;
     }
     // Saving as a new skin is the one way to get a new skin id (a second pack in game instead of overwriting).
@@ -645,7 +645,7 @@ export const useStore = create<State>((set, get) => ({
         rotation: [0, 0, 0],
         scale: [1, 1, 1],
         faceCamera: false,
-        mesh: mesh?.sfmesh ?? null,
+        mesh: mesh?.forgeskinmesh ?? null,
         screen:
           kind === 'screen'
             ? {
@@ -790,7 +790,7 @@ export const useStore = create<State>((set, get) => ({
         t = { part, path: path ?? null, position: null, rotation: null, scale: null, visible: null };
         d.parts!.push(t);
       }
-      t.mesh = mesh?.sfmesh ?? null;
+      t.mesh = mesh?.forgeskinmesh ?? null;
       const ed = d.editor as Record<string, unknown>;
       const previews = { ...((ed.partMeshPreviews as Record<string, string>) ?? {}) };
       if (mesh) previews[partMeshKey(part, path)] = mesh.glb;
@@ -816,7 +816,7 @@ const skinDir = (weaponId: string): string => `${useStore.getState().dataDir}\\a
 
 /** Autosave of one skin; by default the skin being edited. */
 export function autosavePath(weaponId: string, skinId = useStore.getState().doc.id): string {
-  return `${skinDir(weaponId)}\\${skinId}.sfproj`;
+  return `${skinDir(weaponId)}\\${skinId}.forgeskinproj`;
 }
 
 /** A skin's autosave, or null (with a plain message) when it does not open. */
@@ -859,7 +859,9 @@ function openSkin(loaded: SkinDocument) {
 
 export async function persistAutosave() {
   const { weaponId, doc, skins } = useStore.getState();
-  if (!weaponId) return;
+  // Only a skin opened for this item is saved: while the item's skins load, the edited document is still the start-up
+  // blank or the previous item's skin, and saving it would add it to this item as a new skin.
+  if (!weaponId || doc.target?.weapon !== weaponId) return;
   try {
     await call('project.save', { path: autosavePath(weaponId), project: doc });
     useStore.setState({ autosaveError: null });

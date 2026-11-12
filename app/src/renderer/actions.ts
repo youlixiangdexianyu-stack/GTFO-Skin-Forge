@@ -122,7 +122,7 @@ export async function applyToGame(quiet = false): Promise<void> {
       devRestart = (await call('plugin.setDevelopment', { profile: profile.path, on: true })).restartNeeded;
       await s.refreshProfiles();
     }
-    const pack = await build(`${s.dataDir}\\packs\\${s.weaponId}.gtfskin`);
+    const pack = await build(`${s.dataDir}\\packs\\${s.weaponId}.forgeskin`);
     useStore.setState({ busy: t('actions.k11') });
     const since = new Date().toISOString();
     await call('pack.install', { pack, profile: profile.path, activate: true });
@@ -168,7 +168,7 @@ export async function activateSkin(id: string, name: string): Promise<void> {
 
 /** Opens a skin project (or an old preset) chosen in the file dialog. */
 export async function openProject(): Promise<void> {
-  const [p] = await window.forge.openDialog('project', [{ name: t('store.k11'), extensions: ['sfproj', 'gtfoskin', 'gtfdyn', 'json'] }]);
+  const [p] = await window.forge.openDialog('project', [{ name: t('store.k11'), extensions: ['forgeskinproj', 'gtfoskin', 'gtfdyn', 'json'] }]);
   if (p) await st().loadProject(p);
 }
 
@@ -176,7 +176,7 @@ export async function exportPack(): Promise<void> {
   const s = st();
   const problem = preflight();
   if (problem) return s.toast('error', problem);
-  const out = await window.forge.saveDialog(`${s.doc.name || s.weaponId}.gtfskin`, [{ name: t('actions.k16'), extensions: ['gtfskin'] }]);
+  const out = await window.forge.saveDialog(`${s.doc.name || s.weaponId}.forgeskin`, [{ name: t('actions.k16'), extensions: ['forgeskin'] }]);
   if (!out) return;
   try {
     const pack = await build(out);
@@ -214,7 +214,7 @@ export async function importMesh(): Promise<void> {
   useStore.setState({ busy: t('actions.k25') });
   try {
     const r = await call('mesh.import', { glb });
-    s.addAttachment('mesh', { sfmesh: r.sfmesh, glb: r.glb });
+    s.addAttachment('mesh', { forgeskinmesh: r.forgeskinmesh, glb: r.glb });
     s.toast('ok', t('actions.k26'));
   } catch (e) {
     s.fail(e);
@@ -246,7 +246,7 @@ export async function exportMod(info: ModInfo): Promise<boolean> {
     for (const id of info.skins) {
       const entry = s.skins.find((k) => k.id === id)!;
       const skin = id === s.doc.id ? undefined : { doc: await call('project.load', { path: entry.path }), path: entry.path };
-      packs.push(await build(`${s.dataDir}\\packs\\${id}.gtfskin`, skin));
+      packs.push(await build(`${s.dataDir}\\packs\\${id}.forgeskin`, skin));
     }
     useStore.setState({ busy: t('actions.k6') });
     const { mod } = await call('pack.exportMod', { packs, out, name: info.name, version: info.version, description: info.description, icon: info.icon });

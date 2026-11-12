@@ -1,0 +1,9 @@
+{
+  "name": "ForgeSkin",
+  "version_number": "1.0.0",
+  "website_url": "",
+  "description": "Applies ForgeSkin packs (textures, attachments, live ammo screens, animated layers) to your own weapons.",
+  "dependencies": [
+    "BepInEx-BepInExPack_GTFO-3.2.4"
+  ]
+}

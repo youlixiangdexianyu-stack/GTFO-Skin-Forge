@@ -1,4 +1,4 @@
-// The skin plugin's own log (skinforge.log in the test profile, cleared at each game launch): reading what the game did
+// The skin plugin's own log (forgeskin.log in the test profile, cleared at each game launch): reading what the game did
 // after 应用到游戏, in plain words.
 import { call } from './protocol';
 import { useStore } from './store';

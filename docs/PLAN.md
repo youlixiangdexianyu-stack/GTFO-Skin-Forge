@@ -1,4 +1,4 @@
-# GTFO Skin Forge — rewrite plan
+# ForgeSkin — rewrite plan
 
 The single plan for this repository. Keep only current requirements; delete finished items from §6.
 
@@ -37,9 +37,9 @@ app/                        Electron (Electron Forge + Vite) + React + TypeScrip
   src/main/                 window, dialogs, spawns and talks to the backend
   src/preload/              typed contextBridge API
   src/renderer/             editor UI, 3D preview, video/text frame rendering
-src/SkinForge.Format/       net6.0. SkinDocument (project == pack manifest), SkinPack (zip + validation), SfMesh
-src/SkinForge.Backend/      net10.0 console, self-contained single file, shipped as Electron extraResource
-src/SkinForge.Plugin/       net6.0 BepInEx 6 IL2CPP plugin
+src/ForgeSkin.Format/       net6.0. SkinDocument (project == pack manifest), SkinPack (zip + validation), ForgeSkinMesh
+src/ForgeSkin.Backend/      net10.0 console, self-contained single file, shipped as Electron extraResource
+src/ForgeSkin.Plugin/       net6.0 BepInEx 6 IL2CPP plugin
 tests/                      dotnet test project(s) + the app's own tests
 docs/PLAN.md                this file
 ```
@@ -55,13 +55,13 @@ poses with one helper (`unityToThree` / `threeToUnity` in `app/src/renderer/spac
 
 ## 3. Interfaces
 
-### 3.1 Skin document and pack (`src/SkinForge.Format`)
+### 3.1 Skin document and pack (`src/ForgeSkin.Format`)
 
-- `SkinDocument` is both the editor project (`.sfproj`, JSON, file references relative to the project file) and the pack
-  manifest (`manifest.json` in a `.gtfskin` zip, references are zip paths). `editor` holds UI state and is dropped when packing.
+- `SkinDocument` is both the editor project (`.forgeskinproj`, JSON, file references relative to the project file) and the pack
+  manifest (`manifest.json` in a `.forgeskin` zip, references are zip paths). `editor` holds UI state and is dropped when packing.
 - `SkinPack.Open` validates; error codes: `schema`, `no-id`, `no-gear`, `no-manifest`, `no-material`, `bad-path`,
   `missing-file`, `bad-image`, `bad-trigger`, `bad-vector`, `no-atlas`, `bad-atlas`, `no-anchor`, `empty-attachment`, `bad-screen`, `no-glyphs`, `bad-mesh`, `bad-audio`.
-- `.sfmesh` is the attachment mesh format (see `SfMesh`).
+- `.forgeskinmesh` is the attachment mesh format (see `ForgeSkinMesh`).
 - `SkinDocument.Parts` (`PartTransform`): part id (same ids as `Attachment.Part`), optional child path under it (as
   `Transform.Find` takes it), and absolute local values — `position`, `rotation` (Euler degrees), `scale`, `visible` — each
   nullable; null keeps what the game built. Written once when the gear finishes assembling, so a respawn or reload writes the
@@ -83,11 +83,11 @@ poses with one helper (`unityToThree` / `threeToUnity` in `app/src/renderer/spac
 ### 3.2 Install layout (in a BepInEx profile)
 
 ```
-<profile>/BepInEx/plugins/SkinForge/SkinForge.Plugin.dll   (+ SkinForge.Format.dll, NVorbis.dll)
-<profile>/BepInEx/plugins/SkinForge/skins/*.gtfskin
-<profile>/BepInEx/plugins/SkinForge/skins/active.json        { "targets": { "gear:<gearId>" | "item:<itemId>": "<skinId>" }, "global": ["<skinId>", ...] }
-<profile>/BepInEx/config/SkinForge.cfg
-<profile>/BepInEx/LogOutput.log                              plugin logs with prefix [SkinForge]
+<profile>/BepInEx/plugins/ForgeSkin/ForgeSkin.Plugin.dll   (+ ForgeSkin.Format.dll, NVorbis.dll)
+<profile>/BepInEx/plugins/ForgeSkin/skins/*.forgeskin
+<profile>/BepInEx/plugins/ForgeSkin/skins/active.json        { "targets": { "gear:<gearId>" | "item:<itemId>": "<skinId>" }, "global": ["<skinId>", ...] }
+<profile>/BepInEx/config/ForgeSkin.cfg
+<profile>/BepInEx/LogOutput.log                              plugin logs with prefix [ForgeSkin]
 ```
 
 Skin mods (Thunderstore packages that depend on the base library) unpack to `<profile>/BepInEx/plugins/<Team>-<Name>/`
@@ -102,6 +102,10 @@ Request `{"id":1,"method":"catalog.get","params":{...}}` → `{"id":1,"result":.
 `{"id":1,"error":{"code":"...","message":"..."}}`. Progress: `{"event":"progress","data":{"id":1,"done":3,"total":10,"text":"..."}}`.
 Logs go to stderr and `<dataDir>/logs/backend.log`, never stdout.
 
+At start the backend moves pre-rename files in the data dir (`.sfproj`, `.gtfskin`, `.sfmesh`) to `.forgeskinproj`,
+`.forgeskin` and `.forgeskinmesh` and points the projects and `game-assets/*/state.json` that name them at the new names; the
+app moves its pre-rename Electron profile (`%APPDATA%/GTFO Skin Forge`) to `%APPDATA%/ForgeSkin` (when the new one has no Local Storage yet) before the window opens.
+
 | Method | Params → Result |
 |---|---|
 | `app.info` | → version, dataDir |
@@ -114,15 +118,15 @@ Logs go to stderr and `<dataDir>/logs/backend.log`, never stdout.
 | `match.files` | `{weaponId, files:[...]}` → same, for drag-and-drop of loose files |
 | `project.new/load/save` | SkinDocument in/out; `project.load` also imports legacy `.gtfoskin`, `.gtfdyn` and DLY presets |
 | `project.list` | `{dir}` → `[{path, id, name, modified}]`, newest first; a file that does not parse is listed under its file name |
-| `project.delete` | `{path}` → deletes one `.sfproj` |
-| `mesh.import` | `{glb}` → `{sfmesh (cache path), preview glb, bounds}` |
+| `project.delete` | `{path}` → deletes one `.forgeskinproj` |
+| `mesh.import` | `{glb}` → `{forgeskinmesh (cache path), preview glb, bounds}` |
 | `pack.build` | `{project, projectPath, out, sizeMode: keep/original/1k/2k/4k}` → `{pack, warnings}`; resizes keeping aspect, bakes layer atlases and glyph atlases from frame PNGs the renderer wrote |
 | `pack.install` | `{pack, profile, activate}` → writes skin + active.json (a running game picks it up only with the development switch on) |
 | `pack.list / pack.remove / pack.activate` | manage installed skins in a profile |
 | `pack.exportMod` | `{packs, out, name, version, description, icon}` → `{mod}`: a Thunderstore skin mod zip (manifest.json, icon.png scaled to 256x256, README.md, `forgeskin.forge`, `skins/*`), depending on the base library |
-| `plugin.log` | `{profile, since?}` → `{lines:[{time, level, message}]}` from the plugin's own `skinforge.log`, newer than `since` |
-| `plugin.install` | `{profile}` → copies plugin; refuses with `game-running` while GTFO runs and the DLL is locked |
-| `plugin.setDevelopment` | `{profile, on}` → writes `Development` in `BepInEx/config/SkinForge.cfg`; `{development, restartNeeded}`. `profiles.list` reports it as `development` |
+| `plugin.log` | `{profile, since?}` → `{lines:[{time, level, message}]}` from the plugin's own `forgeskin.log`, newer than `since` |
+| `plugin.install` | `{profile}` → copies plugin; refuses with `game-running` while GTFO runs and the DLL is locked. First moves a pre-rename install: `plugins/SkinForge/skins/*` (packs renamed to `.forgeskin`, `active.json` kept) into `plugins/ForgeSkin/skins`, `config/SkinForge.cfg` to `ForgeSkin.cfg`, `BepInEx/SkinForge` to `BepInEx/ForgeSkin`, then deletes the old DLLs and log and the old folder once empty |
+| `plugin.setDevelopment` | `{profile, on}` → writes `Development` in `BepInEx/config/ForgeSkin.cfg`; `{development, restartNeeded}`. `profiles.list` reports it as `development` |
 | `export.obj` | `{weaponId, parts, mode: separate/merged, outDir}` → files; folder `YYYY-MM-DD-HHMMSS-<weapon>.OBJ`, MTL + manifest |
 | `assets.apply` | `{pack, gameDir?}` → `{skin, buildId, files, materials, warnings}`: writes the pack's material textures and parameters into the game's `.assets` files (§3.5); refuses with `game-running` while GTFO runs |
 | `assets.restore` | `{skinId?, discardStale?, gameDir?}` → `{restored, skipped:[{file, reason}], stale}`: without `skinId` every original back; with it that skin removed and its files rebuilt from the originals with the other applied skins; `discardStale` deletes records of older game builds |
@@ -148,8 +152,8 @@ game is not running.
   under `BepInEx/plugins` (only that file is looked for, one level deep), and packs other plugins register from their Load with
   `SkinPacks.Register(path)`. A mod's or registered skin is active for its target unless `active.json` picks one; among them
   the first by path wins and the others are logged as unused. Hot reload only with the development switch (`Development = true` in
-  SkinForge.cfg, set from the app; read at game start): then a `FileSystemWatcher` reloads changed packs and `active.json`
-  within ~0.5 s and re-applies to live weapons; only skin inputs (`*.gtfskin`, `active.json`, `forgeskin.forge`) count, never
+  ForgeSkin.cfg, set from the app; read at game start): then a `FileSystemWatcher` reloads changed packs and `active.json`
+  within ~0.5 s and re-applies to live weapons; only skin inputs (`*.forgeskin`, `active.json`, `forgeskin.forge`) count, never
   the plugin's own log or other mods' files. Off (default), nothing watches the folder and changes apply on the next launch.
 - Hooks: IL2CPP folds identical native bodies, so a hook can run for unrelated objects. A target whose native entry starts
   with a return or jump (an empty override compiled to a shared `ret` stub, e.g. `MeleeWeaponFirstPerson.OnGearSpawnComplete`)
@@ -168,8 +172,8 @@ game is not running.
   Items with their own prefabs (packs, consumables, carry items, hacking tool) have no gear holder: they are skinned on the
   local player's first-person item when it is wielded (the wielded item is compared each frame, one pointer); their third
   person and world copies stay vanilla.
-- Readback: debug only; with it off the plugin reads nothing on the game's spawn path for it. With `Readback = true` in SkinForge.cfg the plugin writes, for every assembled gear, the local TRS of every part
-  root and descendant relative to the gear root to `BepInEx/SkinForge/readback/<gearId>.json` (vanilla, before any skin).
+- Readback: debug only; with it off the plugin reads nothing on the game's spawn path for it. With `Readback = true` in ForgeSkin.cfg the plugin writes, for every assembled gear, the local TRS of every part
+  root and descendant relative to the gear root to `BepInEx/ForgeSkin/readback/<gearId>.json` (vanilla, before any skin).
   The backend compares it with its own assembly (`assembly.verify`); any transform off by more than 1 mm or 0.1° fails.
 - Screens: a quad panel + border + digits drawn from the glyph atlas; updates only when the value changes; `AmmoClip` reads the
   weapon's current clip, `AmmoReserve` / `AmmoTotal` the player's ammo storage.
@@ -198,8 +202,8 @@ game is not running.
   Material textures are compressed to DXT on load (normal maps first swizzled to the game's DXT5nm layout, x in A and y in G)
   and their CPU copy dropped; layer atlases (copied with `CopyTexture` into raw render targets) and glyph atlases stay raw.
   Sizes not a multiple of 4 stay raw with a warning.
-- Every failure logs one `[SkinForge]` line and leaves the weapon vanilla.
-- Every line is also written, flushed at once, to `<plugin folder>/skinforge.log` (cleared at launch), which the app reads
+- Every failure logs one `[ForgeSkin]` line and leaves the weapon vanilla.
+- Every line is also written, flushed at once, to `<plugin folder>/forgeskin.log` (cleared at launch), which the app reads
   after 应用到游戏 to report what the game did; it survives a crash that loses BepInEx's buffered log.
 
 ### 3.5 Asset replacement (`assets.*`, `AssetPatch.cs`)
@@ -249,7 +253,7 @@ Skin workspace
 - Save/load projects; autosave.
 - Several skins per item: create (blank or a copy of the current one), rename, delete (with confirmation; also removes it
   from the chosen profile), switch which one is edited, and choose which one the game uses. Each skin is its own project
-  with its own skin id, autosaved to `<dataDir>/autosave/<item>/<skinId>.sfproj`. "Apply to game" installs the edited skin
+  with its own skin id, autosaved to `<dataDir>/autosave/<item>/<skinId>.forgeskinproj`. "Apply to game" installs the edited skin
   and makes it the item's active one; the item's other installed skins stay installed but inactive (one active per item).
 - Log panel; log file under the data dir; portable data dir next to the exe (`GTFO_UserData`).
 

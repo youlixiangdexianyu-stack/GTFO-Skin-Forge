@@ -504,7 +504,7 @@ export function TopBar() {
     <header className="topbar">
       <div className="brand">
         <img className="logo" src={logo} alt="" />
-        <b>SKIN FORGE</b>
+        <b>FORGESKIN</b>
       </div>
       <div className="spacer" />
       <SettingsMenu />

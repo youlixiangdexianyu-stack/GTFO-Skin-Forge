@@ -490,23 +490,16 @@ sealed class SkinnedGear
         {
             // A global skin (mags, sights, lights, ammo) covers every gear; only the ones that use its materials take it.
             if (looks.ContainsKey(o.Override) || o.Skin.Doc.Target.Weapon == null) continue;
-            // Failure path only: where else the material is drawn right now, so the log says whether the part lives
-            // outside this item or is not spawned yet (an ejected casing exists only after a shot).
-            var elsewhere = new List<string>();
-            foreach (var r in Object.FindObjectsOfType<Renderer>())
-            {
-                foreach (var m in r.sharedMaterials)
-                    if (m != null && BaseName(m.name) == name) { elsewhere.Add(PathOf(r.transform)); break; }
-                if (elsewhere.Count == 3) break;
-            }
-            if (elsewhere.Count == 0 && o.Override.Part == "ammo_shell")
+            if (o.Override.Part == "ammo_shell")
             {
                 ForgeSkinPlugin.Info($"{_label}: material {name} is on the ejected casing, which the game spawns only when firing; not skinned");
                 continue;
             }
+            // No scene-wide search for where else it is drawn: over every renderer of a level that stalls the game for
+            // a third of a second per material, on every hot reload. The gear's own slots say what it has instead.
             ForgeSkinPlugin.Fail($"{_label}: material {name} matched no renderer; part {o.Override.Part ?? "-"} " +
                 $"{(o.Override.Part != null && PartObject(o.Override.Part) is { } part ? $"at {PathOf(part.transform)}" : "not found")}; " +
-                $"drawn elsewhere: {(elsewhere.Count == 0 ? "nowhere" : string.Join("; ", elsewhere))}; this gear has {seen.Count} slots: {string.Join("; ", seen)}");
+                $"this gear has {seen.Count} slots: {string.Join("; ", seen)}");
         }
     }
 
@@ -662,7 +655,8 @@ sealed class SkinnedGear
         _animated.Add(played);
         On(layer.Trigger, played, layer.LowAmmoFraction);
         _layerCount++;
-        ForgeSkinPlugin.Info($"{_label}: layer {layer.Id} {atlas.width}x{atlas.height} {atlas.format}, {a.FrameCount} frames -> {material.name} {layer.Channel}, {layer.Trigger} {layer.Play}");
+        ForgeSkinPlugin.Info($"{_label}: layer {layer.Id} {atlas.width}x{atlas.height} {atlas.format}, {a.FrameCount} frames of {a.FrameWidth}x{a.FrameHeight} -> " +
+            $"{material.name} {layer.Channel} {target.width}x{target.height} at [{string.Join(", ", r)}], {layer.Trigger} {layer.Play}");
     }
 
     // One GPU copy of the channel's texture per material; layers write into it.

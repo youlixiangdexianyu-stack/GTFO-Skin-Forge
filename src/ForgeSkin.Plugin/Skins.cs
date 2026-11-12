@@ -39,7 +39,7 @@ sealed class Skin
             {
                 if (a.Mesh != null && !skin._meshes.ContainsKey(a.Mesh)) skin._meshes[a.Mesh] = ToMesh(ForgeSkinMesh.Read(pack.ReadBytes(a.Mesh)), a.Mesh);
                 if (a.Material != null) foreach (var (channel, path) in a.Material.Textures) skin.Decode(pack, path, channel, true, true);
-                foreach (var g in (a.Screen?.GlyphMeshes ?? Array.Empty<string?>()).Append(a.Screen?.TextMesh))
+                foreach (var g in (a.Screen?.GlyphMeshes ?? Array.Empty<string?>()).Append(a.Screen?.TextMesh).Append(a.Screen?.BorderMesh))
                     if (g != null && !skin._meshes.ContainsKey(g)) skin._meshes[g] = ToMesh(ForgeSkinMesh.Read(pack.ReadBytes(g)), g);
             }
             foreach (var t in skin.Doc.Parts)

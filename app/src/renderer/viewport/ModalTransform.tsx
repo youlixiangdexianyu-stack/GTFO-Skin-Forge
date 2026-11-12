@@ -4,10 +4,9 @@ import { useHotkeys } from '@mantine/hooks';
 import { useThree } from '@react-three/fiber';
 import { useEffect, useRef } from 'react';
 import { Matrix3, Quaternion, Vector2, Vector3, type Intersection, type Object3D, type PerspectiveCamera } from 'three';
-import { overridesFor, quaternionFacing, threeToUnity, unityDirToThree, type UnityPose, type Vec3 } from '../space';
+import { overridesFor, quaternionFacing, threeToUnity, unityDirToThree, type Vec3 } from '../space';
 import { useStore } from '../store';
 import { displayOffset, layoutTarget, viewRefs } from './refs';
-import { t } from '../i18n';
 
 type Tool = 'move' | 'rotate' | 'scale';
 type Axis = 'x' | 'y' | 'z' | null;
@@ -41,7 +40,6 @@ export function selectedTarget(): Target | null {
       obj: g,
       commit: (key) => {
         const p = threeToUnity(g.position, g.quaternion, g.scale);
-        if (!finitePose(p, t('modalTransform.k1', { v0: sel.id }))) return;
         useStore.getState().updateAttachment(
           sel.id,
           (a) => {
@@ -63,27 +61,11 @@ export function selectedTarget(): Target | null {
       obj,
       commit: (key) => {
         const pose = threeToUnity(obj.position.clone().sub(displayOffset(obj)), obj.quaternion, obj.scale);
-        if (!finitePose(pose, t('modalTransform.k2', { v0: target.part, v1: target.path ?? '' }))) return;
         useStore.getState().setPartTransform(target.part, target.path, (t) => void Object.assign(t, overridesFor(vanilla, pose)), key);
       },
     };
   }
   return null;
-}
-
-/** A pose with NaN/Infinity is never stored (the backend rejects the whole document); it is logged with where it came from. */
-function finitePose(p: UnityPose, what: string): boolean {
-  const ok = [...p.position, ...p.rotation, ...p.scale].every(Number.isFinite);
-  if (!ok) {
-    const text = t('modalTransform.k3', { v0: what, v1: JSON.stringify(p) });
-    useStore.getState().log(text);
-    window.forge.appLog(
-      'invalid pose',
-      `${text}
-${new Error().stack}`,
-    );
-  }
-  return ok;
 }
 
 export const newGesture = () => `gesture:${Math.random().toString(36).slice(2)}`;

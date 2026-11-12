@@ -18,6 +18,24 @@ function packDoc(doc = st().doc): SkinDocument {
   return out;
 }
 
+/** Display name of the first thing whose numbers the pack check refuses (SkinPack.Validate `bad-vector`), else null. */
+function badVector(doc: SkinDocument): string | null {
+  const ok = (v: number[] | null | undefined, n: number, nullable: boolean) => (v == null ? nullable : v.length === n && v.every(Number.isFinite));
+  for (const m of doc.materials ?? [])
+    if (m && !(ok(m.params?.emissiveColor, 3, true) && ok(m.params?.tint, 4, true))) return t('actions.badVectorMaterial', { v0: m.material ?? '' });
+  const parts = currentItem()?.parts ?? [];
+  for (const p of doc.parts ?? []) {
+    if (!p || (ok(p.position, 3, true) && ok(p.rotation, 3, true) && ok(p.scale, 3, true))) continue;
+    const part = parts.find((x) => x.id === p.part);
+    const name = part ? partLabel(part) : (p.part ?? '');
+    return t('actions.badVectorPart', { v0: p.path ? `${name} / ${p.path.split('/').pop()}` : name });
+  }
+  for (const a of doc.attachments ?? [])
+    if (a && !(ok(a.position, 3, false) && ok(a.rotation, 3, false) && ok(a.scale, 3, false) && (a.effects ?? []).every((e) => !e || ok(e.color, 3, false))))
+      return t('actions.badVectorAttachment', { v0: a.name || a.id || '' });
+  return null;
+}
+
 /** Things the user must fix before building, in plain words. */
 function preflight(): string | null {
   const { doc, prefs } = st();
@@ -25,6 +43,8 @@ function preflight(): string | null {
   if (pending) return t('actions.k1', { v0: pending });
   const item = currentItem();
   if (!item) return t('actions.k2');
+  const bad = badVector(doc);
+  if (bad) return t('actions.badVector', { v0: bad });
   const hasContent = (doc.materials ?? []).some((m) => m && (Object.keys(m.textures ?? {}).length || m.layers?.length || Object.values(m.params ?? {}).some((v) => v != null)));
   // Part layout, attachments and sounds are changes too, not only textures.
   if (!hasContent && !(doc.attachments ?? []).length && !(doc.parts ?? []).length && !(doc.sounds ?? []).length) return t('actions.k3');

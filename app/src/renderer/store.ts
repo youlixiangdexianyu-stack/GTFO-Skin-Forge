@@ -97,6 +97,8 @@ export function editorOf(doc: SkinDocument): EditorState {
 function normalize(doc: SkinDocument): SkinDocument {
   doc.materials ??= [];
   doc.attachments ??= [];
+  // Effect colours are RGB; skins saved before this fix carry an alpha the pack check refuses.
+  for (const a of doc.attachments) for (const e of a?.effects ?? []) if (e?.color && e.color.length > 3) e.color = e.color.slice(0, 3);
   doc.parts ??= [];
   doc.sounds ??= [];
   doc.target ??= {};
@@ -105,6 +107,9 @@ function normalize(doc: SkinDocument): SkinDocument {
   doc.editor = { ...editorOf(doc) } as unknown as SkinDocument['editor'];
   return doc;
 }
+
+const allFinite = (x: unknown): boolean =>
+  typeof x === 'number' ? Number.isFinite(x) : x !== null && typeof x === 'object' ? Object.values(x).every(allFinite) : true;
 
 /** Layout entry of a part root (`path` null) or of the child at `path`. */
 export function partTransformOf(doc: SkinDocument, part: string, path?: string | null): PartTransform | undefined {
@@ -445,6 +450,13 @@ export const useStore = create<State>((set, get) => ({
     const s = get();
     const [doc, redo, undo] = produceWithPatches(s.doc, (d) => void fn(d as SkinDocument));
     if (!redo.length) return;
+    // JSON has no NaN/Infinity: such a value would make the whole document fail to save and pack, so the edit is refused.
+    if (!allFinite(doc)) {
+      s.log(t('store.refusedEdit'));
+      s.toast('error', t('store.refusedEdit'));
+      window.forge.appLog('refused edit', `${JSON.stringify(redo)}\n${new Error().stack}`);
+      return;
+    }
     const now = Date.now();
     const last = s.undo.at(-1);
     // Same key merges: a gesture key (`gesture:<id>`) for its whole drag, other keys only within 0.8 s.

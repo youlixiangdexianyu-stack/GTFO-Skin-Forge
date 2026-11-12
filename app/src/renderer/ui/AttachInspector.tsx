@@ -85,7 +85,7 @@ function Effects({ a }: { a: Attachment }) {
           size="compact-xs"
           variant="subtle"
           leftSection={<IconPlus size={12} />}
-          onClick={() => updateAttachment(a.id!, (x) => void (x.effects = [...(x.effects ?? []), { trigger: 'kill', action: 'flash', color: [1, 0.3, 0.2, 1], intensity: 4, seconds: 0.4 }]))}
+          onClick={() => updateAttachment(a.id!, (x) => void (x.effects = [...(x.effects ?? []), { trigger: 'kill', action: 'flash', color: [1, 0.3, 0.2], intensity: 4, seconds: 0.4 }]))}
         >
           {t('attachInspector.k12')}
         </Button>
@@ -103,7 +103,7 @@ function Effects({ a }: { a: Attachment }) {
           {e.action !== 'show' && (
             <Group gap="xs" mt={6} wrap="nowrap">
               <div style={{ flex: 1 }}>
-                <Color value={e.color ?? [1, 1, 1, 1]} onChange={(c) => up(i, (x) => void (x.color = [c[0], c[1], c[2], 1]), 'c')} />
+                <Color value={[...(e.color ?? [1, 1, 1]).slice(0, 3), 1]} onChange={(c) => up(i, (x) => void (x.color = [c[0], c[1], c[2]]), 'c')} />
               </div>
               <Num w={92} value={e.intensity ?? 4} step={0.5} decimalScale={1} min={0} leftSection={t('attachInspector.k18')} leftSectionWidth={38} onChange={(v) => up(i, (x) => void (x.intensity = v), 'k')} />
             </Group>

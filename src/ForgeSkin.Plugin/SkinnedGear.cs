@@ -380,7 +380,9 @@ sealed class SkinnedGear
         if (overrides.Count == 0) return;
         var looks = new Dictionary<MaterialOverride, Material>();
         var seen = new SortedSet<string>(StringComparer.Ordinal);
-        foreach (var renderer in _root.GetComponentsInChildren<Renderer>(true))
+        // The whole item, not only the part holder: the item's own setup may move parts (light, sight, rounds) out of it.
+        var top = _item != null ? _item.transform : _root.transform;
+        foreach (var renderer in top.GetComponentsInChildren<Renderer>(true))
         {
             var original = renderer.sharedMaterials;
             // A catalog name may be the material's or the mesh's (the old tool's parts used both).
@@ -395,7 +397,12 @@ sealed class SkinnedGear
                 seen.Add($"{renderer.name}: mesh '{mesh}' material '{name}'");
                 if (!overrides.TryGetValue(name, out var o)) o = byMesh;
                 if (o.Override == null) continue;
-                if (!looks.TryGetValue(o.Override, out var look)) looks[o.Override] = look = Look(o.Skin, o.Override, source);
+                if (!looks.TryGetValue(o.Override, out var look))
+                {
+                    looks[o.Override] = look = Look(o.Skin, o.Override, source);
+                    if (!renderer.transform.IsChildOf(_root.transform))
+                        ForgeSkinPlugin.Info($"{_label}: material {name} found outside the part holder at {PathOf(renderer.transform)}");
+                }
                 mine ??= renderer.sharedMaterials;
                 mine[i] = look;
             }
@@ -404,8 +411,34 @@ sealed class SkinnedGear
             _swaps.Add((renderer, original, mine));
         }
         foreach (var (name, o) in overrides)
-            if (!looks.ContainsKey(o.Override))
-                ForgeSkinPlugin.Fail($"{_label}: material {name} matched no renderer; this gear has {seen.Count} slots: {string.Join("; ", seen)}");
+        {
+            // A global skin (mags, sights, lights, ammo) covers every gear; only the ones that use its materials take it.
+            if (looks.ContainsKey(o.Override) || o.Skin.Doc.Target.Weapon == null) continue;
+            // Failure path only: where else the material is drawn right now, so the log says whether the part lives
+            // outside this item or is not spawned yet (an ejected casing exists only after a shot).
+            var elsewhere = new List<string>();
+            foreach (var r in Object.FindObjectsOfType<Renderer>())
+            {
+                foreach (var m in r.sharedMaterials)
+                    if (m != null && BaseName(m.name) == name) { elsewhere.Add(PathOf(r.transform)); break; }
+                if (elsewhere.Count == 3) break;
+            }
+            if (elsewhere.Count == 0 && o.Override.Part == "ammo_shell")
+            {
+                ForgeSkinPlugin.Info($"{_label}: material {name} is on the ejected casing, which the game spawns only when firing; not skinned");
+                continue;
+            }
+            ForgeSkinPlugin.Fail($"{_label}: material {name} matched no renderer; part {o.Override.Part ?? "-"} " +
+                $"{(o.Override.Part != null && PartObject(o.Override.Part) is { } part ? $"at {PathOf(part.transform)}" : "not found")}; " +
+                $"drawn elsewhere: {(elsewhere.Count == 0 ? "nowhere" : string.Join("; ", elsewhere))}; this gear has {seen.Count} slots: {string.Join("; ", seen)}");
+        }
+    }
+
+    static string PathOf(Transform t)
+    {
+        var path = t.name;
+        for (var p = t.parent; p != null; p = p.parent) path = p.name + "/" + path;
+        return path;
     }
 
     static Mesh? MeshOf(Renderer renderer) =>

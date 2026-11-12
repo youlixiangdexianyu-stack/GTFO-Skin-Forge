@@ -13,8 +13,14 @@ public static class PreviewCache
 
     public static void Ready(GameAssets g, List<CatalogItem> items)
     {
+        // Other builds of the game are gone for good; a cache of another format version may belong to another copy of the
+        // app (an older install next to a newer checkout) and goes only once nothing has written it for a month.
         foreach (var dir in Directory.EnumerateDirectories(Path.GetDirectoryName(g.Cache)!).Where(d => d != g.Cache))
-            try { Directory.Delete(dir, true); }
+            try
+            {
+                if (dir.EndsWith(GameAssets.CacheSuffix, StringComparison.Ordinal) || DateTime.UtcNow - Directory.GetLastWriteTimeUtc(dir) > TimeSpan.FromDays(30))
+                    Directory.Delete(dir, true);
+            }
             catch (IOException e) { Log.Write($"cache: could not delete {dir}: {e.Message}"); }
 
         int generation = Interlocked.Increment(ref _generation);

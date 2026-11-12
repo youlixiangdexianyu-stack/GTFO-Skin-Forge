@@ -17,6 +17,10 @@ public static class Paths
 {
     public static string Data { get; set; } = Path.Combine(AppContext.BaseDirectory, "GTFO_UserData");
     public static string Cache => Path.Combine(Data, "cache");
+    // What is read out of the game (catalog, weapon previews) depends only on the game build, so every copy of the app on
+    // this machine (installed, reinstalled, run from the repository) shares it instead of reading the game again.
+    public static string GameCache { get; set; } =
+        Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "ForgeSkinCache", "game");
     public static string Logs => Path.Combine(Data, "logs");
     public static string Projects => Path.Combine(Data, "projects");
     public static string Settings => Path.Combine(Data, "settings.json");

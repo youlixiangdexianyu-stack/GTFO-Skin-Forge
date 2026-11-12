@@ -14,9 +14,10 @@ import { AttachInspector } from './ui/AttachInspector';
 import { RailHost } from './ui/InspectorTabs';
 import { LayerInspector, layerFromFiles } from './ui/DynamicInspector';
 import { CheckDialog } from './ui/CheckDialog';
+import { StickerDialog } from './ui/StickerDialog';
 import { Welcome } from './ui/Welcome';
 import { ExportModDialog } from './ui/ExportModDialog';
-import { LeftRail } from './ui/LeftRail';
+import { LeftPanel } from './ui/LeftRail';
 import { LiveryInspector } from './ui/LiveryPanel';
 import { nativeFiles, SkinInspector, SoundInspector } from './ui/SkinInspector';
 import { Stage } from './ui/Stage';
@@ -249,6 +250,7 @@ export function App() {
   const [log, setLog] = useState(false);
   const layout = useDefaultLayout({ id: 'sf.layout', storage: localStorage });
   const [rail, setRail] = useState<HTMLElement | null>(null);
+  const [leftRail, setLeftRail] = useState<HTMLElement | null>(null);
   const developer = useStore((s) => s.prefs.developer);
   useShortcuts();
   useEffect(() => void useStore.getState().init(), []);
@@ -261,9 +263,17 @@ export function App() {
       <TopBar />
       <PanelGroup className="panes" orientation="horizontal" {...layout}>
         <Panel id="left" defaultSize={300} minSize={240} maxSize={460}>
-          <LeftRail />
+          <div className="inspector-pane">
+            <nav className="insp-rail left" ref={setLeftRail} />
+            <div className="left-body">
+              <RailHost.Provider value={leftRail}>
+                <LeftPanel />
+              </RailHost.Provider>
+            </div>
+          </div>
           <ExportModDialog />
           <CheckDialog />
+          <StickerDialog />
           <Welcome />
         </Panel>
         <Separator className="sep-v" />

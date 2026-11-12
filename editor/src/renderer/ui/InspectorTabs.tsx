@@ -28,7 +28,8 @@ const read = (id: string) => {
   }
 };
 
-export function InspectorTabs({ id, tabs }: { id: string; tabs: InspectorTab[] }) {
+/** `side`: which edge of the window the bar is on (its tooltips open inwards). */
+export function InspectorTabs({ id, tabs, side = 'right' }: { id: string; tabs: InspectorTab[]; side?: 'left' | 'right' }) {
   const host = useContext(RailHost);
   const [chosen, setChosen] = useState(() => read(id));
   const active = tabs.find((x) => x.id === chosen) ?? tabs[0];
@@ -45,7 +46,7 @@ export function InspectorTabs({ id, tabs }: { id: string; tabs: InspectorTab[] }
       {host &&
         createPortal(
           tabs.map((x) => (
-            <Tooltip key={x.id} label={x.label} position="left" withArrow>
+            <Tooltip key={x.id} label={x.label} position={side === 'right' ? 'left' : 'right'} withArrow>
               <UnstyledButton
                 className="rail-tab"
                 aria-label={x.label}

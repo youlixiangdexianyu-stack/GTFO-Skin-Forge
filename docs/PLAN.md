@@ -470,22 +470,27 @@ Order of work; each lands on its own, with PLAN and the editor docs updated as i
    weight, scratch amount); where it shows, the layers below it are worn through to the game's own texture, tinted towards
    bare metal (colour, metallic, smoothness). Optional growth with kills: `killsToFull` > 0 bakes four stages (amount × 0,
    ⅓, ⅔, 1) into `MaterialOverride.Wear = [{kills, textures}]` in the pack; the plugin counts the local player's kills
-   with each skinned gear (persisted in `BepInEx/ForgeSkin/wear.json` by skin id and gear key) and, on equip and on level
-   start, puts the stage whose kill count was reached. The Skins format gets the stage the editor shows.
+   with each skinned gear (persisted in `BepInEx/ForgeSkin/wear.json` by skin id and gear key, saved a few seconds after
+   a kill and when a level starts generating); on equip, and at the kill that reaches the next stage, every live copy of
+   that skin and gear (first and third person) shows the stage reached. The Skins format gets the stage the editor shows.
 6. **Colour variants.** A skin has named colour variants: each sets the colours of chosen livery layers (fill, brush,
-   decal tint, pattern colours, wear metal). The skin overview lists them; the selected variant is what the 3D view shows
-   and what colour edits write. Apply builds the selected variant; export, install-all and the Skins format write one
+   decal tint, pattern colours, wear metal). They are editor-only (`SkinDocument.Variants`, dropped from packs). The skin
+   overview lists them; the selected variant (`editor.variant`) is what the 3D view shows and what colour edits write
+   (the layer keeps its own colours). Apply builds the selected variant; export, install-all and the Skins format write one
    skin per variant (`<id>~<variant id>`, named `<skin> · <variant>`), so the in-game picker lists them unchanged.
    Players choosing their own colours in game (author marks colours as player-editable, the picker gets colour controls)
    waits for the ForgeCore merge (§6 item 3), since it needs in-game UI.
-7. **Charms** (attachment `charm`). A model (glb or one of the bundled shapes) hung from a pivot on a part by a short
-   chain length; it swings like a damped pendulum from the gear's own motion (plugin: per frame, from the pivot's world
-   acceleration and rotation; editor: the same model driven by an idle sway and by dragging the gun in the 3D view).
-   Settings: length, swing limit, stiffness, damping.
-8. **Sticker library.** Bundled vector stickers (hazard signs, numbers and letters, squad and unit insignia, arrows and
-   chevrons, hazard stripes, barcodes, skulls, crosshairs, GTFO-style warning labels) in a grid in the decal picker; a
-   chosen sticker is rasterised to `<dataDir>/stickers/<name>-<size>.png` and placed as a decal (tint and every decal
-   setting apply).
-9. **Symmetric painting and island selection.** Brush and mask strokes can mirror across the gear's centre plane
-   (the 3D view finds the surface under the mirrored point). An island tool fills or masks a whole UV island with one
-   click (`LiveryLayer.Fills` / `MaskFills`: triangles in UV space), so a part's face can be painted exactly.
+7. **Charms** (`Attachment.Swing {Looseness}`). Any attachment can hang as a charm from its origin, its -Y the rest
+   direction. The plugin swings it as a damped pendulum (Verlet tip 5 cm below the origin, gravity, a pull back to the
+   rest pose and kept velocity both set by looseness) from the gear's own motion each frame. The editor shows it at rest;
+   a swinging preview in the 3D view is not built.
+8. **Sticker library.** Bundled white vector stickers (`stickers.ts`: skull, biohazard, radiation, warning, crosshair,
+   target, stars, burst, bolt, flame, heart, crown, eye, wings, chevrons, arrow, hazard stripes, hexagon, diamond, cross,
+   tally marks, barcode, moon, sun, paw, ring, dots) in a grid in the decal image picker, next to picking an image file; a
+   chosen sticker is rasterised to `<dataDir>/stickers/<name>.png` (512 px) and used as the decal image, so the tint
+   colours it and every decal setting applies.
+9. **Symmetric painting and island selection.** With 左右对称 on, brush, mask and fill also paint the mirror image
+   across the gear's centre plane (root X = 0; a short ray along the mirrored normal finds the selected material's
+   surface there). The brush's fill shape fills or masks a whole UV island with one click (`LiveryLayer.Fills` /
+   `MaskFills`: u, v points; the island under each is found from the material's triangles, vertices joined where position
+   and UV match, and drawn by the UV renderer), so a part's piece can be painted exactly.

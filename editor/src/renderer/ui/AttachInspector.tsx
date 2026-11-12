@@ -182,6 +182,22 @@ function AttachmentPanel({ a }: { a: Attachment }) {
           </Field>
         )}
       </div>
+      <div className="section">
+        <h3>
+          <span>{t('swing.title')}</span>
+          <Info label={t('swing.info')} />
+          <span className="grow" />
+          <Switch checked={!!a.swing} onChange={(e) => {
+            const on = e.currentTarget.checked;
+            up((x) => void (x.swing = on ? { looseness: 0.5 } : null));
+          }} />
+        </h3>
+        {a.swing && (
+          <Field label={t('swing.looseness')}>
+            <Slider value={a.swing.looseness ?? 0.5} min={0} max={1} onChange={(v) => up((x) => void (x.swing && (x.swing.looseness = v)), 'looseness')} />
+          </Field>
+        )}
+      </div>
       {s && (
         <div className="section">
           <h3>{t('attachInspector.k34')}</h3>

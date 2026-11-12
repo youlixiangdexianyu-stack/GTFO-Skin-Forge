@@ -25,9 +25,22 @@ public sealed class SkinDocument
     public List<PartTransform> Parts { get; set; } = new();
     public List<SkinSound> Sounds { get; set; } = new();
 
+    // Colour variants (editor only): each gives chosen livery layers other colours. The editor builds one skin per
+    // variant ("<id>~<variant id>", named "<name> · <variant name>"), so a pack never carries them.
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public List<ColorVariant>? Variants { get; set; }
+
     // Editor-only state (camera, selection, light settings). Never read by the plugin; dropped when packing.
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public Dictionary<string, object>? Editor { get; set; }
+}
+
+public sealed class ColorVariant
+{
+    public string Id { get; set; } = "";
+    public string Name { get; set; } = "";
+    // Livery layer id -> its colours in this variant: [colour] for fill, brush, decal tint and wear metal; a pattern's colours.
+    public Dictionary<string, List<float[]>> Colors { get; set; } = new();
 }
 
 public sealed class SkinTarget
@@ -139,6 +152,12 @@ public sealed class LiveryLayer
     // triples (UV 0..1, top-left origin; width in UV units).
     public List<float[]> Strokes { get; set; } = new();
     public List<float[]> Mask { get; set; } = new();
+    // Island fills: each a u, v point; the whole UV island of the material under it is painted (Fills, brush layers) or
+    // hidden (MaskFills, any layer).
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public List<float[]>? Fills { get; set; }
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public List<float[]>? MaskFills { get; set; }
 
     // Pattern: which, its colours (one to four RGBA), size of its features in metres, rotation (Euler degrees) and seed.
     public Pattern? Pattern { get; set; }
@@ -263,6 +282,12 @@ public sealed class Attachment
     public List<AttachmentEffect> Effects { get; set; } = new();
     // Set: the model and screen are drawn as a glowing, flickering hologram in their own colours.
     public Hologram? Hologram { get; set; }
+    // Set: a charm hanging from its origin, swinging as the gear moves (its -Y is the rest direction).
+    public Swing? Swing { get; set; }
+}
+public sealed class Swing
+{
+    public float Looseness { get; set; } = 0.5f; // 0: stiff, barely moves; 1: loose, swings long
 }
 
 public sealed class Hologram

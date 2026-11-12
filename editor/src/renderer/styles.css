@@ -420,17 +420,21 @@ body {
   text-shadow: 0 1px 3px rgba(0, 0, 0, 0.8);
 }
 .skin-strip {
-  display: flex;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+  align-content: start;
   gap: 8px;
-  max-width: 100%;
-  overflow-x: auto;
-  padding-bottom: 4px;
+  padding: 0 12px 12px;
+}
+.skin-strip .parts-head {
+  grid-column: 1 / -1;
+  padding-left: 0;
+  padding-right: 0;
 }
 .skin-card {
   position: relative;
   flex: none;
   display: grid;
-  width: 132px;
   border: 1px solid var(--line);
   border-radius: 8px;
   background: rgba(20, 22, 25, 0.82);
@@ -624,6 +628,20 @@ body {
 }
 .insp-rail:empty {
   display: none;
+}
+.insp-rail.left {
+  border-left: 0;
+  border-right: 1px solid var(--line-soft);
+}
+.left-body {
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+  overflow-y: auto;
+  background: var(--panel);
+}
+.left-body > div {
+  height: 100%;
 }
 .rail-tab {
   position: relative;
@@ -954,6 +972,25 @@ body {
 .finish:hover {
   border-color: var(--line);
 }
+/* Colour variants: one chip per variant. */
+.variant-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  align-items: center;
+}
+.variant {
+  padding: 3px 9px;
+  border: 1px solid var(--line-soft);
+  border-radius: var(--mantine-radius-sm);
+  background: var(--ground);
+  color: var(--dust);
+  font-size: 12px;
+}
+.variant[aria-selected='true'] {
+  border-color: var(--paint);
+  color: var(--bone);
+}
 /* Pattern presets: four colour stripes per preset. */
 .presets {
   display: grid;
@@ -994,4 +1031,24 @@ body {
   border: 1px solid var(--line);
   border-radius: 4px;
   background: #111316;
+}
+
+.sticker-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(64px, 1fr));
+  gap: 6px;
+}
+.sticker {
+  aspect-ratio: 1;
+  padding: 8px;
+  border-radius: 6px;
+  background: #2a2d31;
+}
+.sticker:hover {
+  background: #3a3e44;
+}
+.sticker img {
+  width: 100%;
+  height: 100%;
+  display: block;
 }

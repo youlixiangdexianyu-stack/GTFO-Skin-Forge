@@ -227,6 +227,8 @@ interface State {
   exportModOpen: boolean;
   /** The 导出前体检 dialog is open. */
   checkOpen: boolean;
+  /** The sticker / decal image picker is open: it answers here (stickers.pickDecalImage). */
+  stickerPick: ((file: string | null) => void) | null;
   /** The current item's skins (each its own autosaved project), newest first. */
   skins: ProjectEntry[];
   /** Skins installed in the chosen profile. */
@@ -332,6 +334,7 @@ export const useStore = create<State>((set, get) => ({
   pluginPending: null,
   exportModOpen: false,
   checkOpen: false,
+  stickerPick: null,
   skins: [],
   installed: [],
   logs: [],

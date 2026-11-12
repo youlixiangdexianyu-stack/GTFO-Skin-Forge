@@ -178,6 +178,8 @@ public sealed class SkinPack : IDisposable
             }
             if (a.Hologram != null && !Fraction(a.Hologram.Flicker))
                 throw new SkinFormatException("bad-vector", $"{a.Id}: hologram flicker 0 to 1");
+            if (a.Swing != null && !Fraction(a.Swing.Looseness))
+                throw new SkinFormatException("bad-vector", $"{a.Id}: swing looseness 0 to 1");
             if (a.Material != null)
             {
                 foreach (var t in a.Material.Textures.Values) File(t, a.Id, true);

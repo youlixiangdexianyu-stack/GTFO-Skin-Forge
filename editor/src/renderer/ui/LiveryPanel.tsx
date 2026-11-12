@@ -6,6 +6,7 @@ import { useEffect, useState, type ComponentType } from 'react';
 import { sourceFrames, type SourceFrames } from '../frames';
 import { addDecal, addLivery, BLENDS, FINISH_IDS, FINISHES, isGifDecal, layersOf, moveLivery, PATTERN_PRESETS, removeLivery, setFinish, updateLivery } from '../livery';
 import { PATTERNS } from '../viewport/uvPrograms';
+import { pickDecalImage } from '../stickers';
 import { Playback } from './DynamicInspector';
 import { baseName, fileUrl, type BlendMode, type CatalogPart, type LiveryKind, type LiveryLayer } from '../protocol';
 import { materialOf, useStore } from '../store';
@@ -313,7 +314,7 @@ export function LiveryInspector() {
                 {layer.image ? baseName(layer.image) : ''}
               </Text>
               <Button variant="default" size="xs" leftSection={<IconPhoto size={13} />} onClick={async () => {
-                const [f] = await window.forge.openDialog('files', [{ name: t('livery.decal'), extensions: ['png', 'jpg', 'jpeg', 'webp', 'bmp', 'gif'] }]);
+                const f = await pickDecalImage();
                 if (f) up((l) => void (l.image = f));
               }}>
                 {t('livery.pickImage')}
@@ -390,6 +391,7 @@ const SHAPES: { value: BrushShape; icon: ComponentType<{ size?: number }> }[] = 
   { value: 'free', icon: IconScribble },
   { value: 'line', icon: IconLine },
   { value: 'circle', icon: IconCircle },
+  { value: 'fill', icon: IconBucketDroplet },
 ];
 
 /** What dragging in the 3D view does for the selected paint layer, and the brush settings, over the view. */
@@ -429,6 +431,11 @@ export function LiveryBar() {
             <MSlider w={110} size="sm" min={0.5} max={30} step={0.5} value={brush.width * 1000} label={(v) => `${v} mm`} onChange={(v) => useBrush.setState({ width: v / 1000 })} />
           </Group>
         </>
+      )}
+      {painting && (
+        <Tooltip label={t('livery.mirrorInfo')}>
+          <Switch size="xs" label={t('livery.mirrorPaint')} checked={brush.mirror} onChange={(e) => useBrush.setState({ mirror: e.currentTarget.checked })} />
+        </Tooltip>
       )}
       <Switch size="xs" label={t('livery.paintMask')} checked={brush.mask} onChange={(e) => useBrush.setState({ mask: e.currentTarget.checked })} />
     </Group>

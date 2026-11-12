@@ -1,4 +1,4 @@
-// The current item's skins as thumbnail cards under the item's name: switch, make, copy, rename, delete, and pick the
+// The current item's skins as thumbnail cards in the left panel's skins tab: switch, make, copy, rename, delete, and pick the
 // one the game uses. Each card shows the weapon wearing that skin.
 import { ActionIcon, Button, Group, Menu, Modal, Text, TextInput, Tooltip, UnstyledButton } from '@mantine/core';
 import { IconCopy, IconDeviceFloppy, IconDots, IconEraser, IconFileImport, IconFolderOpen, IconHistory, IconPencil, IconPlus, IconTrash } from '@tabler/icons-react';
@@ -121,6 +121,9 @@ export function SkinStrip() {
   const { newSkin, deleteSkin } = useStore.getState();
   return (
     <div className="skin-strip">
+      <div className="parts-head">
+        <span>{t('skins.title')} · {skins.length}</span>
+      </div>
       {skins.map((k) => (
         <SkinCard key={k.id} k={k} onDelete={setDeleting} onSnapshots={() => setSnapshots(true)} />
       ))}

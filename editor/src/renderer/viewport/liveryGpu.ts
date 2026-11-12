@@ -256,9 +256,91 @@ function uvPass(material: string, shader: ShaderMaterial, w: number, h: number):
   return c;
 }
 
+/** Each triangle's UV island in `g` (vertices joined where position and UV match), cached on the geometry. */
+function islandsOf(g: BufferGeometry): Int32Array {
+  const cached = g.userData.sfIslands as Int32Array | undefined;
+  if (cached) return cached;
+  const pos = g.getAttribute('position');
+  const uv = g.getAttribute('uv');
+  const index = g.index;
+  const id = new Int32Array(pos.count);
+  const keys = new Map<string, number>();
+  const r = (x: number) => Math.round(x * 1e4);
+  for (let i = 0; i < pos.count; i++) {
+    const k = `${r(pos.getX(i))},${r(pos.getY(i))},${r(pos.getZ(i))},${r(uv.getX(i))},${r(uv.getY(i))}`;
+    let v = keys.get(k);
+    if (v === undefined) keys.set(k, (v = keys.size));
+    id[i] = v;
+  }
+  const parent = Int32Array.from({ length: keys.size }, (_, i) => i);
+  const find = (x: number) => {
+    while (parent[x] !== x) x = parent[x] = parent[parent[x]];
+    return x;
+  };
+  const at = (i: number) => id[index ? index.getX(i) : i];
+  const tris = (index ? index.count : pos.count) / 3;
+  for (let t = 0; t < tris; t++) {
+    const a = find(at(t * 3));
+    parent[find(at(t * 3 + 1))] = a;
+    parent[find(at(t * 3 + 2))] = a;
+  }
+  const out = new Int32Array(tris);
+  for (let t = 0; t < tris; t++) out[t] = find(at(t * 3));
+  return (g.userData.sfIslands = out);
+}
+
+const fillOut = { canvas: document.createElement('canvas') };
+
+/** White where the UV islands of `material` under the `seeds` (u, v points) are, in a w x h canvas (reused next call). */
+function islandFill(material: string, seeds: number[][], w: number, h: number): HTMLCanvasElement {
+  const c = fillOut.canvas;
+  if (c.width !== w || c.height !== h) [c.width, c.height] = [w, h];
+  const ctx = c.getContext('2d')!;
+  ctx.clearRect(0, 0, w, h);
+  ctx.fillStyle = ctx.strokeStyle = '#fff';
+  ctx.lineWidth = 2; // over the seam between islands, as decals' gutter
+  ctx.lineJoin = 'round';
+  const inside = (u: number, v: number, a: number[]) => {
+    const d = (i: number, j: number) => (a[j] - a[i]) * (v - a[i + 1]) - (a[j + 1] - a[i + 1]) * (u - a[i]);
+    const [x, y, z] = [d(0, 2), d(2, 4), d(4, 0)];
+    return (x >= 0 && y >= 0 && z >= 0) || (x <= 0 && y <= 0 && z <= 0);
+  };
+  for (const m of meshesOf(material)) {
+    const g = m.geometry;
+    const uv = g.getAttribute('uv');
+    if (!uv) continue;
+    const islands = islandsOf(g);
+    const index = g.index;
+    const vertex = (i: number) => (index ? index.getX(i) : i);
+    // Triangles drawn with this material (all of them, or its groups when the mesh has several materials).
+    const list = (Array.isArray(m.material) ? m.material : [m.material]) as Material[];
+    const ranges = Array.isArray(m.material)
+      ? g.groups.filter((gr) => list[gr.materialIndex ?? 0]?.name === material).map((gr) => [gr.start / 3, Math.min(islands.length, (gr.start + gr.count) / 3)])
+      : [[0, islands.length]];
+    const tri = (t: number) => [0, 1, 2].flatMap((k) => [uv.getX(vertex(t * 3 + k)), uv.getY(vertex(t * 3 + k))]);
+    const picked = new Set<number>();
+    for (const [u, v] of seeds) for (const [a, b] of ranges) for (let t = a; t < b; t++) if (!picked.has(islands[t]) && inside(u, v, tri(t))) picked.add(islands[t]);
+    if (!picked.size) continue;
+    ctx.beginPath();
+    for (const [a, b] of ranges)
+      for (let t = a; t < b; t++) {
+        if (!picked.has(islands[t])) continue;
+        const p = tri(t);
+        ctx.moveTo(p[0] * w, p[1] * h);
+        ctx.lineTo(p[2] * w, p[3] * h);
+        ctx.lineTo(p[4] * w, p[5] * h);
+        ctx.closePath();
+      }
+    ctx.fill();
+    ctx.stroke();
+  }
+  return c;
+}
+
 /**
  * Draws one livery layer that needs the model, for the material of `part`, into a w x h canvas in UV space (top-left
- * origin): a decal's projected image, a pattern's colours (opaque where the material is) or wear's mask (in alpha). The
+ * origin): a decal's projected image, a pattern's colours (opaque where the material is), wear's mask (in alpha) or a brush
+ * layer's island fills (white). The
  * returned canvas is reused by the next call, so the caller draws it right away.
  */
 export function uvRenderer(material: string, part: string | null | undefined): UvRenderer {
@@ -267,6 +349,7 @@ export function uvRenderer(material: string, part: string | null | undefined): U
     if (!renderer || !root) throw Object.assign(new Error('the 3D view is not ready'), { code: 'no-livery-view' });
     root.updateMatrixWorld(true);
     const toRoot = root.matrixWorld.clone().invert();
+    if (layer.kind === 'brush') return islandFill(material, (layer.fills ?? []).filter((p): p is number[] => !!p), w, h);
     if (layer.kind === 'pattern') {
       const u = patternProgram.uniforms;
       u.toRoot.value = toRoot;

@@ -840,5 +840,22 @@
   "livery.preset.rust": "Rust",
   "livery.preset.hotRod": "Hot rod flames",
   "livery.preset.starfield": "Starfield",
-  "livery.preset.lava": "Lava crackle"
+  "livery.preset.lava": "Lava crackle",
+  "variants.title": "Colour variants",
+  "variants.info": "Several colourings of one skin. With one selected, livery colour edits change only it. Apply uses the selected one; an exported mod has each as its own skin (named “ · variant”).",
+  "variants.own": "Original colours",
+  "variants.add": "New variant",
+  "variants.newName": "Variant {{v0}}",
+  "variants.remove": "Delete this variant",
+  "variants.rename": "Variant name",
+  "swing.title": "Charm swing",
+  "swing.info": "Hang this attachment as a charm from its origin (the model's -Y points down at rest); in game it swings with the gear's moves, turns and gravity. It stays still in the editor; pose it hanging straight down.",
+  "swing.looseness": "Looseness",
+  "stickers.title": "Stickers",
+  "stickers.file": "Image file…",
+  "livery.shape.fill": "Fill a piece (click: the whole UV island is painted or masked)",
+  "livery.mirrorPaint": "Mirror",
+  "livery.mirrorInfo": "Also paints the mirror image on the gear's other side (across its centre plane); fills too",
+  "skins.title": "Skins",
+  "leftRail.parts": "Parts"
 }

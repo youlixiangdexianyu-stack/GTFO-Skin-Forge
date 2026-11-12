@@ -80,6 +80,8 @@ playSeconds?: number
 lowAmmoFraction?: number
 strokes?: Items[]
 mask?: Items[]
+fills?: (Items[] | null)
+maskFills?: (Items[] | null)
 pattern?: ("digital" | "woodland" | "tiger" | "splinter" | "flecktarn" | "multiTerrain" | "hydro" | "anodised" | "marble" | "damascus" | "honeycomb" | "hexGrid" | "contour" | "circuit" | "zebra" | "leopard" | "scales" | "stripes" | "plaid" | "dots" | "rust" | "flame" | "starfield" | "crackle" | null)
 colors?: (Items[] | null)
 scale?: number
@@ -162,6 +164,9 @@ seconds?: number
 hologram?: ({
 flicker?: number
 } | null)
+swing?: ({
+looseness?: number
+} | null)
 } | null)[]
 parts?: ({
 part?: string
@@ -180,6 +185,13 @@ file?: string
 volume?: number
 lowAmmoFraction?: number
 } | null)[]
+variants?: (({
+id?: string
+name?: string
+colors?: {
+[k: string]: Items[] | null
+}
+} | null)[] | null)
 editor?: ({
 
 } | null)

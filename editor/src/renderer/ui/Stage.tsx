@@ -22,7 +22,6 @@ import { triggersFor, type Trigger } from '../protocol';
 import { useItem, useStore } from '../store';
 import { simulate } from '../viewport/refs';
 import { LiveryBar } from './LiveryPanel';
-import { SkinStrip } from './SkinStrip';
 import { WeaponTitle } from './WeaponGallery';
 import { focusSelection, useModal, useViewStore, Viewport } from '../viewport/Viewport';
 import { t } from '../i18n';
@@ -271,7 +270,6 @@ export function Stage() {
       <Viewport />
       <div className="stage-head">
         <WeaponTitle />
-        <SkinStrip />
       </div>
       {loading && (
         <div className="stage-empty">

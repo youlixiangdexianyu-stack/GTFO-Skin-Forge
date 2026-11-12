@@ -14,6 +14,7 @@ import { baseName, CHANNELS, fileUrl, triggersFor, type Attachment, type Catalog
 import { editorOf, materialOf, pendingKey, useItem, useStore } from '../store';
 import { Color, Field, Slider } from './fields';
 import { SelectionLayout } from './SelectionLayout';
+import { Variants } from './Variants';
 import { localName, partLabel, t } from '../i18n';
 
 export const CHANNEL_LABEL: Record<TextureChannel, string> = {
@@ -489,6 +490,7 @@ function Overview() {
                   </div>
                 </div>
               )}
+              {liveries > 0 && <Variants />}
               <div className="section">
                 <h3>{t('skinInspector.addMore')}</h3>
                 <SimpleGrid cols={2} spacing={8}>

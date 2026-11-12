@@ -142,3 +142,44 @@ sealed class Show : ITriggered
         for (int i = 0; i < _renderers.Length; i++) _renderers[i].enabled = on;
     }
 }
+
+// A charm (Attachment.Swing): a damped pendulum hanging from the attachment's origin. Its tip lags behind the gear's moves
+// and falls toward gravity, pulled back to the rest pose; the attachment turns from its rest pose to point at the tip.
+sealed class Pendulum : ITriggered
+{
+    const float Length = 0.05f;
+    readonly Transform _t;
+    readonly Quaternion _rest; // local rotation
+    readonly float _stiffness, _keep;
+    Vector3 _tip, _last;
+    bool _started;
+
+    public Pendulum(Transform t, float looseness)
+    {
+        _t = t;
+        _rest = t.localRotation;
+        _stiffness = Mathf.Lerp(0.2f, 0.01f, looseness); // pull back to the rest pose per frame
+        _keep = Mathf.Lerp(0.85f, 0.985f, looseness); // velocity kept per frame
+    }
+
+    public void Start(float time) { }
+
+    public void Update(float time)
+    {
+        var parent = _t.parent;
+        if (parent == null) return;
+        var pivot = _t.position;
+        var restRotation = parent.rotation * _rest;
+        var restTip = pivot + restRotation * Vector3.down * Length;
+        if (!_started)
+        {
+            _tip = _last = restTip;
+            _started = true;
+        }
+        var dt = Mathf.Min(Time.deltaTime, 0.05f);
+        var next = _tip + (_tip - _last) * _keep + Physics.gravity * (dt * dt) + (restTip - _tip) * _stiffness;
+        _last = _tip;
+        _tip = pivot + (next - pivot).normalized * Length;
+        _t.rotation = Quaternion.FromToRotation(restRotation * Vector3.down, _tip - pivot) * restRotation;
+    }
+}

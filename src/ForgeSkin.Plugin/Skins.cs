@@ -33,6 +33,7 @@ sealed class Skin
             foreach (var m in skin.Doc.Materials)
             {
                 foreach (var (channel, path) in m.Textures) skin.Decode(pack, path, channel, true, true);
+                foreach (var stage in m.Wear ?? []) foreach (var (channel, path) in stage.Textures) skin.Decode(pack, path, channel, true, true);
                 foreach (var l in m.Layers) skin.Decode(pack, l.Atlas!.Path, l.Channel, false, false);
             }
             foreach (var a in skin.Doc.Attachments)

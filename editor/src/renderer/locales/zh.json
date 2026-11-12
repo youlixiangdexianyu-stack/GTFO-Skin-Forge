@@ -840,5 +840,22 @@
   "livery.preset.rust": "锈迹",
   "livery.preset.hotRod": "改装车火焰",
   "livery.preset.starfield": "星空",
-  "livery.preset.lava": "熔岩龟裂"
+  "livery.preset.lava": "熔岩龟裂",
+  "variants.title": "配色变体",
+  "variants.info": "同一个皮肤的几套配色。选中一套后，改涂装颜色只改这一套。应用到游戏用当前这套；导出模组时每套都是皮肤列表里单独的一个（名字带“ · 配色名”）。",
+  "variants.own": "原始配色",
+  "variants.add": "新建配色",
+  "variants.newName": "配色 {{v0}}",
+  "variants.remove": "删除这套配色",
+  "variants.rename": "配色名",
+  "swing.title": "挂件摆动",
+  "swing.info": "把这个附件当挂坠：从它的原点吊下来（模型的 -Y 是自然下垂的方向），在游戏里随枪的移动、转身和重力晃动。编辑器里不晃，摆放时让它竖直下垂。",
+  "swing.looseness": "松紧",
+  "stickers.title": "贴纸",
+  "stickers.file": "用图片文件…",
+  "livery.shape.fill": "填满一块（点一下，整块 UV 岛涂满或遮住）",
+  "livery.mirrorPaint": "左右对称",
+  "livery.mirrorInfo": "同时在枪的另一侧对称位置画（按枪的中心平面镜像），填满一块也一样",
+  "skins.title": "皮肤",
+  "leftRail.parts": "部件"
 }

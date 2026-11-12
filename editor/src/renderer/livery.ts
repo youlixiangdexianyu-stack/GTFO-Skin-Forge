@@ -7,6 +7,8 @@ import { baseTexturePath, isGif, loadImage, MAX_ATLAS, MAX_FRAMES, sourceFrames,
 import { dirName, type BlendMode, type DynamicLayer, type Finish, type LiveryKind, type LiveryLayer, type MaterialOverride, type MaterialParams, type Pattern, type SkinDocument, type WeaponPreview } from './protocol';
 import { ensureMaterial, materialOf, uid, useStore } from './store';
 import { t } from './i18n';
+import { editColors } from './variants';
+import { pickDecalImage } from './stickers';
 
 type FinishPattern = 'brushed' | 'carbon' | 'worn';
 /** Unity MetallicSmoothness of each finish (metallic in R, smoothness in A) and the pattern it adds. */
@@ -84,7 +86,8 @@ export function liveryParams(m: MaterialOverride | undefined): Partial<MaterialP
 
 /**
  * Renders a layer that needs the model in UV space (viewport/liveryGpu): a decal's image (transparent where it does not
- * land; `image` is its current frame), a pattern (opaque on the material) or a wear mask (alpha; `image` null for both).
+ * land; `image` is its current frame), a pattern (opaque on the material), a wear mask (alpha) or a brush layer's island
+ * fills (white; `image` null for the last three).
  */
 export type UvRenderer = (layer: LiveryLayer, image: CanvasImageSource | null, w: number, h: number) => CanvasImageSource;
 
@@ -268,7 +271,15 @@ export async function composeLivery(
     l2.clearRect(0, 0, w, h);
     l2.fillStyle = l2.strokeStyle = rgba(l.color);
     if (l.kind === 'fill') l2.fillRect(0, 0, w, h);
-    else if (l.kind === 'brush') drawStrokes(l2, l.strokes ?? [], w, h);
+    else if (l.kind === 'brush') {
+      if (l.fills?.length) {
+        l2.drawImage(uv(l, null, w, h), 0, 0);
+        l2.globalCompositeOperation = 'source-in';
+        l2.fillRect(0, 0, w, h);
+        l2.globalCompositeOperation = 'source-over';
+      }
+      drawStrokes(l2, l.strokes ?? [], w, h);
+    }
     else if (l.kind === 'wear') wearThrough(l, uv(l, null, w, h), base, l2, msCtx, w, h);
     else if (l.kind === 'pattern' || images[i]) {
       const src = uv(l, images[i], w, h);
@@ -276,10 +287,11 @@ export async function composeLivery(
       l2.globalCompositeOperation = 'destination-over';
       for (let r = 1; r <= GUTTER; r++) for (const [dx, dy] of [[r, 0], [-r, 0], [0, r], [0, -r]]) l2.drawImage(src, dx, dy);
     }
-    if (l.mask?.length) {
+    if (l.mask?.length || l.maskFills?.length) {
       l2.globalCompositeOperation = 'destination-out';
       l2.fillStyle = l2.strokeStyle = '#000';
-      drawStrokes(l2, l.mask, w, h);
+      drawStrokes(l2, l.mask ?? [], w, h);
+      if (l.maskFills?.length) l2.drawImage(uv({ ...l, id: `${l.id}:mask`, kind: 'brush', fills: l.maskFills }, null, w, h), 0, 0);
     }
     ctx.globalAlpha = Math.min(1, Math.max(0, l.opacity ?? 1));
     ctx.globalCompositeOperation = COMPOSITE[l.blend ?? 'normal'];
@@ -481,7 +493,7 @@ export function addLivery(material: string, part: string, kind: LiveryKind, imag
 }
 
 export async function addDecal(material: string, part: string) {
-  const [file] = await window.forge.openDialog('files', [{ name: t('livery.decal'), extensions: ['png', 'jpg', 'jpeg', 'webp', 'bmp', 'gif'] }]);
+  const file = await pickDecalImage();
   if (!file) return;
   const img = await loadImage(file).catch(() => null);
   if (!img) return useStore.getState().toast('error', t('livery.badImage'));
@@ -495,7 +507,7 @@ export function liveryLayer(doc: SkinDocument, material: string, id: string): Li
 export function updateLivery(material: string, id: string, fn: (l: LiveryLayer) => void, coalesceKey?: string) {
   useStore.getState().edit((d) => {
     const l = liveryLayer(d, material, id);
-    if (l) fn(l);
+    if (l) editColors(d, l, fn);
   }, coalesceKey && (coalesceKey.startsWith('gesture:') ? coalesceKey : `${id}-${coalesceKey}`));
 }
 

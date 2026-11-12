@@ -164,6 +164,7 @@ sealed class SkinnedGear
         }
         if (Pending.Count > 0 && now >= _nextPending) ResolvePending(now);
         Icons.Tick();
+        Wear.Save(now);
         PollWielded(time);
         PollPlayer();
         for (int i = Live.Count - 1; i >= 0; i--)
@@ -187,6 +188,7 @@ sealed class SkinnedGear
     {
         _levelStart = state == eGameStateName.InLevel ? Time.unscaledTime : -1;
         if (state != eGameStateName.Generating) return;
+        Wear.Save(Time.unscaledTime, true);
         _wielded = IntPtr.Zero;
         _inventory = null;
         _playerDamage = null;
@@ -360,7 +362,7 @@ sealed class SkinnedGear
 
     void Apply()
     {
-        var key = _holder != null ? SkinTarget.GearKey(GearId(_holder)) : SkinTarget.ItemKey(_itemId);
+        var key = _key = _holder != null ? SkinTarget.GearKey(GearId(_holder)) : SkinTarget.ItemKey(_itemId);
         var overrides = new Dictionary<string, (Skin Skin, MaterialOverride Override)>();
         foreach (var id in Skins.Globals)
             if (Skins.ById.TryGetValue(id, out var global))
@@ -470,6 +472,7 @@ sealed class SkinnedGear
         _swaps.Clear();
         _created.Clear();
         _looks.Clear();
+        _worn.Clear();
         _targets.Clear();
         _animated.Clear();
         foreach (var list in _on) list.Clear();
@@ -484,6 +487,9 @@ sealed class SkinnedGear
 
     // The skin's look per material override, kept until the revert (the casing pool copies them).
     readonly Dictionary<MaterialOverride, Material> _looks = new();
+    // Looks whose livery wears with kills: the counter key ("<skin id>|<gear key>") and the stage they show.
+    readonly List<(Skin Skin, MaterialOverride Override, Material Look, string Key, WearStage Shown)> _worn = new();
+    string _key = "";
 
     void ApplyMaterials(Dictionary<string, (Skin Skin, MaterialOverride Override)> overrides)
     {
@@ -583,7 +589,16 @@ sealed class SkinnedGear
             ForgeSkinPlugin.Info($"{_label}: material {source.name} ({BlendHS}) drawn with {template.shader.name} copied from {template.name}");
         }
         else look = Own(new Material(source) { name = name });
-        foreach (var (channel, path) in o.Textures) look.SetTexture(Property(channel), skin.Texture(path, Skin.Linear(channel)));
+        var textures = o.Textures;
+        if (o.Wear is { Count: > 0 })
+        {
+            var counter = $"{skin.Doc.Id}|{_key}";
+            var stage = Wear.Stage(o.Wear, Wear.Count(counter));
+            _worn.Add((skin, o, look, counter, stage));
+            textures = stage.Textures;
+            ForgeSkinPlugin.Info($"{_label}: {o.Material} wears with kills: {Wear.Count(counter)} kills, stage at {stage.Kills}");
+        }
+        foreach (var (channel, path) in textures) look.SetTexture(Property(channel), skin.Texture(path, Skin.Linear(channel)));
         if (o.Textures.ContainsKey(TextureChannel.Emissive) && o.Params.EmissiveEnabled != false) SetEmissive(look, true);
         Params(look, o.Params);
         // One line per layer: where it went (AddLayer) or why it was left out; one bad layer leaves the others drawn.
@@ -749,6 +764,7 @@ sealed class SkinnedGear
             glowing.AddRange(screen.Surfaces);
         }
         if (a.Hologram is { Flicker: > 0 } holo) _animated.Add(new Flicker(root.GetComponentsInChildren<Renderer>(true).ToArray(), holo.Flicker));
+        if (a.Swing != null) _animated.Add(new Pendulum(t, a.Swing.Looseness));
         // The game's hologram shader has no emission colour for Flash to drive.
         glowing.RemoveAll(m => !m.HasProperty(EmissiveColor));
         foreach (var e in a.Effects)
@@ -937,7 +953,11 @@ sealed class SkinnedGear
                 if (gear._itemPointer != item) continue;
                 // An item without holder gets Equip and Unequip from the wielded-item poll only.
                 if (gear._holder == null && trigger is Trigger.Equip or Trigger.Unequip) continue;
-                if (trigger == Trigger.Kill) gear.Kills++;
+                if (trigger == Trigger.Kill)
+                {
+                    gear.Kills++;
+                    if (gear._worn.Count > 0) Worn(gear);
+                }
                 if (trigger is Trigger.Kill or Trigger.Hit)
                 {
                     gear.Damage += damage;
@@ -958,6 +978,23 @@ sealed class SkinnedGear
             }
         }
         catch (Exception e) { ForgeSkinPlugin.Fail($"event {trigger}: {e.Message}"); }
+    }
+
+    // A kill with a gear whose livery wears with kills: counted once per skin on it, and every live copy of that skin and
+    // gear (first and third person) shows the stage now reached.
+    static void Worn(SkinnedGear killer)
+    {
+        foreach (var key in killer._worn.Select(w => w.Key).Distinct()) Wear.Add(key);
+        foreach (var gear in Live)
+            for (int i = 0; i < gear._worn.Count; i++)
+            {
+                var (skin, o, look, key, shown) = gear._worn[i];
+                var stage = Wear.Stage(o.Wear!, Wear.Count(key));
+                if (stage == shown) continue;
+                foreach (var (channel, path) in stage.Textures) look.SetTexture(Property(channel), skin.Texture(path, Skin.Linear(channel)));
+                gear._worn[i] = (skin, o, look, key, stage);
+                ForgeSkinPlugin.Info($"{gear._label}: {o.Material} worn to the stage at {stage.Kills} kills");
+            }
     }
 
     // Damage the local player dealt to a living enemy (the health it lost): a kill when it died, else a hit, for the item

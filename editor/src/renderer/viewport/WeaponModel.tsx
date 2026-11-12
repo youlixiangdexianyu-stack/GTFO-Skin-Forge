@@ -12,6 +12,7 @@ import { holdTextures, releaseTextures } from './textures';
 import { editableMaterials, paintMaterial, restoreUnityNames } from './weaponScene';
 import { displayOffset, hiddenMeshes, partOf, partTarget, pathChain, playTime, registerTransforms, quiet, SCENE_EVENT, viewRefs } from './refs';
 import { t } from '../i18n';
+import { withVariant } from '../variants';
 
 /** Live composite of a base texture plus its dynamic layers (the 3D decal preview). */
 class Compositor {
@@ -101,7 +102,9 @@ export function WeaponModel({ preview }: { preview: WeaponPreview }) {
     restoreUnityNames(gltf);
     return gltf.scene.clone(true);
   }, [gltf]);
-  const doc = useStore((s) => s.doc);
+  const edited = useStore((s) => s.doc);
+  // The selected colour variant's look (variants.ts).
+  const doc = useMemo(() => withVariant(edited), [edited]);
   const fileEpoch = useStore((s) => s.fileEpoch);
   const select = useStore((s) => s.select);
   const materials = useRef(new Map<string, MeshStandardMaterial>());

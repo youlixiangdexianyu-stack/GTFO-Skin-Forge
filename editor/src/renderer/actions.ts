@@ -6,6 +6,7 @@ import { call, type Profile, type SkinDocument } from './protocol';
 import { autosavePath, currentItem, editorOf, useStore, type Selection } from './store';
 import { localName, partLabel, t } from './i18n';
 import { confirmInGame } from './gameLog';
+import { shownDoc, variantDocs } from './variants';
 
 const st = () => useStore.getState();
 
@@ -15,11 +16,12 @@ export const MEMORY_HEAVY = 512 * 2 ** 20;
 export const mb = (bytes: number) => Math.round(bytes / 2 ** 20);
 
 /** Document as packed: parts switched off keep vanilla, so their overrides are left out. */
-function packDoc(doc = st().doc): SkinDocument {
+function packDoc(doc = shownDoc(st().doc)): SkinDocument {
   const item = currentItem();
   const ed = editorOf(doc);
   const off = new Set(item?.parts.filter((p) => ed.enabled[p.id] === false).flatMap((p) => p.materials) ?? []);
   const out = structuredClone(doc);
+  out.variants = null; // each variant is a build of its own (variants.ts)
   out.materials = (out.materials ?? []).filter((m) => m && !off.has(m.material ?? ''));
   // Hidden layers are not baked, so they stay out of the pack.
   for (const m of out.materials) if (m) m.layers = (m.layers ?? []).filter((l) => l && l.visible !== false);
@@ -266,7 +268,8 @@ async function apply(quiet: boolean): Promise<void> {
     const live = (await call('game.locate', {}).catch(() => null))?.running && now.development && !devRestart;
     // In a running game the plugin's log says whether the skin really loaded.
     const item = currentItem();
-    if (live) void confirmInGame(profile.path, since, s.doc.id ?? '', `${s.doc.name} → ${item ? localName(item) : ''}`, quiet);
+    const shown = shownDoc(s.doc);
+    if (live) void confirmInGame(profile.path, since, shown.id ?? '', `${shown.name} → ${item ? localName(item) : ''}`, quiet);
     else if (!quiet) s.toast('ok', await whenSeen(now, devRestart));
     s.log(t('actions.k14', { v0: pack, v1: profile.path }));
   } catch (e) {
@@ -444,7 +447,10 @@ export async function exportMod(info: ModInfo): Promise<boolean> {
   const done = await exclusive(async () => {
     try {
       const packs: string[] = [];
-      for (const { id, skin } of skins) packs.push(await build(`${s.dataDir}\\packs\\${id}.forgeskin`, skin));
+      // One skin per colour variant (variants.ts).
+      for (const { skin } of skins)
+        for (const doc of variantDocs(skin?.doc ?? s.doc))
+          packs.push(await build(`${s.dataDir}\\packs\\${doc.id}.forgeskin`, { doc, path: skin?.path ?? s.projectPath ?? autosavePath(s.weaponId!) }));
       useStore.setState({ busy: t('actions.k6') });
       const { mod, dropped } = await call('pack.exportMod', { packs, out, name: info.name, version: info.version, description: info.description, icon: info.icon, format: info.format });
       for (const d of dropped) s.log(`${t('exportMod.dropped')}: ${d}`);

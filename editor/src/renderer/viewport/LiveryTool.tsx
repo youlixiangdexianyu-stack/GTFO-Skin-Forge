@@ -29,11 +29,15 @@ import { materialOf, useStore } from '../store';
 import { threeToUnity } from '../space';
 import { decalMatrix, setLiveryRenderer } from './liveryGpu';
 import { newGesture } from './ModalTransform';
+import { activeVariant, layerIn } from '../variants';
 import { anchorObject, shown, viewRefs } from './refs';
 
-export type BrushShape = 'free' | 'line' | 'circle';
-/** Brush settings (not part of the skin): shape, width in metres, and whether the brush paints the layer's mask. */
-export const useBrush = create<{ shape: BrushShape; width: number; mask: boolean }>(() => ({ shape: 'free', width: 0.003, mask: false }));
+export type BrushShape = 'free' | 'line' | 'circle' | 'fill';
+/**
+ * Brush settings (not part of the skin): shape ('fill' paints the whole UV island clicked), width in metres, whether the
+ * brush paints the layer's mask, and whether it also paints the mirror image across the gear's centre plane.
+ */
+export const useBrush = create<{ shape: BrushShape; width: number; mask: boolean; mirror: boolean }>(() => ({ shape: 'free', width: 0.003, mask: false, mirror: false }));
 
 /** The selected livery layer and its material and part, when one is selected. */
 export function useLiverySelection() {
@@ -47,7 +51,10 @@ export function useLiverySelection() {
       };
     }),
   );
-  return s.layer ? { material: s.material, part: s.part, layer: s.layer } : null;
+  // Shown in the selected colour variant's colours (edits write there, livery.updateLivery).
+  const variant = useStore((s) => activeVariant(s.doc));
+  const layer = useMemo(() => s.layer && layerIn(s.layer, variant), [s.layer, variant]);
+  return layer ? { material: s.material, part: s.part, layer } : null;
 }
 
 interface Sample {
@@ -75,21 +82,27 @@ function density(h: Intersection): number {
   return area3 > 0 ? Math.sqrt(areaUv / area3) : 0;
 }
 
-/** Adds brush samples to `strokes`, UV polylines of (u, v, width), in place: they continue the last stroke when `prev` (its
- * last sample) is given; a miss or a jump across a UV seam starts a new one. Returns the last sample added, else null. */
-function addSamples(strokes: number[][], prev: Sample | null, samples: (Sample | null)[], width: number): Sample | null {
+/** An open stroke of a gesture: its last sample and where it is in the list. */
+interface Chain {
+  prev: Sample | null;
+  at: number;
+}
+
+/** Adds brush samples to `strokes`, UV polylines of (u, v, width), in place: they continue `chain`'s stroke when it has a
+ * last sample; a miss or a jump across a UV seam starts a new one. */
+function addSamples(strokes: number[][], chain: Chain, samples: (Sample | null)[], width: number) {
   for (const s of samples) {
     if (!s) {
-      prev = null;
+      chain.prev = null;
       continue;
     }
+    const prev = chain.prev;
     const seam = prev && s.uv.distanceTo(prev.uv) > s.point.distanceTo(prev.point) * Math.max(s.density, prev.density) * 3 + 0.01;
     const p = [s.uv.x, s.uv.y, width * s.density];
-    if (prev && !seam) strokes[strokes.length - 1].push(...p);
-    else strokes.push(p);
-    prev = s;
+    if (prev && !seam) strokes[chain.at].push(...p);
+    else strokes[(chain.at = strokes.length)] = p;
+    chain.prev = s;
   }
-  return prev;
 }
 
 export function LiveryTool() {
@@ -115,9 +128,11 @@ export function LiveryTool() {
   useEffect(() => {
     const el = gl.domElement;
     const ray = new Raycaster();
-    // A brush gesture appends to the layer's strokes (one undo step): `base` strokes were there before it, `prev` is the
-    // last sample of its open stroke.
-    let drag: { gesture: string; start: Vector2; last: Vector2; meshes: Object3D[]; mask: boolean; base: number; prev: Sample | null } | null = null;
+    // A brush gesture appends to the layer's strokes (one undo step): `base` strokes were there before it; its open stroke
+    // and, with the mirror on, the mirrored one.
+    let drag: { gesture: string; start: Vector2; last: Vector2; meshes: Object3D[]; mask: boolean; base: number; chains: [Chain, Chain] } | null = null;
+    const mirrorRay = new Raycaster();
+    mirrorRay.far = 0.02;
 
     const visibleMeshes = () => {
       const out: Object3D[] = [];
@@ -135,17 +150,32 @@ export function LiveryTool() {
       return h && h.uv && materialName(h) === s.material ? h : null;
     };
     const sample = (h: Intersection | null): Sample | null => (h ? { uv: h.uv!.clone(), point: h.point.clone(), density: density(h) } : null);
-    /** Samples every few pixels along a screen segment, so strokes follow the surface between pointer events. */
+    /** The surface of the selected material at `h`'s mirror image across the gear's centre plane (root X = 0). */
+    const mirrored = (h: Intersection, meshes: Object3D[]): Intersection | null => {
+      const root = viewRefs.root;
+      if (!root) return null;
+      const inv = root.matrixWorld.clone().invert();
+      const p = h.point.clone().applyMatrix4(inv);
+      p.x = -p.x;
+      p.applyMatrix4(root.matrixWorld);
+      const n = h.face!.normal.clone().transformDirection(h.object.matrixWorld).transformDirection(inv);
+      n.x = -n.x;
+      n.transformDirection(root.matrixWorld);
+      mirrorRay.set(p.clone().addScaledVector(n, 0.005), n.negate());
+      const m = mirrorRay.intersectObjects(meshes, false)[0];
+      return m && m.uv && materialName(m) === selRef.current?.material ? m : null;
+    };
+    /** Surface hits every few pixels along a screen segment, so strokes follow the surface between pointer events. */
     const along = (a: Vector2, b: Vector2, meshes: Object3D[], first = true) => {
       const n = Math.max(1, Math.ceil(a.distanceTo(b) / 4));
-      const out: (Sample | null)[] = [];
-      for (let i = first ? 0 : 1; i <= n; i++) out.push(sample(hit(a.clone().lerp(b, i / n), meshes)));
+      const out: (Intersection | null)[] = [];
+      for (let i = first ? 0 : 1; i <= n; i++) out.push(hit(a.clone().lerp(b, i / n), meshes));
       return out;
     };
     const circle = (c: Vector2, edge: Vector2, meshes: Object3D[]) => {
       const r = c.distanceTo(edge);
       const n = Math.max(16, Math.ceil((2 * Math.PI * r) / 4));
-      return Array.from({ length: n + 1 }, (_, i) => sample(hit(new Vector2(c.x + r * Math.cos((2 * Math.PI * i) / n), c.y + r * Math.sin((2 * Math.PI * i) / n)), meshes)));
+      return Array.from({ length: n + 1 }, (_, i) => hit(new Vector2(c.x + r * Math.cos((2 * Math.PI * i) / n), c.y + r * Math.sin((2 * Math.PI * i) / n)), meshes));
     };
     const painting = () => {
       const s = selRef.current;
@@ -175,19 +205,30 @@ export function LiveryTool() {
       }, drag!.gesture);
     };
 
-    /** Adds samples to the gesture's strokes; `restart` first drops what the gesture drew (a line or circle redrawn). */
-    const apply = (samples: (Sample | null)[], restart = false) => {
+    /** Adds the hits to the gesture's strokes (and their mirror images); `restart` first drops what the gesture drew (a
+     * line or circle redrawn). */
+    const apply = (hits: (Intersection | null)[], restart = false) => {
       const s = selRef.current!;
       const d = drag!;
-      const width = useBrush.getState().width;
+      const { width, mirror } = useBrush.getState();
+      const mirrorHits = mirror ? hits.map((h) => h && mirrored(h, d.meshes)) : [];
       updateLivery(s.material, s.layer.id!, (l) => {
         const list = (d.mask ? (l.mask ??= []) : (l.strokes ??= [])) as number[][];
         if (restart) {
           list.splice(d.base);
-          d.prev = null;
+          d.chains = [{ prev: null, at: 0 }, { prev: null, at: 0 }];
         }
-        d.prev = addSamples(list, d.prev, samples, width);
+        addSamples(list, d.chains[0], hits.map(sample), width);
+        if (mirror) addSamples(list, d.chains[1], mirrorHits.map(sample), width);
       }, d.gesture);
+    };
+    /** Fills the UV island under `h` (and its mirror image's) on the layer, or in its mask. */
+    const fill = (h: Intersection, meshes: Object3D[]) => {
+      const s = selRef.current!;
+      const { mask, mirror } = useBrush.getState();
+      const seeds = [h, mirror && mirrored(h, meshes)].filter((x): x is Intersection => !!x).map((x) => [x.uv!.x, x.uv!.y]);
+      updateLivery(s.material, s.layer.id!, (l) => void (mask ? (l.maskFills ??= []) : (l.fills ??= [])).push(...seeds));
+      viewRefs.quietUntil = performance.now() + 300;
     };
 
     const down = (e: PointerEvent) => {
@@ -198,11 +239,12 @@ export function LiveryTool() {
       const p = new Vector2(e.clientX, e.clientY);
       const h = hit(p, meshes);
       if (!h) return;
+      if (painting() && useBrush.getState().shape === 'fill') return fill(h, meshes);
       if (viewRefs.controls) viewRefs.controls.enabled = false;
       el.setPointerCapture(e.pointerId);
       const mask = useBrush.getState().mask;
-      drag = { gesture: newGesture(), start: p, last: p, meshes, mask, base: ((mask ? s.layer.mask : s.layer.strokes) ?? []).length, prev: null };
-      if (painting()) apply([sample(h)]);
+      drag = { gesture: newGesture(), start: p, last: p, meshes, mask, base: ((mask ? s.layer.mask : s.layer.strokes) ?? []).length, chains: [{ prev: null, at: 0 }, { prev: null, at: 0 }] };
+      if (painting()) apply([h]);
       else placeDecal(h);
     };
     const move = (e: PointerEvent) => {

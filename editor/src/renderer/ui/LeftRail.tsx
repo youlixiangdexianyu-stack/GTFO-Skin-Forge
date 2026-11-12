@@ -1,5 +1,5 @@
 import { ActionIcon, Badge, Checkbox, CloseButton, ScrollArea, TextInput, Tooltip } from '@mantine/core';
-import { IconBox, IconChevronDown, IconChevronRight, IconCopy, IconDeviceDesktop, IconEye, IconEyeOff, IconMovie, IconPencil, IconPlus, IconSearch, IconTrash } from '@tabler/icons-react';
+import { IconBox, IconChevronDown, IconChevronRight, IconCopy, IconDeviceDesktop, IconEye, IconEyeOff, IconListTree, IconMovie, IconPalette, IconPencil, IconPlus, IconSearch, IconTrash } from '@tabler/icons-react';
 import { useState } from 'react';
 import { type Attachment, CHANNELS, type DynamicLayer } from '../protocol';
 import { editorOf, materialOf, partTransformOf, pendingKey, useItem, useStore } from '../store';
@@ -10,6 +10,8 @@ import { FEATURE, Info } from './Features';
 import { hiddenMeshes, partTarget, useSceneVersion } from '../viewport/refs';
 import { focusSelection } from '../viewport/Viewport';
 import { partLabel, t } from '../i18n';
+import { InspectorTabs } from './InspectorTabs';
+import { SkinStrip } from './SkinStrip';
 
 function EyeToggle({ part, sub }: { part: string; sub?: string | null }) {
   const visible = useStore((s) => partTransformOf(s.doc, part, sub)?.visible !== false);
@@ -245,5 +247,20 @@ export function LeftRail() {
       />
       <PartTree query={query} />
     </aside>
+  );
+}
+
+/** The left panel: the parts and attachments tree, or the item's skins, picked from the icon bar on the window's edge. */
+export function LeftPanel() {
+  const skins = useStore((s) => s.skins.length);
+  return (
+    <InspectorTabs
+      id="left"
+      side="left"
+      tabs={[
+        { id: 'parts', label: t('leftRail.parts'), icon: IconListTree, content: <LeftRail /> },
+        { id: 'skins', label: t('skins.title'), icon: IconPalette, count: skins, content: <SkinStrip /> },
+      ]}
+    />
   );
 }

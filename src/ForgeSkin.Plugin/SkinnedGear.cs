@@ -35,7 +35,8 @@ sealed class SkinnedGear
     readonly IntPtr _holderPointer;
     readonly string _label;
     public string Label => _label;
-    readonly List<(Renderer Renderer, Il2CppReferenceArray<Material> Original, Il2CppReferenceArray<Material> Mine)> _swaps = new();
+    // Renderers showing our materials: the game's with their originals, and ours (attachments, screens) with no original.
+    readonly List<(Renderer Renderer, Il2CppReferenceArray<Material>? Original, Il2CppReferenceArray<Material> Mine)> _swaps = new();
     readonly List<Object> _created = new();
     readonly List<(Material Material, int Property, RenderTexture Target)> _targets = new();
     readonly List<ITriggered> _animated = new(); // layers and effects, ticked every frame
@@ -51,7 +52,6 @@ sealed class SkinnedGear
     readonly List<Transform> _faceCamera = new();
     readonly List<PartPose> _poses = new();
     readonly List<(GameObject Root, string Id, Material Template)> _roots = new(); // attachment roots
-    readonly List<(MeshRenderer Renderer, Material Material)> _own = new(); // renderers and materials this skin created
     bool _equipped; // first wield seen: diagnostics logged
     bool _flashlight, _aiming; // edges for FlashlightOn/Off and AimEnd
     int _lastClip = -1, _lastReserve = -1; // edges for Empty and AmmoPickup; -1 until the first poll
@@ -353,7 +353,7 @@ sealed class SkinnedGear
         _poses.Clear();
         foreach (var (renderer, original, mine) in _swaps)
         {
-            if (renderer == null) continue;
+            if (renderer == null || original == null) continue;
             var now = renderer.sharedMaterials;
             for (int i = 0; i < original.Length; i++)
                 if (mine[i] != original[i])
@@ -374,7 +374,6 @@ sealed class SkinnedGear
         _screens.Clear();
         _faceCamera.Clear();
         _roots.Clear();
-        _own.Clear();
     }
 
     void ApplyMaterials(Dictionary<string, (Skin Skin, MaterialOverride Override)> overrides)
@@ -713,7 +712,6 @@ sealed class SkinnedGear
                 foreach (var (root, _, _) in gear._roots)
                     if (root != null) PlayerBackpackManager.SetFPSRendering(root, enable);
                 gear.TakeBack(t, enable);
-                gear.TakeBackOwn(t, enable);
             }
         }
         catch (Exception e) { ForgeSkinPlugin.Fail($"first-person rendering sync: {e.Message}"); }
@@ -722,8 +720,9 @@ sealed class SkinnedGear
 
     // SetFPSRendering (GameAssembly 0x175B6F0) gives every enabled renderer under `go` a fresh copy of its slot-0
     // material (MaterialRef.MakeUnique 0x14FA420: Instantiate, "_unique_<n>", renderer.sharedMaterial = copy) and sets
-    // ENABLE_FPS_RENDERING on the copies only. On a renderer we skinned that copy is a frozen copy of our look, which no
-    // longer follows our animated layers and which nobody destroys. Ours goes back with the keyword the game just set.
+    // ENABLE_FPS_RENDERING on the copies only. On a renderer we skinned or created that copy is a frozen copy of our look,
+    // which no longer follows our animated layers or screen colours and which nobody destroys. Ours goes back with the
+    // keyword the game just set.
     void TakeBack(Transform go, bool enable)
     {
         foreach (var (renderer, original, mine) in _swaps)
@@ -733,32 +732,13 @@ sealed class SkinnedGear
             bool changed = false;
             for (int i = 0; i < mine.Length && i < now.Length; i++)
             {
-                if (mine[i] == original[i] || now[i] == mine[i]) continue;
+                if (original != null && mine[i] == original[i] || now[i] == mine[i]) continue;
                 ForgeSkinPlugin.Info($"{_label}: fps rendering {enable}: {renderer.name}[{i}] was given {Describe(now[i])}, ours {Describe(mine[i])} put back");
                 if (now[i] != null && now[i].name.StartsWith(mine[i].name, StringComparison.Ordinal)) Object.Destroy(now[i]);
                 if (enable) mine[i].EnableKeyword(FpsKeyword); else mine[i].DisableKeyword(FpsKeyword);
                 changed = true;
             }
             if (changed) renderer.sharedMaterials = mine;
-        }
-    }
-
-    // The game's SetFPSRendering gives every enabled renderer under the gear a fresh copy of its slot-0 material, ours
-    // included: without this the screen digits would keep drawing the frozen copy while the colour and emission updates
-    // go to the original nobody draws. Our own material goes back with the keyword the game just applied.
-    void TakeBackOwn(Transform go, bool enable)
-    {
-        foreach (var (renderer, material) in _own)
-        {
-            if (renderer == null || material == null || !renderer.transform.IsChildOf(go)) continue;
-            var now = renderer.sharedMaterial;
-            if (now != material)
-            {
-                ForgeSkinPlugin.Info($"{_label}: fps rendering {enable}: {renderer.name} was given {Describe(now)}, ours {Describe(material)} put back");
-                if (now != null && now.name.StartsWith(material.name, StringComparison.Ordinal)) Object.Destroy(now);
-                renderer.sharedMaterial = material;
-            }
-            if (enable) material.EnableKeyword(FpsKeyword); else material.DisableKeyword(FpsKeyword);
         }
     }
 
@@ -942,7 +922,7 @@ sealed class SkinnedGear
         var renderer = go.AddComponent<MeshRenderer>();
         renderer.sharedMaterial = material;
         renderer.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
-        _own.Add((renderer, material));
+        _swaps.Add((renderer, null, renderer.sharedMaterials));
         return filter;
     }
 

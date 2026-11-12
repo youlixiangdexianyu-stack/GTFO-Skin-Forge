@@ -236,7 +236,7 @@ sealed class AmmoScreen
     // and reaches the low colour at the threshold; off, it switches at the threshold.
     float Tint(int value, int max)
     {
-        if (max <= 0) return 1f;
+        if (max <= 0) return 0f; // limit unknown: keep the text colour, as the editor preview does
         float fraction = Math.Min(1f, (float)value / max);
         float from = _gradient ? Math.Max(_lowFraction, _gradientStart) : _lowFraction;
         return from <= _lowFraction

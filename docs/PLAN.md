@@ -44,6 +44,9 @@ tests/                      dotnet test project(s) + the app's own tests
 docs/PLAN.md                this file
 ```
 
+Packaging: `npm run make` in app/ builds the Squirrel installer; its prePackage hook publishes the backend
+self-contained single file and copies the prebuilt plugin (repo plugin/) to `resources/publish/plugin`.
+
 Dependency direction: Plugin → Format; Backend → Format; app → backend over stdio only. The Electron side never parses
 Unity files, packs or projects itself; everything about formats goes through the backend. TypeScript types for
 SkinDocument are generated from the backend's `schema` command (System.Text.Json `JsonSchemaExporter`) with
@@ -343,8 +346,8 @@ Install
 
 ## 6. Remaining work
 
-1. Packaging: Electron Forge installer bundling the backend and the plugin.
-2. Remove the old Python tool and the two HEL plugins once §4 is verified.
-3. Livery: check a baked livery in game (plugin load and game-file replacement); weapon-list thumbnails do not show it yet.
-4. In-game skin picker: choose the active skin per item from the loadout screen, built on ForgeCore's UI once its library
-   merge has landed (the plugin then depends on ForgeCore).
+1. Remove the old Python tool and the two HEL plugins once §4 is verified.
+2. Livery: check a baked livery in game (plugin load and game-file replacement); weapon-list thumbnails do not show it yet.
+3. Move onto ForgeCore once its library merge has landed (the plugin then depends on ForgeCore): the in-game skin picker
+   (choose the active skin per item from the loadout screen) on ForgeCore's UI, and the plugin's game events and sound
+   playback onto ForgeCore's event and audio modules instead of its own hooks.

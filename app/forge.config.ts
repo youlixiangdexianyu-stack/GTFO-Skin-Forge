@@ -1,7 +1,12 @@
 import type { ForgeConfig } from '@electron-forge/shared-types';
 import { MakerSquirrel } from '@electron-forge/maker-squirrel';
-import { MakerZIP } from '@electron-forge/maker-zip';
 import { VitePlugin } from '@electron-forge/plugin-vite';
+import { execFileSync } from 'node:child_process';
+import { cpSync } from 'node:fs';
+import { join } from 'node:path';
+
+const backend = join(__dirname, '../src/ForgeSkin.Backend');
+const publish = join(backend, 'bin/Release/net10.0/win-x64/publish');
 
 const config: ForgeConfig = {
   packagerConfig: {
@@ -9,11 +14,18 @@ const config: ForgeConfig = {
     name: 'ForgeSkin',
     executableName: 'ForgeSkin',
     icon: 'assets/icon',
-    // Backend single-file exe and plugin DLLs; filled by PLAN §6 item 4 packaging.
+    // Backend single-file exe with the prebuilt plugin in publish/plugin (Install.PluginSource looks there first).
     // Font licences (SIL OFL) ship next to the app with the fonts they cover.
-    extraResource: ['../src/ForgeSkin.Backend/bin/Release/net10.0/win-x64/publish', 'licenses'],
+    extraResource: [publish, 'licenses'],
   },
-  makers: [new MakerSquirrel({ name: 'ForgeSkin', setupIcon: 'assets/icon.ico' }), new MakerZIP({}, ['win32'])],
+  hooks: {
+    // Every package carries a fresh self-contained backend and the committed plugin build (repo plugin/).
+    prePackage: async () => {
+      execFileSync('dotnet', ['publish', backend, '-c', 'Release', '--self-contained', '-p:PublishSingleFile=true'], { stdio: 'inherit' });
+      cpSync(join(__dirname, '../plugin'), join(publish, 'plugin'), { recursive: true });
+    },
+  },
+  makers: [new MakerSquirrel({ name: 'ForgeSkin', authors: 'NAinfini', description: 'GTFO weapon skin editor', setupIcon: 'assets/icon.ico' })],
   plugins: [
     new VitePlugin({
       build: [

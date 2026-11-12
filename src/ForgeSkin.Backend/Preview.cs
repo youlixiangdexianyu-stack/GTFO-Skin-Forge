@@ -111,6 +111,12 @@ public static class Preview
                     else pending.Add((loaded, channel, png));
                     written[(t.File.path, t.PathId)] = png;
                 }
+                else if (now && pending.FindIndex(p => p.Png == png) is var i and >= 0)
+                {
+                    // Queued earlier by another material, but needed on disk now (a reticle is read back).
+                    SaveTexture(pending[i].Loaded, pending[i].Channel, png);
+                    pending.RemoveAt(i);
+                }
                 return png;
             }
             var reticles = new List<PreviewReticle>();

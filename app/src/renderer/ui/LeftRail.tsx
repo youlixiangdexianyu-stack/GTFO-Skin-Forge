@@ -5,6 +5,8 @@ import { importMesh } from '../actions';
 import { type Attachment, CHANNELS, type CatalogItem } from '../protocol';
 import { editorOf, materialOf, partTransformOf, pendingKey, useItem, useStore } from '../store';
 import { THUMB_EVENT, thumbOf } from '../viewport/thumbnails';
+import { SkinList } from './SkinList';
+import { hiddenMeshes, partTarget, useSceneVersion } from '../viewport/refs';
 import { localCategory, localName, partLabel, t, useLang } from '../i18n';
 
 /** Filter chips by slot, in this order (unknown slots last); a slot without a label here shows its id. */
@@ -119,13 +121,18 @@ function WeaponPicker() {
 
 function EyeToggle({ part, sub }: { part: string; sub?: string | null }) {
   const visible = useStore((s) => partTransformOf(s.doc, part, sub)?.visible !== false);
+  useSceneVersion();
+  // Hiding a node hides its own part's meshes only (not a part mounted on it); a mount point alone has nothing to hide.
+  const obj = partTarget(part, sub);
+  const empty = visible && !!obj && !hiddenMeshes(part, obj).length;
   return (
-    <Tooltip label={visible ? t('leftRail.k10') : t('leftRail.k11')}>
+    <Tooltip label={empty ? t('leftRail.nothingToHide') : visible ? t('leftRail.k10') : t('leftRail.k11')}>
       <ActionIcon
         variant="subtle"
         color={visible ? 'gray' : 'flare'}
         size="sm"
-        onClick={(e) => (e.stopPropagation(), useStore.getState().setPartTransform(part, sub, (t) => void (t.visible = visible ? false : null)))}
+        data-disabled={empty || undefined}
+        onClick={(e) => (e.stopPropagation(), empty || useStore.getState().setPartTransform(part, sub, (t) => void (t.visible = visible ? false : null)))}
       >
         {visible ? <IconEye size={14} /> : <IconEyeOff size={14} />}
       </ActionIcon>
@@ -310,6 +317,7 @@ export function LeftRail() {
   return (
     <aside className="rail">
       <WeaponPicker />
+      <SkinList />
       <div className="parts-head">
         <span style={{ flex: 1 }}>{t('leftRail.k24')}{item ? ` · ${item.parts.length}` : ''}</span>
         <Text size="xs" c="dimmed">

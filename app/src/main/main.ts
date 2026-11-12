@@ -1,5 +1,5 @@
 import { app, BrowserWindow, dialog, ipcMain, net, protocol, shell, type OpenDialogOptions } from 'electron';
-import { appendFileSync, mkdirSync } from 'node:fs';
+import { appendFileSync, existsSync, mkdirSync } from 'node:fs';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { dirname, isAbsolute, join, normalize, resolve, sep } from 'node:path';
 import { pathToFileURL } from 'node:url';
@@ -68,8 +68,10 @@ function createWindow() {
     minHeight: 720,
     backgroundColor: '#15171a',
     title: 'GTFO Skin Forge',
+    // The packaged exe carries the icon (packagerConfig.icon); from source the window takes it from assets/.
+    icon: app.isPackaged ? undefined : join(app.getAppPath(), 'assets', 'icon.ico'),
+    // Frameless; the top bar draws its own minimize / maximize / close (see `win:*` below).
     titleBarStyle: 'hidden',
-    titleBarOverlay: { color: '#15171a', symbolColor: '#b9b4a8', height: 44 },
     show: false,
     webPreferences: {
       preload: join(__dirname, 'preload.cjs'),
@@ -79,6 +81,8 @@ function createWindow() {
     },
   });
   win.once('ready-to-show', () => win?.show());
+  win.on('maximize', () => send('win:maximized', true));
+  win.on('unmaximize', () => send('win:maximized', false));
   // A dead renderer is reloaded; the store then reopens the last weapon from its autosave.
   win.webContents.on('render-process-gone', (_e, d) => {
     appLog('render-process-gone', d);
@@ -130,8 +134,13 @@ function registerIpc() {
     await writeFile(path, data);
   });
   ipcMain.on('app:log', (_e, kind: string, detail: string) => appLog(kind, detail));
+  ipcMain.handle('files:exists', (_e, path: string) => existsSync(path));
   ipcMain.handle('shell:open', (_e, path: string) => shell.openPath(path));
   ipcMain.handle('shell:show', (_e, path: string) => shell.showItemInFolder(path));
+  ipcMain.on('win:minimize', () => win?.minimize());
+  ipcMain.on('win:toggleMaximize', () => (win?.isMaximized() ? win.unmaximize() : win?.maximize()));
+  ipcMain.on('win:close', () => win?.close());
+  ipcMain.handle('win:isMaximized', () => !!win?.isMaximized());
 }
 
 app.whenReady().then(() => {

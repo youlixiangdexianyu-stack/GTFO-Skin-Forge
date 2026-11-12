@@ -6,6 +6,7 @@ import { baseName, triggersFor, type Attachment, type Screen, type ScreenSource,
 import { useItem, useStore } from '../store';
 import { Color, Field, Num, Slider, Vec } from './fields';
 import { SelectionLayout } from './SelectionLayout';
+import { Info } from './Features';
 import { partLabel, t } from '../i18n';
 
 const SOURCES: { value: ScreenSource; label: string }[] = [
@@ -77,7 +78,9 @@ function Effects({ a }: { a: Attachment }) {
   return (
     <div className="section">
       <h3>
-        <span className="grow">{t('attachInspector.k11')}</span>
+        <span>{t('attachInspector.k11')}</span>
+        <Info label={t('attachInspector.k13')} />
+        <span className="grow" />
         <Button
           size="compact-xs"
           variant="subtle"
@@ -87,7 +90,6 @@ function Effects({ a }: { a: Attachment }) {
           {t('attachInspector.k12')}
         </Button>
       </h3>
-      {!effects.length && <p className="hint">{t('attachInspector.k13')}</p>}
       {effects.map((e, i) => (
         <div key={i} className="effect">
           <Group gap="xs" wrap="nowrap">
@@ -133,6 +135,7 @@ function AttachmentPanel({ a }: { a: Attachment }) {
         </Field>
         <Switch mt="sm" label={t('attachInspector.k23')} checked={!!a.faceCamera} onChange={(e) => up((x) => void (x.faceCamera = e.currentTarget.checked))} />
       </div>
+      <Effects a={a} />
       <SelectionLayout />
       {s && (
         <div className="section">
@@ -215,7 +218,6 @@ function AttachmentPanel({ a }: { a: Attachment }) {
           </p>
         </div>
       )}
-      <Effects a={a} />
       {a.material && (
         <div className="section">
           <h3>{t('attachInspector.k41')}</h3>

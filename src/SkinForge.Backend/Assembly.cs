@@ -44,9 +44,13 @@ public static class Assembly
 
     // Every transform of every part with its child path from the part root as Transform.Find takes it (null = the root).
     // A part mounted on another (a mag on the stock's a_mag) owns its own subtree.
+    // A part root carries its part id; the prefabs listed in its General.Children carry the same id but hang under it, and
+    // the game spawns them as "<prefab>(Clone)" children, so they are paths under the root, not second roots.
+    public static bool IsPartRoot(Node n) => n.Part != null && n.Parent?.Part != n.Part;
+
     public static IEnumerable<(string Part, string? Path, Node Node)> PartNodes(Node holder, bool activeOnly)
     {
-        foreach (var root in holder.All().Where(n => n.Part != null))
+        foreach (var root in holder.All().Where(IsPartRoot))
         {
             var stack = new Stack<(Node Node, string? Path)>();
             stack.Push((root, null));
@@ -56,7 +60,12 @@ public static class Assembly
                 if (activeOnly && !n.Active) continue;
                 yield return (root.Part!, path, n);
                 for (int i = n.Children.Count - 1; i >= 0; i--)
-                    if (n.Children[i].Part == null) stack.Push((n.Children[i], path == null ? n.Children[i].Name : $"{path}/{n.Children[i].Name}"));
+                {
+                    var c = n.Children[i];
+                    if (c.Part != null && c.Part != root.Part) continue;
+                    var name = c.Part == null ? c.Name : c.Name + "(Clone)";
+                    stack.Push((c, path == null ? name : $"{path}/{name}"));
+                }
             }
         }
     }

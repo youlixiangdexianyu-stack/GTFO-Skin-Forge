@@ -4,6 +4,8 @@ using SkinForge.Format;
 
 namespace SkinForge.Backend;
 
+public sealed record ProjectEntry(string Path, string Id, string Name, DateTime Modified);
+
 // Editor projects (.sfproj = SkinDocument with paths relative to the file) and the old tool's project formats.
 // In the protocol every file reference is absolute.
 public static class Projects
@@ -34,6 +36,23 @@ public static class Projects
         else doc = SkinJson.Read(json.ToJsonString());
         MapPaths(doc, p => Path.GetFullPath(Path.Combine(dir, p)));
         return doc;
+    }
+
+    // The projects in a folder (one weapon's skins), newest first. A file that does not parse is listed under its file
+    // name, so loading it reports the damage instead of the skin silently disappearing.
+    public static List<ProjectEntry> List(string dir) => !Directory.Exists(dir) ? new() : Directory.GetFiles(dir, "*.sfproj").Select(file =>
+    {
+        var name = Path.GetFileNameWithoutExtension(file);
+        JsonObject? json = null;
+        try { json = JsonNode.Parse(File.ReadAllText(file)) as JsonObject; } catch (System.Text.Json.JsonException) { }
+        return new ProjectEntry(file, (string?)json?["id"] ?? name, (string?)json?["name"] ?? name, File.GetLastWriteTimeUtc(file));
+    }).OrderByDescending(e => e.Modified).ToList();
+
+    public static object Delete(string path)
+    {
+        if (!path.EndsWith(".sfproj", StringComparison.OrdinalIgnoreCase)) throw new BackendException("bad-request", $"{path} is not a project file");
+        File.Delete(path);
+        return new { removed = path };
     }
 
     public static object Save(SkinDocument doc, string path)

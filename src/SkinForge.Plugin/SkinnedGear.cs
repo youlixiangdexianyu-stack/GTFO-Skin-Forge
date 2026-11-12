@@ -98,6 +98,7 @@ sealed class SkinnedGear
     // rounds, bolt and animator state) has not run yet, so this is the vanilla pose readback reports.
     public static void BeforeItemSetup(ItemEquippable item)
     {
+        if (Readback.Directory == null) return; // debug only: touch nothing on the game's spawn path otherwise
         try
         {
             var holder = item.GearPartHolder;
@@ -329,15 +330,19 @@ sealed class SkinnedGear
         int sounds = 0;
         if (weapon != null && _item != null && _item.m_isFirstPerson)
             foreach (var s in weapon.Doc.Sounds) { On(s.Trigger, new SoundCue(weapon.Sound(s.File), s.Volume), s.LowAmmoFraction); sounds++; }
-        // After the attachments, so hiding a part also hides what is mounted under it.
+        // After the attachments, so hiding a part also hides what is mounted under it. Other parts mounted under it
+        // (a sight on the receiver's sight align) are theirs to hide.
         int hidden = 0;
+        var partRoots = new HashSet<IntPtr>();
+        foreach (var (id, _) in Parts)
+            if (PartObject(id) is { } root) partRoots.Add(root.transform.Pointer);
         if (weapon != null)
             foreach (var p in weapon.Doc.Parts)
             {
                 var part = PartObject(p.Part) ?? throw new InvalidOperationException($"part layout: gear has no part {p.Part}");
                 var t = p.Path == null ? part.transform : part.transform.Find(p.Path)
                     ?? throw new InvalidOperationException($"part layout: no {p.Path} under {p.Part}");
-                var pose = new PartPose(t, p);
+                var pose = new PartPose(t, p, partRoots, p.Mesh == null ? null : weapon.Mesh(p.Mesh));
                 _poses.Add(pose);
                 SkinForgePlugin.Info($"{_label}: pose {p.Part}/{p.Path ?? "."} written, now {pose.Describe()}");
                 if (p.Visible == false) hidden++;
@@ -889,16 +894,34 @@ sealed class PartPose
     readonly Vector3 _position, _scale;
     readonly Quaternion _rotation;
     readonly Renderer[] _hidden;
+    readonly HashSet<IntPtr> _partRoots;
+    readonly MeshFilter? _filter;
+    readonly Mesh? _mesh, _vanillaMesh;
 
-    public PartPose(Transform t, PartTransform p)
+    public PartPose(Transform t, PartTransform p, HashSet<IntPtr> partRoots, Mesh? mesh)
     {
         _t = t;
         _p = p;
+        _partRoots = partRoots;
+        if (mesh != null)
+        {
+            _filter = t.GetComponent<MeshFilter>();
+            if (_filter == null || _filter.sharedMesh == null)
+                throw new InvalidOperationException($"{p.Part}/{p.Path}: no model of its own to replace" + (t.GetComponent<SkinnedMeshRenderer>() != null ? " (skinned meshes are not supported)" : ""));
+            (_mesh, _vanillaMesh) = (mesh, _filter.sharedMesh);
+        }
         _position = t.localPosition;
         _rotation = t.localRotation;
         _scale = t.localScale;
-        _hidden = p.Visible == false ? t.GetComponentsInChildren<Renderer>(true).Where(r => r.enabled).ToArray() : Array.Empty<Renderer>();
+        _hidden = p.Visible == false ? t.GetComponentsInChildren<Renderer>(true).Where(r => r.enabled && !UnderOtherPart(r.transform)).ToArray() : Array.Empty<Renderer>();
         Write();
+    }
+
+    bool UnderOtherPart(Transform r)
+    {
+        for (var x = r; x != null && x.Pointer != _t.Pointer; x = x.parent)
+            if (_partRoots.Contains(x.Pointer)) return true;
+        return false;
     }
 
     public void Write()
@@ -909,6 +932,7 @@ sealed class PartPose
         if (_p.Scale is { } scale) _t.localScale = new Vector3(scale[0], scale[1], scale[2]);
         foreach (var r in _hidden)
             if (r != null) r.enabled = false;
+        if (_filter != null) _filter.sharedMesh = _mesh;
     }
 
     public string Describe()
@@ -923,6 +947,7 @@ sealed class PartPose
     {
         foreach (var r in _hidden)
             if (r != null) r.enabled = true;
+        if (_filter != null) _filter.sharedMesh = _vanillaMesh;
         if (_t == null) return;
         _t.localPosition = _position;
         _t.localRotation = _rotation;

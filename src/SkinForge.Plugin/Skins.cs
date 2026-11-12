@@ -32,15 +32,17 @@ sealed class Skin
         {
             foreach (var m in skin.Doc.Materials)
             {
-                foreach (var (channel, path) in m.Textures) skin.Decode(pack, path, Linear(channel), true);
-                foreach (var l in m.Layers) skin.Decode(pack, l.Atlas!.Path, Linear(l.Channel), false);
+                foreach (var (channel, path) in m.Textures) skin.Decode(pack, path, channel, true, true);
+                foreach (var l in m.Layers) skin.Decode(pack, l.Atlas!.Path, l.Channel, false, false);
             }
             foreach (var a in skin.Doc.Attachments)
             {
                 if (a.Mesh != null && !skin._meshes.ContainsKey(a.Mesh)) skin._meshes[a.Mesh] = ToMesh(SfMesh.Read(pack.ReadBytes(a.Mesh)), a.Mesh);
-                if (a.Material != null) foreach (var (channel, path) in a.Material.Textures) skin.Decode(pack, path, Linear(channel), true);
-                if (a.Screen?.GlyphAtlas is { } glyphs) skin.Decode(pack, glyphs, false, true);
+                if (a.Material != null) foreach (var (channel, path) in a.Material.Textures) skin.Decode(pack, path, channel, true, true);
+                if (a.Screen?.GlyphAtlas is { } glyphs) skin.Decode(pack, glyphs, TextureChannel.Albedo, true, false);
             }
+            foreach (var t in skin.Doc.Parts)
+                if (t.Mesh != null && !skin._meshes.ContainsKey(t.Mesh)) skin._meshes[t.Mesh] = ToMesh(SfMesh.Read(pack.ReadBytes(t.Mesh)), t.Mesh);
             foreach (var s in skin.Doc.Sounds)
                 if (!skin._sounds.ContainsKey(s.File)) skin._sounds[s.File] = SoundOut.Decode(pack.ReadBytes(s.File), s.File);
             return skin;
@@ -52,14 +54,43 @@ sealed class Skin
         }
     }
 
-    void Decode(SkinPack pack, string path, bool linear, bool mips)
+    // A texture set straight on a material (`compress`) is compressed to DXT on load, a quarter of the
+    // VRAM of raw RGBA. Layer atlases and glyph strips stay raw: layers copy frames out of them with CopyTexture, which
+    // needs the format of the uncompressed render target, and glyph edges would blur. Normal maps are stored the way
+    // the game's own are (DXT5nm: x in alpha, y in green), which the gear shaders read.
+    void Decode(SkinPack pack, string path, TextureChannel channel, bool mips, bool compress)
     {
+        bool linear = Linear(channel);
         var key = (linear ? "L:" : "S:") + path;
         if (_textures.ContainsKey(key)) return;
         var texture = new Texture2D(2, 2, TextureFormat.RGBA32, mips, linear) { name = "SkinForge " + path, hideFlags = HideFlags.DontUnloadUnusedAsset };
         _textures[key] = texture;
-        if (!ImageConversion.LoadImage(texture, pack.ReadBytes(path), true))
+        if (!ImageConversion.LoadImage(texture, pack.ReadBytes(path), !compress))
             throw new SkinFormatException("bad-image", $"{path} is not a PNG or JPG");
+        if (!compress) return;
+        if (texture.width % 4 != 0 || texture.height % 4 != 0)
+        {
+            SkinForgePlugin.Fail($"{path}: {texture.width}x{texture.height} is not a multiple of 4, left uncompressed");
+            texture.Apply(false, true);
+            return;
+        }
+        if (channel == TextureChannel.Normal)
+        {
+            // LoadImage gives RGB24 for an image without alpha; the swizzled copy needs an alpha channel.
+            var pixels = texture.GetPixels32();
+            for (int i = 0; i < pixels.Length; i++)
+            {
+                var p = pixels[i];
+                pixels[i] = new Color32(255, p.g, 255, p.r);
+            }
+            var nm = new Texture2D(texture.width, texture.height, TextureFormat.RGBA32, true, true) { name = texture.name, hideFlags = HideFlags.DontUnloadUnusedAsset };
+            nm.SetPixels32(pixels);
+            nm.Apply(true);
+            Object.Destroy(texture);
+            _textures[key] = texture = nm;
+        }
+        texture.Compress(true);
+        texture.Apply(false, true); // drop the CPU copy
     }
 
     static Mesh ToMesh(SfMesh m, string name)
@@ -106,7 +137,22 @@ sealed class Skin
     }
 }
 
-// The skins folder: packs by file, the active selection from active.json, and the watcher that marks it dirty.
+// Installed packs, loaded on the first tick. Three sources:
+// - the app's own skins folder: every pack in it, selection from its active.json;
+// - skin mods: a mod folder directly under BepInEx/plugins with a `forgeskin.forge` marker lists its packs, one path per
+//   line relative to that folder (blank lines and `#` comments skipped). Only the marker is looked for, one level deep;
+// - code: other plugins call `SkinPacks.Register` with a pack path from their Load.
+// A mod's or registered skin is active for its target unless active.json picks a skin for that target; among them the
+// first by path wins. In development mode a watcher marks the plugins folder dirty and everything is reloaded;
+// otherwise changes wait for the next launch.
+public static class SkinPacks
+{
+    public const string Marker = "forgeskin.forge";
+
+    /// <summary>Adds a skin pack file to ForgeSkin; call from your plugin's Load. Loaded with the others on the first frame.</summary>
+    public static void Register(string pack) { lock (Skins.Registered) Skins.Registered.Add(Path.GetFullPath(pack)); }
+}
+
 static class Skins
 {
     public static readonly Dictionary<string, Skin> ById = new();
@@ -115,16 +161,18 @@ static class Skins
 
     static readonly Dictionary<string, Skin> ByFile = new(StringComparer.OrdinalIgnoreCase);
     static readonly Dictionary<string, DateTime> Rejected = new(StringComparer.OrdinalIgnoreCase);
-    static string _dir = "";
+    static string _dir = "", _plugins = "";
+    internal static readonly HashSet<string> Registered = new(StringComparer.OrdinalIgnoreCase);
     static FileSystemWatcher? _watcher;
     static int _events, _seen, _busyRetries;
     static float _due; // 0 = load on the first tick; < 0 = nothing pending
 
-    public static void Watch(string dir)
+    public static void Watch(string dir, string plugins, bool hotReload)
     {
-        _dir = dir;
+        (_dir, _plugins) = (dir, plugins);
         Directory.CreateDirectory(dir);
-        _watcher = new FileSystemWatcher(dir) { NotifyFilter = NotifyFilters.FileName | NotifyFilters.LastWrite | NotifyFilters.Size };
+        if (!hotReload) return;
+        _watcher = new FileSystemWatcher(plugins) { IncludeSubdirectories = true, NotifyFilter = NotifyFilters.FileName | NotifyFilters.LastWrite | NotifyFilters.Size };
         FileSystemEventHandler touched = (_, _) => Interlocked.Increment(ref _events);
         _watcher.Changed += touched;
         _watcher.Created += touched;
@@ -148,7 +196,7 @@ static class Skins
 
     static void Reload()
     {
-        var files = Directory.GetFiles(_dir, "*" + SkinPack.Extension);
+        var files = Discover();
         foreach (var gone in ByFile.Keys.Where(f => !files.Contains(f, StringComparer.OrdinalIgnoreCase)).ToList())
         {
             ByFile[gone].Destroy();
@@ -183,6 +231,42 @@ static class Skins
 
         Targets.Clear();
         Globals.Clear();
+        ReadActive();
+        var own = Path.GetFullPath(_dir) + Path.DirectorySeparatorChar;
+        foreach (var (file, skin) in ByFile.OrderBy(kv => kv.Key, StringComparer.OrdinalIgnoreCase))
+        {
+            if (Path.GetFullPath(file).StartsWith(own, StringComparison.OrdinalIgnoreCase) || skin.Doc.Target.Key() is not { } key) continue;
+            if (Targets.TryAdd(key, skin.Doc.Id)) SkinForgePlugin.Info($"{key}: {skin.Doc.Id} from {Path.GetFileName(Path.GetDirectoryName(file))} is active");
+            else if (Targets[key] != skin.Doc.Id) SkinForgePlugin.Info($"{key}: {skin.Doc.Id} from {Path.GetFileName(Path.GetDirectoryName(file))} not used, {Targets[key]} is active");
+        }
+        SkinForgePlugin.Info($"active: {Targets.Count} target skins, {Globals.Count} global skins");
+    }
+
+    static string[] Discover()
+    {
+        var files = new HashSet<string>(Directory.GetFiles(_dir, "*" + SkinPack.Extension), StringComparer.OrdinalIgnoreCase);
+        foreach (var mod in Directory.GetDirectories(_plugins))
+        {
+            var marker = Path.Combine(mod, SkinPacks.Marker);
+            if (!File.Exists(marker)) continue;
+            foreach (var raw in File.ReadAllLines(marker))
+            {
+                var line = raw.Trim();
+                if (line.Length == 0 || line.StartsWith('#')) continue;
+                var pack = Path.GetFullPath(Path.Combine(mod, line));
+                if (File.Exists(pack)) files.Add(pack);
+                else SkinForgePlugin.Fail($"{Path.GetFileName(mod)}/{SkinPacks.Marker}: {line} not found");
+            }
+        }
+        lock (Registered)
+            foreach (var pack in Registered)
+                if (File.Exists(pack)) files.Add(pack);
+                else SkinForgePlugin.Fail($"registered pack {pack} not found");
+        return files.ToArray();
+    }
+
+    static void ReadActive()
+    {
         var active = Path.Combine(_dir, "active.json");
         if (!File.Exists(active)) return;
         using var json = JsonDocument.Parse(File.ReadAllText(active));
@@ -193,6 +277,5 @@ static class Skins
         if (json.RootElement.TryGetProperty("global", out var global))
             foreach (var id in global.EnumerateArray())
                 if (id.ValueKind == JsonValueKind.String) Globals.Add(id.GetString()!);
-        SkinForgePlugin.Info($"active: {Targets.Count} target skins, {Globals.Count} global skins");
     }
 }

@@ -1,6 +1,7 @@
 // Mutable handles shared by the viewport components (not React state: they change every frame or hold three objects).
 import type CameraControls from 'camera-controls';
-import { Vector3, type Camera, type Group, type Object3D } from 'three';
+import { useEffect, useState } from 'react';
+import { Vector3, type Camera, type Group, type Mesh, type Object3D } from 'three';
 import type { PlayMode, Trigger } from '../protocol';
 import type { ThreeTRS } from '../space';
 
@@ -64,6 +65,45 @@ export const SCENE_EVENT = 'sf:scene';
 
 const key = (part: string, path?: string | null) => `${part}|${path ?? ''}`;
 
+/** Re-renders when the weapon's part nodes are mapped; the value changes with each mapping. */
+export function useSceneVersion(): number {
+  const [version, setVersion] = useState(0);
+  useEffect(() => {
+    const f = () => setVersion((v) => v + 1);
+    window.addEventListener(SCENE_EVENT, f);
+    return () => window.removeEventListener(SCENE_EVENT, f);
+  }, []);
+  return version;
+}
+
+/** Whether `o` starts another part than `part`: one of its nodes or its root transform. */
+function otherPart(part: string, o: Object3D): boolean {
+  const p = viewRefs.nodeToPart.get(o);
+  const k = viewRefs.transformKey.get(o);
+  return (!!p && p !== part) || (!!k && k.part !== part && k.path === null);
+}
+
+/**
+ * Meshes that hiding `obj` (a transform of `part`) hides, as the plugin does: every mesh under it, attachments included,
+ * down to another part's root (a sight on the receiver's mount belongs to the sight and hides only from its own row).
+ */
+export function hiddenMeshes(part: string, obj: Object3D): Mesh[] {
+  const out: Mesh[] = [];
+  const walk = (o: Object3D) => {
+    if (o !== obj && otherPart(part, o)) return;
+    if ((o as Mesh).isMesh && !o.userData.sfUnmapped && !o.userData.sfExtraAmmo) out.push(o as Mesh);
+    o.children.forEach(walk);
+  };
+  walk(obj);
+  return out;
+}
+
+/** Whether `o` is drawn: it and every parent are visible. */
+export function shown(o: Object3D): boolean {
+  for (let x: Object3D | null = o; x; x = x.parent) if (!x.visible) return false;
+  return true;
+}
+
 /** The transform a part layout entry or an attachment anchor names: (part, path) exactly as preview.weapon lists it. */
 export function partTarget(part: string, path?: string | null): Object3D | null {
   return viewRefs.transforms.get(key(part, path)) ?? null;
@@ -98,6 +138,8 @@ export function selectedObjects(part: string, path?: string | null): Object3D[] 
 /** Registers the part transforms of a loaded model. */
 export function registerTransforms(part: string, list: { path: string | null; obj: Object3D }[]) {
   for (const t of list) {
+    // A part can list a second root (the stock's Default_GripAlign); the game lays out the first, its prefab root.
+    if (viewRefs.transforms.has(key(part, t.path))) continue;
     viewRefs.transforms.set(key(part, t.path), t.obj);
     viewRefs.transformKey.set(t.obj, { part, path: t.path });
   }

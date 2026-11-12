@@ -74,7 +74,7 @@ public static class Preview
                 }
                 extras = new JsonObject { ["part"] = part };
             }
-            if (n.Part != null) (extras ??= new())["partRoot"] = n.Part;
+            if (Assembly.IsPartRoot(n)) (extras ??= new())["partRoot"] = n.Part;
             if (extras != null) extras["transform"] = n.Name;
             int index = glb.Node(n.Name, n.Position, n.Rotation, n.Scale, mesh, children, extras);
             nodeName[n] = glb.NodeName(index);
@@ -139,7 +139,7 @@ public static class Preview
         foreach (var (part, path, n) in Assembly.PartNodes(root, activeOnly: true))
         {
             var under = new List<string>();
-            void Collect(Node c) { if (!c.Active || (c != n && c.Part != null)) return; if (partOf.ContainsKey(c)) under.Add(nodeName[c]); c.Children.ForEach(Collect); }
+            void Collect(Node c) { if (!c.Active || (c != n && c.Part != null && c.Part != part)) return; if (partOf.ContainsKey(c)) under.Add(nodeName[c]); c.Children.ForEach(Collect); }
             Collect(n);
             (transforms.TryGetValue(part, out var list) ? list : transforms[part] = new()).Add(new PreviewTransform(n.Name, path, nodeName[n],
                 path == null ? null : nodeName[n.Parent!],

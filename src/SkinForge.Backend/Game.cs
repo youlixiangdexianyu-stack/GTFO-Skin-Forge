@@ -8,8 +8,8 @@ namespace SkinForge.Backend;
 
 public sealed record GameInfo(string? GameDir, string? DataDir, bool Found, bool Running);
 // Reason: why HasBepInEx is false. Modified: last time the profile changed or the game ran from it (BepInEx log).
-// PluginCurrent: every plugin file in the profile has the same SHA-256 as the build the app ships; false when missing or different.
-public sealed record ProfileInfo(string Name, string Path, bool HasBepInEx, string? PluginVersion, bool PluginCurrent, string? Reason, bool Custom, DateTime Modified);
+// Development: the plugin's hot-reload switch in its config. PluginCurrent: every plugin file in the profile has the same SHA-256 as the build the app ships; false when missing or different.
+public sealed record ProfileInfo(string Name, string Path, bool HasBepInEx, string? PluginVersion, bool PluginCurrent, bool Development, string? Reason, bool Custom, DateTime Modified);
 
 // Finds the GTFO install (saved choice, then Steam registry + libraryfolders.vdf + common dirs) and BepInEx profiles.
 public static class Game
@@ -145,7 +145,7 @@ public static class Game
         var modified = new[] { dir, Path.Combine(dir, "BepInEx"), Path.Combine(dir, "BepInEx", "plugins"), Path.Combine(dir, "BepInEx", "LogOutput.log") }
             .Where(p => Directory.Exists(p) || File.Exists(p)).Select(File.GetLastWriteTimeUtc).Max();
         return new ProfileInfo(Path.GetFileName(dir.TrimEnd('\\', '/')), dir, reason == null,
-            File.Exists(dll) ? FileVersionInfo.GetVersionInfo(dll).FileVersion : null, File.Exists(dll) && Install.PluginCurrent(dir), reason, custom, modified);
+            File.Exists(dll) ? FileVersionInfo.GetVersionInfo(dll).FileVersion : null, File.Exists(dll) && Install.PluginCurrent(dir), Install.Development(dir), reason, custom, modified);
     }
 
     // Accepts a profile root, its BepInEx folder or a game folder holding BepInEx.
@@ -173,6 +173,35 @@ public static class Game
         settings["profiles"] = new JsonArray(list.Select(p => (JsonNode)p).ToArray());
         WriteSettings(settings);
         return new { removed = dir };
+    }
+
+    // Starts GTFO with the profile's BepInEx, the way r2modman does (doorstop 4 arguments; the game folder holds winhttp.dll).
+    public static object Launch(string profile)
+    {
+        if (Running) throw new BackendException("game-running", "GTFO is already running");
+        var core = Path.Combine(profile, "BepInEx", "core", "BepInEx.Unity.IL2CPP.dll");
+        if (!File.Exists(core)) throw new BackendException("not-found", $"No BepInEx in {profile}");
+        var exe = Path.Combine(Dir, "GTFO.exe");
+        Process.Start(new ProcessStartInfo(exe) { WorkingDirectory = Dir, UseShellExecute = false,
+            ArgumentList = { "--doorstop-enabled", "true", "--doorstop-target-assembly", core } });
+        return new { started = exe };
+    }
+
+    // Lines the plugin wrote to its own log after `since` (ISO time, UTC): {time, level, message}.
+    public static object PluginLog(string profile, DateTime? since)
+    {
+        var file = Path.Combine(PluginDir(profile), "skinforge.log");
+        if (!File.Exists(file)) return new { lines = Array.Empty<object>() };
+        using var s = new FileStream(file, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
+        using var r = new StreamReader(s);
+        var lines = new List<object>();
+        while (r.ReadLine() is { } line)
+        {
+            var parts = line.Split(' ', 3);
+            if (parts.Length < 3 || !DateTime.TryParse(parts[0], null, System.Globalization.DateTimeStyles.RoundtripKind, out var t)) continue;
+            if (since == null || t.ToUniversalTime() > since.Value.ToUniversalTime()) lines.Add(new { time = parts[0], level = parts[1], message = parts[2] });
+        }
+        return new { lines };
     }
 
     public static string PluginDir(string profile) => Path.Combine(profile, "BepInEx", "plugins", PluginFolder);

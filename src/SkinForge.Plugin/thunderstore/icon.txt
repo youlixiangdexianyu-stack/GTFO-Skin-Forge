@@ -1,1 +1,0 @@
-Thunderstore needs icon.png here: 256x256 PNG, placed next to manifest.json in the package root. Not made yet.

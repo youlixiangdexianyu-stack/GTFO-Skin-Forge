@@ -5,7 +5,6 @@ import { t } from './i18n';
 const MESSAGES: Record<string, string> = {
   get 'game-not-found'() { return t('errors.k1'); },
   get 'game-running'() { return t('errors.k2'); },
-  get 'not-found'() { return t('errors.k3'); },
   get 'missing-file'() { return t('errors.k4'); },
   get 'bad-path'() { return t('errors.k5'); },
   get 'bad-mesh'() { return t('errors.k6'); },
@@ -28,11 +27,17 @@ const MESSAGES: Record<string, string> = {
   get 'preview-cache'() { return t('errors.k22'); },
   get 'not-a-profile'() { return t('errors.k23'); },
   get 'ammo-display'() { return t('errors.k24'); },
+  get 'no-plugin'() { return t('errors.noPlugin'); },
+  get 'nothing-to-apply'() { return t('errors.nothingToApply'); },
+  get 'game-changed'() { return t('errors.gameChanged'); },
+  get 'stale-patch'() { return t('errors.stalePatch'); },
+  get 'bad-backup'() { return t('errors.badBackup'); },
 };
 
 export function friendly(e: unknown, fallback = t('errors.k25')): string {
   const err = e as Partial<BackendError> | undefined;
   if (err?.code && MESSAGES[err.code]) return MESSAGES[err.code];
+  if (err?.code === 'not-found') return t('errors.k3', { v0: err.message ?? '' });
   return fallback;
 }
 

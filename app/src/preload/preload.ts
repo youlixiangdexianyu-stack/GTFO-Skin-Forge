@@ -23,12 +23,18 @@ const api = {
   saveDialog: (defaultPath: string, filters: FileFilter[]): Promise<string | null> =>
     ipcRenderer.invoke('dialog:save', defaultPath, filters),
   writeFile: (path: string, data: Uint8Array): Promise<void> => ipcRenderer.invoke('files:write', path, data),
+  exists: (path: string): Promise<boolean> => ipcRenderer.invoke('files:exists', path),
   openPath: (path: string): Promise<string> => ipcRenderer.invoke('shell:open', path),
   showInFolder: (path: string): Promise<void> => ipcRenderer.invoke('shell:show', path),
   /** Appends an error line to GTFO_UserData/logs/app.log. */
   appLog: (kind: string, detail: string): void => ipcRenderer.send('app:log', kind, detail),
   /** Absolute path of a dropped File (Electron removed File.path). */
   pathOf: (file: File): string => webUtils.getPathForFile(file),
+  minimize: (): void => ipcRenderer.send('win:minimize'),
+  toggleMaximize: (): void => ipcRenderer.send('win:toggleMaximize'),
+  close: (): void => ipcRenderer.send('win:close'),
+  isMaximized: (): Promise<boolean> => ipcRenderer.invoke('win:isMaximized'),
+  onMaximized: (cb: (maximized: boolean) => void) => subscribe('win:maximized', cb),
 };
 
 export type ForgeApi = typeof api;

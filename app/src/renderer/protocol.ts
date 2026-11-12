@@ -82,6 +82,8 @@ export interface Profile {
   pluginVersion: string | null;
   /** False when the installed plugin differs from the one this app ships (an update is due). */
   pluginCurrent?: boolean;
+  /** The plugin's development switch: skins reload in game on every apply; off, they load once at game start. */
+  development?: boolean;
   /** Added by the player with 「选择文件夹…」; can be removed again. */
   custom?: boolean;
   /** Last change of the profile (ISO time), used to pick the most recently used one. */
@@ -167,6 +169,14 @@ export interface MeshImport {
   bounds: { min: number[]; max: number[] };
 }
 
+/** A skin project on disk (`project.list`). */
+export interface ProjectEntry {
+  path: string;
+  id: string;
+  name: string;
+  modified: string;
+}
+
 export interface InstalledPack {
   id: string;
   name: string;
@@ -189,6 +199,21 @@ export interface Progress {
 
 export type SizeMode = 'keep' | 'original' | '1k' | '2k' | '4k';
 
+/** Skins written into the game's own files (直接改游戏文件), per game build. */
+export interface StaleAssets {
+  buildId: string;
+  files: string[];
+  skins: string[];
+}
+export interface AssetStatus {
+  gameDir: string;
+  buildId: string;
+  running: boolean;
+  files: { file: string; state: 'patched' | 'original' | 'changed' | 'missing'; backupOk: boolean; skins: string[] }[];
+  skins: { id: string; name: string; version: string; appliedAt: string; materials: string[]; warnings: string[] }[];
+  stale: StaleAssets[];
+}
+
 /** Methods, params and results. */
 export interface Methods {
   'app.info': [Record<string, never>, { version: string; dataDir: string }];
@@ -204,6 +229,8 @@ export interface Methods {
   'project.new': [{ weaponId?: string }, SkinDocument];
   'project.load': [{ path: string }, SkinDocument];
   'project.save': [{ path: string; project: SkinDocument }, { path: string }];
+  'project.list': [{ dir: string }, ProjectEntry[]];
+  'project.delete': [{ path: string }, unknown];
   'mesh.import': [{ glb: string }, MeshImport];
   'pack.build': [{ project: SkinDocument; projectPath: string; out: string; sizeMode: SizeMode }, { pack: string; warnings: string[] }];
   'pack.install': [{ pack: string; profile: string; activate: boolean }, unknown];
@@ -211,8 +238,14 @@ export interface Methods {
   'assembly.verify': [{ profile: string }, VerifyResult[]];
   'pack.remove': [{ profile: string; skinId: string }, unknown];
   'pack.activate': [{ profile: string; skinId: string; active: boolean }, unknown];
+  'pack.exportMod': [{ packs: string[]; out: string; name: string; version: string; description: string; icon: string }, { mod: string }];
+  'assets.apply': [{ pack: string }, { skin: string; buildId: string; files: string[]; materials: string[]; warnings: string[] }];
+  'assets.restore': [{ skinId?: string; discardStale?: boolean }, { restored: string[]; skipped: { file: string; reason: string }[]; stale: StaleAssets[] }];
+  'assets.status': [Record<string, never>, AssetStatus];
+  'assets.export': [{ pack: string; out: string }, { zip: string; buildId: string; files: string[]; warnings: string[] }];
   'plugin.install': [{ profile: string }, unknown];
   'plugin.uninstall': [{ profile: string }, unknown];
+  'plugin.setDevelopment': [{ profile: string; on: boolean }, { development: boolean; restartNeeded: boolean }];
   'export.obj': [{ weaponId: string; parts: string[]; mode: 'separate' | 'merged'; outDir: string }, { dir: string; files: string[] }];
 }
 

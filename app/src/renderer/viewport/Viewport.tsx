@@ -3,13 +3,13 @@ import { Canvas, useFrame, useThree } from '@react-three/fiber';
 import { Bloom, EffectComposer, Outline } from '@react-three/postprocessing';
 import type { OutlineEffect } from 'postprocessing';
 import CameraControlsImpl from 'camera-controls';
-import { Suspense, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
+import { Suspense, useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { Box3, CanvasTexture, Object3D, SRGBColorSpace, Sphere, type Mesh } from 'three';
 import { unityDirToThree, type Vec3 } from '../space';
 import { persistAutosave, useStore } from '../store';
 import { Attachments } from './Attachments';
 import { ModalTransform, modalState, newGesture, selectedTarget, type Target } from './ModalTransform';
-import { selectedObjects, quiet, SCENE_EVENT, viewRefs } from './refs';
+import { selectedObjects, quiet, SCENE_EVENT, shown, useSceneVersion, viewRefs } from './refs';
 import { WeaponModel } from './WeaponModel';
 import { roomReflection } from './weaponScene';
 import { lang, t } from '../i18n';
@@ -228,18 +228,22 @@ function Gizmo() {
   // One gizmo stays mounted and is pointed at the selection: mounting one per selection leaks its handle geometry.
   const on = !!target && modal === 'null|null';
   return (
-    <TransformControls
-      object={target?.obj ?? idle}
-      enabled={on}
-      showX={on}
-      showY={on}
-      showZ={on}
-      mode={view.gizmo}
-      space="local"
-      size={0.8}
-      onMouseDown={() => (gesture.current = newGesture())}
-      onObjectChange={() => target?.commit(gesture.current)}
-    />
+    <>
+      {/* Parked target while nothing is selected; it must be in the scene or the controls warn every frame. */}
+      <primitive object={idle} />
+      <TransformControls
+        object={target?.obj ?? idle}
+        enabled={on}
+        showX={on}
+        showY={on}
+        showZ={on}
+        mode={view.gizmo}
+        space="local"
+        size={0.8}
+        onMouseDown={() => (gesture.current = newGesture())}
+        onObjectChange={() => target?.commit(gesture.current)}
+      />
+    </>
   );
 }
 
@@ -250,20 +254,19 @@ function Gizmo() {
 function SelectionOutline() {
   const selection = useStore((s) => s.selection);
   const preview = useStore((s) => s.preview);
-  const [version, setVersion] = useState(0);
+  const doc = useStore((s) => s.doc);
+  const version = useSceneVersion();
+  // After the model applied the document's visibility (its effect runs first): only meshes that are drawn get an edge.
+  const [meshes, setMeshes] = useState<Object3D[]>([]);
   useEffect(() => {
-    const f = () => setVersion((v) => v + 1);
-    window.addEventListener(SCENE_EVENT, f);
-    return () => window.removeEventListener(SCENE_EVENT, f);
-  }, []);
-  const meshes = useMemo(() => {
     void preview;
     void version;
+    void doc;
     const out: Object3D[] = [];
     if (selection?.kind === 'part')
-      selectedObjects(selection.id, selection.sub).forEach((n) => n.traverse((o) => void ((o as Mesh).isMesh && out.push(o))));
-    return out;
-  }, [selection, preview, version]);
+      selectedObjects(selection.id, selection.sub).forEach((n) => n.traverse((o) => void ((o as Mesh).isMesh && shown(o) && out.push(o))));
+    setMeshes(out);
+  }, [selection, preview, version, doc]);
   // The composer sizes its effects only when the canvas size changes, so an effect it gains later keeps a 1x1 mask.
   const effect = useRef<OutlineEffect>(null);
   const width = useThree((s) => s.size.width * s.viewport.dpr);

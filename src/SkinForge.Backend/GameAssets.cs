@@ -44,7 +44,7 @@ public sealed class GameAssets : IDisposable
     // Cache folder of this game build; Catalog deletes the other builds' folders once this build's catalog is ready.
     public readonly string Cache;
     // Bump when the catalog or preview output changes, so caches written by older backends are rebuilt.
-    const int CacheVersion = 7;
+    const int CacheVersion = 9;
     public static string CacheDir(string buildId) => Path.Combine(Paths.Cache, "game", $"{buildId}-v{CacheVersion}");
 
     public AssetsFileInstance Load(string name)

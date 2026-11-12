@@ -57,6 +57,9 @@ public sealed class PartTransform
     public float[]? Rotation { get; set; }       // localEulerAngles
     public float[]? Scale { get; set; }          // localScale
     public bool? Visible { get; set; }
+    // Replaces this node's own model (its MeshFilter mesh) in its local space; the node keeps its game materials, so the
+    // skin's textures still apply by the new model's UVs. Imported glb in a project, `meshes/*.sfmesh` in a pack.
+    public string? Mesh { get; set; }
 }
 
 public enum TextureChannel { Albedo, Normal, MetallicSmoothness, Emissive }

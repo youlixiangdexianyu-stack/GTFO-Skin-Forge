@@ -127,7 +127,9 @@ public static class Catalog
         if (slot.StartsWith("ammo") || !AmmoMaterial.IsMatch(n.Materials[0].Name)) return slot;
         var mesh = n.Mesh!.Name;
         if (mesh.Contains("speedloader", StringComparison.OrdinalIgnoreCase)) return "ammo_speedloader";
-        return Regex.IsMatch(mesh, "shell|emty", RegexOptions.IgnoreCase) ? "ammo_shell" : "ammo_bullet";
+        // Rounds inside the gun are loaded rounds, whatever the mesh is called (shotgun tubes reuse the "Shotgun_Shell_Emty"
+        // mesh); only a revolver's two-piece round has its own casing. Empty casings are the ejected shell prefab (Build).
+        return mesh.StartsWith("Revolver_Shell", StringComparison.OrdinalIgnoreCase) ? "ammo_shell" : "ammo_bullet";
     }
 
     static readonly List<string> PartOrder = Assembly.Slots.Select(s => s.Id).Concat(["body", "ammo_speedloader", "ammo_bullet", "ammo_shell", "lens"]).ToList();

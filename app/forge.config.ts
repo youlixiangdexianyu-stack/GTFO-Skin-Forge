@@ -8,11 +8,12 @@ const config: ForgeConfig = {
     asar: true,
     name: 'GTFO Skin Forge',
     executableName: 'GTFOSkinForge',
+    icon: 'assets/icon',
     // Backend single-file exe and plugin DLLs; filled by PLAN §6 item 4 packaging.
     // Font licences (SIL OFL) ship next to the app with the fonts they cover.
     extraResource: ['../src/SkinForge.Backend/bin/Release/net10.0/win-x64/publish', 'licenses'],
   },
-  makers: [new MakerSquirrel({ name: 'GTFOSkinForge' }), new MakerZIP({}, ['win32'])],
+  makers: [new MakerSquirrel({ name: 'GTFOSkinForge', setupIcon: 'assets/icon.ico' }), new MakerZIP({}, ['win32'])],
   plugins: [
     new VitePlugin({
       build: [

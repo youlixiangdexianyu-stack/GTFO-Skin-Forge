@@ -142,6 +142,7 @@ public sealed class SkinPack : IDisposable
             Vec(t.Position, 3, where);
             Vec(t.Rotation, 3, where);
             Vec(t.Scale, 3, where);
+            File(t.Mesh, where);
         }
         foreach (var s in doc.Sounds)
         {

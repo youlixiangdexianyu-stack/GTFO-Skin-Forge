@@ -100,6 +100,19 @@ public static class PackBuilder
                 }
             }
 
+            foreach (var t in doc.Parts.Where(t => t.Mesh != null))
+            {
+                var src = Abs(t.Mesh!);
+                var name = $"meshes/part_{Preview.Safe(t.Part + "_" + (t.Path ?? ""))}.sfmesh";
+                if (src.EndsWith(".sfmesh", StringComparison.OrdinalIgnoreCase)) Copy(name, src);
+                else
+                {
+                    using var s = zip.CreateEntry(name).Open();
+                    s.Write(MeshImport.ToSfMesh(GlbReader.Read(src)).Write());
+                }
+                t.Mesh = name;
+            }
+
             foreach (var a in doc.Attachments)
             {
                 Program.Progress(requestId, done++, total, a.Name);

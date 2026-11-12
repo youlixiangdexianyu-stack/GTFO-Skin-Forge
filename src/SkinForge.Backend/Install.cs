@@ -150,6 +150,29 @@ public static class Install
         return new { installed = dir, version = Game.Profiles().FirstOrDefault(p => Path.GetFullPath(p.Path) == Path.GetFullPath(profile))?.PluginVersion };
     }
 
+    // The plugin's development switch (hot reload), the `Development` entry of BepInEx/config/SkinForge.cfg. The plugin
+    // reads it when the game starts, so a change applies from the next launch.
+    static string ConfigFile(string profile) => Path.Combine(profile, "BepInEx", "config", "SkinForge.cfg");
+    static readonly System.Text.RegularExpressions.Regex DevLine = new(@"^Development[ \t]*=[ \t]*(\w+)", System.Text.RegularExpressions.RegexOptions.Multiline);
+    static readonly System.Text.RegularExpressions.Regex GeneralLine = new(@"^\[General\][ \t]*\r?$", System.Text.RegularExpressions.RegexOptions.Multiline);
+
+    public static bool Development(string profile) =>
+        File.Exists(ConfigFile(profile)) && DevLine.Match(File.ReadAllText(ConfigFile(profile))) is { Success: true } m && m.Groups[1].Value.Equals("true", StringComparison.OrdinalIgnoreCase);
+
+    public static object SetDevelopment(string profile, bool on)
+    {
+        RequireProfile(profile);
+        var file = ConfigFile(profile);
+        var line = "Development = " + (on ? "true" : "false");
+        var text = File.Exists(file) ? File.ReadAllText(file) : "";
+        text = DevLine.IsMatch(text) ? DevLine.Replace(text, line, 1)
+            : GeneralLine.IsMatch(text) ? GeneralLine.Replace(text, "$0\n" + line, 1)
+            : text + (text.Length > 0 && !text.EndsWith('\n') ? "\n" : "") + "[General]\n" + line + "\n";
+        Directory.CreateDirectory(Path.GetDirectoryName(file)!);
+        File.WriteAllText(file, text);
+        return new { development = on, restartNeeded = Game.Running };
+    }
+
     // Removes the plugin DLLs; installed skins stay.
     public static object PluginUninstall(string profile)
     {

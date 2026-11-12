@@ -1,9 +1,11 @@
-import { ActionIcon, Badge, Button, Chip, Collapse, Group, Select, Switch, Text, Tooltip, UnstyledButton } from '@mantine/core';
+import { ActionIcon, Badge, Button, Chip, Group, Menu, Select, SimpleGrid, Switch, Text, Tooltip, UnstyledButton } from '@mantine/core';
 import { Dropzone, type FileWithPath } from '@mantine/dropzone';
-import { IconCheck, IconChevronDown, IconChevronRight, IconFolderOpen, IconPlayerPlay, IconPlus, IconTrash, IconX } from '@tabler/icons-react';
-import { useState } from 'react';
+import { IconBox, IconCheck, IconChevronRight, IconDeviceDesktop, IconFolderOpen, IconPlayerPlay, IconPlus, IconTrash, IconX } from '@tabler/icons-react';
+import { importMesh } from '../actions';
+import { FEATURE, FeatureHead, FeatureTile, Info } from './Features';
+import { useState, type ReactElement } from 'react';
 import { MAX_SECONDS } from '../audio';
-import { baseName, CHANNELS, fileUrl, triggersFor, type CatalogPart, type SkinSound, type TextureChannel, type Trigger } from '../protocol';
+import { baseName, CHANNELS, fileUrl, triggersFor, type Attachment, type CatalogPart, type SkinSound, type TextureChannel, type Trigger } from '../protocol';
 import { editorOf, materialOf, pendingKey, useItem, useStore } from '../store';
 import { Color, Field, Slider } from './fields';
 import { SelectionLayout } from './SelectionLayout';
@@ -145,7 +147,6 @@ function MaterialParams({ material }: { material: string }) {
 
 function PartPanel({ part }: { part: CatalogPart }) {
   const [mi, setMi] = useState(0);
-  const [more, setMore] = useState(false);
   const material = part.materials[Math.min(mi, part.materials.length - 1)];
   if (!material) return <p className="hint section">{t('skinInspector.k25')}</p>;
   return (
@@ -164,14 +165,13 @@ function PartPanel({ part }: { part: CatalogPart }) {
         </div>
       )}
       <div className="section">
-        <h3>
-          <span className="grow">{t('skinInspector.k26')}</span>
+        <FeatureHead feature="texture" title={t('skinInspector.k26')}>
           <Tooltip label={t('skinInspector.k27')}>
-            <Button size="compact-xs" variant="subtle" color="gray" leftSection={<IconFolderOpen size={12} />} onClick={pickTextureFolder}>
+            <Button size="compact-xs" variant="subtle" leftSection={<IconFolderOpen size={12} />} onClick={pickTextureFolder}>
               {t('skinInspector.k28')}
             </Button>
           </Tooltip>
-        </h3>
+        </FeatureHead>
         <div className="slots">
           {CHANNELS.map((ch) => (
             <ChannelSlot key={ch} material={material} part={part.id} channel={ch} />
@@ -183,33 +183,77 @@ function PartPanel({ part }: { part: CatalogPart }) {
         <EmissiveSection material={material} />
       </div>
       <div className="section">
-        <UnstyledButton w="100%" onClick={() => setMore(!more)}>
-          <h3 style={{ marginBottom: 0 }}>
-            <span className="grow">{t('skinInspector.k29')}</span>
-            {more ? <IconChevronDown size={14} /> : <IconChevronRight size={14} />}
-          </h3>
-        </UnstyledButton>
-        <Collapse in={more}>
-          <div style={{ paddingTop: 10 }}>
-            <MaterialParams material={material} />
-          </div>
-        </Collapse>
+        <h3>{t('skinInspector.k29')}</h3>
+        <MaterialParams material={material} />
       </div>
+      <PartAttachments part={part.id} />
     </>
   );
 }
 
 const AUDIO_EXT = ['wav', 'mp3', 'ogg', 'flac', 'm4a', 'aac', 'opus', 'webm'];
 
+async function pickSound() {
+  const [f] = await window.forge.openDialog('files', [{ get name() { return t('skinInspector.k30'); }, extensions: AUDIO_EXT }]);
+  if (f) await useStore.getState().addSound(f);
+}
+
+/** 弹药屏 / 导入模型, mounted on the selected part (else the first part; the inspector can move it). */
+function AddAttachmentMenu({ children }: { children: ReactElement }) {
+  const { addAttachment } = useStore.getState();
+  return (
+    <Menu position="bottom-start">
+      <Menu.Target>{children}</Menu.Target>
+      <Menu.Dropdown>
+        <Menu.Item leftSection={<IconDeviceDesktop size={14} />} onClick={() => addAttachment('screen')}>
+          {t('leftRail.k18')}
+        </Menu.Item>
+        <Menu.Item leftSection={<IconBox size={14} />} onClick={() => void importMesh()}>
+          {t('leftRail.k19')}
+        </Menu.Item>
+      </Menu.Dropdown>
+    </Menu>
+  );
+}
+
+/** Screens and models mounted on one part, with adding right there. */
+function PartAttachments({ part }: { part: string }) {
+  const all = useStore((s) => s.doc.attachments);
+  const list = (all ?? []).filter((a): a is Attachment => !!a && a.part === part);
+  const { select } = useStore.getState();
+  return (
+    <div className="section">
+      <FeatureHead feature="attachment" title={t('skinInspector.partAttachments')} info={t('skinInspector.attachInfo')}>
+        <AddAttachmentMenu>
+          <Button size="compact-xs" variant="light" color="cyan" leftSection={<IconPlus size={12} />}>
+            {t('leftRail.k16')}
+          </Button>
+        </AddAttachmentMenu>
+      </FeatureHead>
+      {!list.length && <p className="hint">{t('skinInspector.noAttachments')}</p>}
+      <div className="list">
+        {list.map((a) => {
+          const Icon = a.screen ? IconDeviceDesktop : IconBox;
+          return (
+            <UnstyledButton key={a.id} className="item" onClick={() => select({ kind: 'attachment', id: a.id! })}>
+              <Icon size={15} color={FEATURE.attachment.color} />
+              <Text size="sm" truncate>
+                {a.name}
+              </Text>
+              <IconChevronRight size={14} />
+            </UnstyledButton>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 /** Sounds played in game (locally) when an event happens. */
 function Sounds() {
   const triggers = triggersFor(useItem()).filter((x) => x.value !== 'always');
   const sounds = useStore((s) => s.doc.sounds ?? []).filter((x): x is SkinSound => !!x);
-  const { addSound, updateSound, removeSound } = useStore.getState();
-  const pick = async () => {
-    const [f] = await window.forge.openDialog('files', [{ get name() { return t('skinInspector.k30'); }, extensions: AUDIO_EXT }]);
-    if (f) await addSound(f);
-  };
+  const { updateSound, removeSound } = useStore.getState();
   const play = (x: SkinSound) => {
     const a = new Audio(fileUrl(x.file ?? ''));
     a.volume = x.volume ?? 1;
@@ -217,13 +261,12 @@ function Sounds() {
   };
   return (
     <div className="section">
-      <h3>
-        <span className="grow">{t('skinInspector.k31')}</span>
-        <Button size="compact-xs" variant="subtle" leftSection={<IconPlus size={12} />} onClick={pick}>
+      <FeatureHead feature="sound" title={t('skinInspector.k31')} info={`${t('skinInspector.k33')} ${MAX_SECONDS} ${t('skinInspector.k34')}`}>
+        <Button size="compact-xs" variant="light" color="green" leftSection={<IconPlus size={12} />} onClick={() => void pickSound()}>
           {t('skinInspector.k32')}
         </Button>
-      </h3>
-      {!sounds.length && <p className="hint">{t('skinInspector.k33')} {MAX_SECONDS} {t('skinInspector.k34')}</p>}
+      </FeatureHead>
+      {!sounds.length && <p className="hint">{t('skinInspector.noSounds')}</p>}
       {sounds.map((x) => (
         <div key={x.id} className="effect">
           <Group gap={6} wrap="nowrap">
@@ -277,10 +320,14 @@ function Overview() {
   const pending = Object.entries(editorOf(doc).pending);
   const replaced = (doc.materials ?? []).reduce((n, m) => n + Object.keys(m?.textures ?? {}).length, 0);
   const unmatched = useStore((s) => s.unmatched);
+  const attachments = (doc.attachments ?? []).filter(Boolean).length;
+  const sounds = (doc.sounds ?? []).filter(Boolean).length;
   return (
     <>
       <div className="insp-head">
-        <div className="kind">{t('skinInspector.k39')}</div>
+        <div className="kind">
+          {t('skinInspector.k39')} <Info label={`${t('skinInspector.k49')} ${t('skinInspector.k50')}${t('skinInspector.k51')}`} />
+        </div>
         <div className="title">{item ? localName(item) : t('skinInspector.k40')}</div>
         <div className="meta">{replaced ? t('skinInspector.k41', { v0: replaced }) : t('skinInspector.k42')}</div>
       </div>
@@ -338,12 +385,16 @@ function Overview() {
           </div>
         </div>
       )}
-      <Sounds />
       <div className="section">
-        <p className="hint">
-          {t('skinInspector.k49')} <b>{t('skinInspector.k50')}</b>{t('skinInspector.k51')}
-        </p>
+        <h3>{t('skinInspector.addMore')}</h3>
+        <SimpleGrid cols={2} spacing={8}>
+          <AddAttachmentMenu>
+            <FeatureTile feature="attachment" title={t('skinInspector.attachTile')} count={attachments} />
+          </AddAttachmentMenu>
+          <FeatureTile feature="sound" title={t('skinInspector.k31')} count={sounds} onClick={() => void pickSound()} />
+        </SimpleGrid>
       </div>
+      <Sounds />
     </>
   );
 }

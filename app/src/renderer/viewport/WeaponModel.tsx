@@ -8,7 +8,7 @@ import { editorOf, useStore } from '../store';
 import { poseWith, unityToThree } from '../space';
 import { releaseTextures } from './textures';
 import { editableMaterials, paintMaterial, restoreUnityNames } from './weaponScene';
-import { displayOffset, partOf, partTarget, pathChain, playTime, registerTransforms, quiet, SCENE_EVENT, viewRefs } from './refs';
+import { displayOffset, hiddenMeshes, partOf, partTarget, pathChain, playTime, registerTransforms, quiet, SCENE_EVENT, viewRefs } from './refs';
 import { t } from '../i18n';
 
 /** Live composite of a base texture plus its dynamic layers (the 3D decal preview). */
@@ -61,6 +61,8 @@ export function WeaponModel({ preview }: { preview: WeaponPreview }) {
   const select = useStore((s) => s.select);
   const materials = useRef(new Map<string, MeshStandardMaterial>());
   const compositors = useRef(new Map<string, Compositor>());
+  /** Meshes the part layout hides (restored before each re-apply). */
+  const layoutHidden = useRef(new Set<Mesh>());
 
   // Part <-> node mapping and one editable material per game material.
   useEffect(() => {
@@ -185,13 +187,15 @@ export function WeaponModel({ preview }: { preview: WeaponPreview }) {
 
   // Part layout (absolute local values; null keeps the game's) and visibility: hidden (layout) and switched-off parts.
   useEffect(() => {
+    layoutHidden.current.forEach((m) => (m.visible = true));
+    layoutHidden.current.clear();
     scene.traverse((o) => {
       const v = viewRefs.display.get(o);
       if (!v) return;
       o.position.copy(v.position);
       o.quaternion.copy(v.quaternion);
       o.scale.copy(v.scale);
-      if (o.userData.sfNode && !o.userData.sfUnmapped) o.visible = true;
+      if (o.userData.sfNode && !o.userData.sfUnmapped && !o.userData.sfExtraAmmo) o.visible = true;
     });
     for (const t of doc.parts ?? []) {
       if (!t) continue;
@@ -202,7 +206,11 @@ export function WeaponModel({ preview }: { preview: WeaponPreview }) {
       o.position.copy(r.position).add(displayOffset(o));
       o.quaternion.copy(r.quaternion);
       o.scale.copy(r.scale);
-      if (t.visible === false) o.visible = false;
+      if (t.visible === false)
+        for (const m of hiddenMeshes(t.part ?? '', o)) {
+          m.visible = false;
+          layoutHidden.current.add(m);
+        }
     }
     const ed = editorOf(doc);
     for (const [part, nodes] of viewRefs.partNodes) {
@@ -251,17 +259,25 @@ function layOutAmmo() {
   for (const [part, nodes] of viewRefs.partNodes) if (!AMMO_ORDER.includes(part)) nodes.forEach((n) => gun.expandByObject(n));
   if (gun.isEmpty()) return;
   const gap = Math.min(0.03, Math.max(0.01, gun.getSize(new Vector3()).length() * 0.04));
-  // One item per outermost node: a node inside another moved node moves with it.
+  // One piece per ammo part (a whole round, an empty casing, a speed loader): the first outermost node is shown, the other
+  // rounds of the magazine are hidden. They keep their part, so a skin still applies to all of them in game. A part with
+  // its own root transform (the ejected casing) moves by that root, so the gizmo and layout edits sit on the piece shown.
   const items = AMMO_ORDER.flatMap((part) => {
-    const nodes = viewRefs.partNodes.get(part) ?? [];
+    const root = partTarget(part);
+    const nodes = root ? [root] : (viewRefs.partNodes.get(part) ?? []);
     const set = new Set(nodes);
-    return nodes
+    const [first, ...extra] = nodes
       .filter((n) => {
         for (let p = n.parent; p; p = p.parent) if (set.has(p)) return false;
         return true;
       })
       .map((n) => ({ n, box: new Box3().expandByObject(n) }))
       .filter((r) => !r.box.isEmpty());
+    for (const { n } of extra) {
+      n.userData.sfExtraAmmo = true;
+      n.visible = false;
+    }
+    return first ? [first] : [];
   });
   const height = Math.max(0, ...items.map((r) => r.box.max.y - r.box.min.y));
   const bottom = gun.min.y - gap - height;

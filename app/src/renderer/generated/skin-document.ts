@@ -117,6 +117,7 @@ position?: (number[] | null)
 rotation?: (number[] | null)
 scale?: (number[] | null)
 visible?: (boolean | null)
+mesh?: (string | null)
 } | null)[]
 sounds?: ({
 id?: string

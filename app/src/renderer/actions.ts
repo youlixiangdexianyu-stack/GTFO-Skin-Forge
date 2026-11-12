@@ -7,8 +7,7 @@ import { partLabel, t } from './i18n';
 const st = () => useStore.getState();
 
 /** Document as packed: parts switched off keep vanilla, so their overrides are left out. */
-function packDoc(): SkinDocument {
-  const { doc } = st();
+function packDoc(doc = st().doc): SkinDocument {
   const item = currentItem();
   const ed = editorOf(doc);
   const off = new Set(item?.parts.filter((p) => ed.enabled[p.id] === false).flatMap((p) => p.materials) ?? []);
@@ -42,10 +41,11 @@ function preflight(): string | null {
   return null;
 }
 
-async function build(out: string): Promise<string> {
+/** Builds a skin of the current item: by default the edited one, else `skin` loaded from its autosave. */
+async function build(out: string, skin?: { doc: SkinDocument; path: string }): Promise<string> {
   const s = st();
-  const projectPath = s.projectPath ?? autosavePath(s.weaponId!);
-  const doc = packDoc();
+  const projectPath = skin?.path ?? s.projectPath ?? autosavePath(s.weaponId!);
+  const doc = packDoc(skin?.doc);
   useStore.setState({ busy: t('actions.k5') });
   await bakeLayers(doc, s.preview, projectPath, (t) => useStore.setState({ busy: t }));
   await bakeGlyphs(doc, projectPath);
@@ -55,11 +55,46 @@ async function build(out: string): Promise<string> {
   return r.pack;
 }
 
+/** Builds the current skin's pack at `out` after the usual checks; null (with a toast) when something must be fixed first.
+ * Leaves `busy` set: the caller clears it when its own step is done. */
+export async function buildPack(out: string): Promise<string | null> {
+  const problem = preflight();
+  if (problem) {
+    st().toast('error', problem);
+    return null;
+  }
+  return build(out);
+}
+
 /** What stops 应用到游戏 for the chosen profile, in plain words; null when it can go ahead. */
 export function profileProblem(profile: Profile | undefined): string | null {
   if (!profile) return t('actions.k8');
   if (!profile.hasBepInEx) return t('actions.k9', { v0: profile.name });
   return null;
+}
+
+/**
+ * Installs or updates the skin plugin in the chosen profile when it is missing or not this app's build, like a mod
+ * manager would. While the running game holds an old plugin the update waits (`pluginPending`) and is retried once the
+ * game is closed. Returns false when the plugin is still not the current one.
+ */
+export async function ensurePlugin(quiet = false): Promise<boolean> {
+  const s = st();
+  const profile = s.profiles.find((p) => p.path === s.prefs.profilePath);
+  if (!profile?.hasBepInEx || profile.pluginCurrent !== false) return true;
+  try {
+    await call('plugin.install', { profile: profile.path });
+    useStore.setState({ pluginPending: null });
+    await s.refreshProfiles();
+    s.toast('ok', t(profile.pluginVersion ? 'actions.pluginUpdated' : 'actions.pluginInstalled', { v0: profile.name }));
+    return true;
+  } catch (e) {
+    if ((e as { code?: string }).code === 'game-running') {
+      useStore.setState({ pluginPending: profile.path });
+      if (!quiet) s.toast('error', t('actions.pluginUpdate'));
+    } else s.fail(e, t('actions.k15'));
+    return false;
+  }
 }
 
 export async function applyToGame(): Promise<void> {
@@ -70,29 +105,50 @@ export async function applyToGame(): Promise<void> {
   const blocked = profileProblem(profile);
   if (blocked || !profile) return s.toast('error', blocked ?? '');
   try {
-    if (!profile.pluginVersion || profile.pluginCurrent === false) {
-      useStore.setState({ busy: t('actions.k10') });
-      try {
-        await call('plugin.install', { profile: profile.path });
-      } catch (e) {
-        // The running game holds the old plugin: it can only be replaced with the game closed.
-        if ((e as { code?: string }).code === 'game-running' && profile.pluginVersion) return s.toast('error', t('actions.pluginUpdate'));
-        throw e;
-      }
+    useStore.setState({ busy: t('actions.k10') });
+    if (!(await ensurePlugin())) return;
+    // The author's own profile refreshes live: turn the plugin's hot reload on (players who only install skin mods keep
+    // its default, off). A running game read the old setting at launch and picks it up next time.
+    let devRestart = false;
+    if (!profile.development) {
+      devRestart = (await call('plugin.setDevelopment', { profile: profile.path, on: true })).restartNeeded;
       await s.refreshProfiles();
     }
     const pack = await build(`${s.dataDir}\\packs\\${s.weaponId}.gtfskin`);
     useStore.setState({ busy: t('actions.k11') });
     await call('pack.install', { pack, profile: profile.path, activate: true });
-    // Whether the game runs now, not when the window last looked.
-    const running = (await call('game.locate', {}).catch(() => null))?.running ?? false;
-    useStore.setState((x) => ({ game: x.game && { ...x.game, running } }));
-    s.toast('ok', running ? t('actions.k12') : t('actions.k13', { v0: profile.name }));
+    void s.refreshInstalled();
+    s.toast('ok', await whenSeen(st().profiles.find((p) => p.path === profile.path) ?? profile, devRestart));
     s.log(t('actions.k14', { v0: pack, v1: profile.path }));
   } catch (e) {
     s.fail(e, t('actions.k15'));
   } finally {
     useStore.setState({ busy: null });
+  }
+}
+
+/** When the game shows a skin change in `profile`, in plain words. */
+async function whenSeen(profile: Profile, devRestart = false): Promise<string> {
+  // Whether the game runs now, not when the window last looked.
+  const running = (await call('game.locate', {}).catch(() => null))?.running ?? false;
+  useStore.setState((x) => ({ game: x.game && { ...x.game, running } }));
+  // Without the development switch the plugin reads skins only at game start.
+  if (!running) return t('actions.k13', { v0: profile.name });
+  if (devRestart) return t('actions.devNextLaunch');
+  return profile.development ? t('actions.k12') : t('actions.nextLaunch');
+}
+
+/** Makes an installed skin the one the game uses for its item (the item's other skins stay installed). */
+export async function activateSkin(id: string, name: string): Promise<void> {
+  const s = st();
+  const profile = s.profiles.find((p) => p.path === s.prefs.profilePath);
+  if (!profile) return;
+  try {
+    await call('pack.activate', { profile: profile.path, skinId: id, active: true });
+    await s.refreshInstalled();
+    s.toast('ok', `${t('skins.activated', { v0: name })} · ${await whenSeen(profile)}`);
+  } catch (e) {
+    s.fail(e);
   }
 }
 
@@ -151,4 +207,46 @@ export async function importMesh(): Promise<void> {
   } finally {
     useStore.setState({ busy: null });
   }
+}
+
+export interface ModInfo {
+  name: string;
+  version: string;
+  description: string;
+  icon: string;
+  /** Ids of the current item's skins that go in. */
+  skins: string[];
+}
+
+/** Builds the chosen skins of the current item and packs them as a Thunderstore skin mod zip. Returns false when it stopped. */
+export async function exportMod(info: ModInfo): Promise<boolean> {
+  const s = st();
+  if (info.skins.includes(s.doc.id!)) {
+    const problem = preflight();
+    if (problem) return (s.toast('error', problem), false);
+  }
+  const out = await window.forge.saveDialog(`${info.name}-${info.version}.zip`, [{ name: 'Thunderstore', extensions: ['zip'] }]);
+  if (!out) return false;
+  try {
+    const packs: string[] = [];
+    for (const id of info.skins) {
+      const entry = s.skins.find((k) => k.id === id)!;
+      const skin = id === s.doc.id ? undefined : { doc: await call('project.load', { path: entry.path }), path: entry.path };
+      packs.push(await build(`${s.dataDir}\\packs\\${id}.gtfskin`, skin));
+    }
+    useStore.setState({ busy: t('actions.k6') });
+    const { mod } = await call('pack.exportMod', { packs, out, name: info.name, version: info.version, description: info.description, icon: info.icon });
+    s.toast('ok', t('exportMod.done'), { label: t('actions.k18'), run: () => void window.forge.showInFolder(mod) });
+    return true;
+  } catch (e) {
+    s.fail(e, t('exportMod.failed'));
+    return false;
+  } finally {
+    useStore.setState({ busy: null });
+  }
+}
+
+/** Opens the Thunderstore skin mod export (ui/ExportModDialog). */
+export function exportThunderstore(): void {
+  useStore.setState({ exportModOpen: true });
 }

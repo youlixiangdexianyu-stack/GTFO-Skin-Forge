@@ -1,14 +1,15 @@
 import { ActionIcon, Button, Drawer, Group, Progress, ScrollArea, Text, Tooltip } from '@mantine/core';
 import { Dropzone } from '@mantine/dropzone';
 import { useHotkeys } from '@mantine/hooks';
-import { IconFileText, IconFolderDown } from '@tabler/icons-react';
+import { IconArrowBackUp, IconArrowForwardUp, IconFileText, IconFolderDown } from '@tabler/icons-react';
 import { useEffect, useState } from 'react';
 import { Group as PanelGroup, Panel, Separator, useDefaultLayout } from 'react-resizable-panels';
-import { applyToGame, openProject } from './actions';
+import { applyToGame, ensurePlugin, openProject } from './actions';
 import { call } from './protocol';
 import { useStore } from './store';
 import { AttachInspector } from './ui/AttachInspector';
 import { DynamicInspector, layerFromFiles } from './ui/DynamicInspector';
+import { ExportModDialog } from './ui/ExportModDialog';
 import { LeftRail } from './ui/LeftRail';
 import { nativeFiles, SkinInspector } from './ui/SkinInspector';
 import { Stage } from './ui/Stage';
@@ -22,6 +23,8 @@ function StatusBar({ onLog }: { onLog: () => void }) {
   const progress = useStore((s) => (s.busy || s.previewLoading ? s.progress : null));
   const cache = useStore((s) => s.cache);
   const undo = useStore((s) => s.undo.length);
+  const redo = useStore((s) => s.redo.length);
+  const { undoEdit, redoEdit } = useStore.getState();
   const projectPath = useStore((s) => s.projectPath);
   const down = useStore((s) => s.backendDown);
   const saveError = useStore((s) => s.autosaveError);
@@ -53,8 +56,15 @@ function StatusBar({ onLog }: { onLog: () => void }) {
       ) : (
         <span>{projectPath ? projectPath.split(/[\\/]/).pop() : t('app.k7')}</span>
       )}
-      <Tooltip label={t('app.k8')}>
-        <span>{t('app.k9')} {undo} {t('app.k10')}</span>
+      <Tooltip label={t('app.undo')}>
+        <ActionIcon variant="subtle" size="sm" disabled={!undo} onClick={undoEdit} aria-label={t('app.undo')}>
+          <IconArrowBackUp size={15} />
+        </ActionIcon>
+      </Tooltip>
+      <Tooltip label={t('app.redo')}>
+        <ActionIcon variant="subtle" size="sm" disabled={!redo} onClick={redoEdit} aria-label={t('app.redo')}>
+          <IconArrowForwardUp size={15} />
+        </ActionIcon>
       </Tooltip>
     </footer>
   );
@@ -144,6 +154,16 @@ function useGameRunning() {
   }, []);
 }
 
+/** Keeps the chosen profile's plugin current: on start, on a profile change or refresh, and once the game closes. */
+function useAutoPlugin() {
+  const profile = useStore((s) => s.profiles.find((p) => p.path === s.prefs.profilePath));
+  const running = useStore((s) => !!s.game?.running);
+  const due = !!profile?.hasBepInEx && profile.pluginCurrent === false;
+  useEffect(() => {
+    if (due) void ensurePlugin(true);
+  }, [due, profile?.path, running]);
+}
+
 export function App() {
   useLang(); // the whole tree re-renders in the new language
   const mode = useStore((s) => s.mode);
@@ -154,12 +174,14 @@ export function App() {
   useShortcuts();
   useEffect(() => void useStore.getState().init(), []);
   useGameRunning();
+  useAutoPlugin();
   return (
     <div className="shell">
       <TopBar />
       <PanelGroup className="panes" orientation="horizontal" {...layout}>
         <Panel id="left" defaultSize={300} minSize={240} maxSize={460}>
           <LeftRail />
+          <ExportModDialog />
         </Panel>
         <Separator className="sep-v" />
         <Panel id="stage" minSize={400}>

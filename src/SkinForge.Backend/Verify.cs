@@ -35,7 +35,7 @@ public static class Verify
     {
         var ours = new Dictionary<(string, string), Node>();
         foreach (var (part, path, node) in Assembly.PartNodes(holder, activeOnly: false)) ours.TryAdd((part, path ?? ""), node);
-        var partByName = holder.All().Where(n => n.Part != null).GroupBy(n => n.Name).ToDictionary(x => x.Key, x => x.First().Part!);
+        var partByName = holder.All().Where(Assembly.IsPartRoot).GroupBy(n => n.Name).ToDictionary(x => x.Key, x => x.First().Part!);
         var rows = new List<(double Score, VerifyOffender Row)>();
         var ignored = new SortedSet<string>(StringComparer.Ordinal);
         foreach (var read in rb.Nodes)
@@ -45,7 +45,7 @@ public static class Verify
             var (part, path) = (read.Part, read.Path);
             var segments = (read.Path ?? "").Split('/', StringSplitOptions.RemoveEmptyEntries);
             int clone = Array.FindLastIndex(segments, s => s.EndsWith("(Clone)"));
-            if (clone >= 0)
+            if (clone >= 0 && !ours.ContainsKey((part, path ?? "")))
             {
                 if (!partByName.TryGetValue(segments[clone][..^"(Clone)".Length], out var owner))
                 {

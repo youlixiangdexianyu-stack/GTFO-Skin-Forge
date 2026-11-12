@@ -10,12 +10,14 @@ import {
   type CatalogItem,
   type DynamicLayer,
   type GameInfo,
+  type InstalledPack,
   type MatchCell,
   type MatchResult,
   type MaterialOverride,
   type MaterialParams,
   type PartTransform,
   type Profile,
+  type ProjectEntry,
   type SizeMode,
   type SkinDocument,
   type SkinSound,
@@ -168,7 +170,22 @@ interface State {
   refreshGame(): Promise<void>;
   chooseGameDir(): Promise<void>;
   refreshProfiles(): Promise<void>;
+  /** Profile whose plugin update waits for the game to close. */
+  pluginPending: string | null;
   selectWeapon(id: string): Promise<void>;
+  /** The Thunderstore export dialog is open. */
+  exportModOpen: boolean;
+  /** The current item's skins (each its own autosaved project), newest first. */
+  skins: ProjectEntry[];
+  /** Skins installed in the chosen profile. */
+  installed: InstalledPack[];
+  refreshSkins(): Promise<ProjectEntry[]>;
+  refreshInstalled(): Promise<void>;
+  switchSkin(id: string): Promise<void>;
+  /** A new skin for the current item: blank, or a copy of the one being edited. */
+  newSkin(copy: boolean): Promise<void>;
+  /** Deletes a skin's project and removes it from the chosen profile. */
+  deleteSkin(id: string): Promise<void>;
   edit(fn: (d: SkinDocument) => void, coalesceKey?: string): void;
   undoEdit(): void;
   redoEdit(): void;
@@ -250,6 +267,10 @@ export const useStore = create<State>((set, get) => ({
   lastEditKey: null,
   lastEditAt: 0,
   prefs: loadPrefs(),
+  pluginPending: null,
+  exportModOpen: false,
+  skins: [],
+  installed: [],
   logs: [],
   progress: null,
   cache: null,
@@ -352,29 +373,12 @@ export const useStore = create<State>((set, get) => ({
     if (s.weaponId) await persistAutosave();
     localStorage.setItem('sf.weapon', id);
     set({ weaponId: id, preview: null, previewLoading: true, selection: null, undo: [], redo: [], unmatched: [] });
-    const item = s.catalog.find((c) => c.id === id);
-    // Each weapon keeps its own autosaved project.
-    const auto = autosavePath(id);
-    let doc: SkinDocument | null = null;
-    try {
-      doc = await call('project.load', { path: auto });
-    } catch {
-      try {
-        doc = await call('project.new', { weaponId: id });
-      } catch (e) {
-        get().log(`project.new: ${detail(e)}`);
-      }
-    }
-    doc ??= { name: t('store.k6', { v0: item ? localName(item) : id }), materials: [], attachments: [], target: { weapon: id } };
-    doc.target = { ...doc.target, weapon: id };
-    const hadId = !!doc.id;
-    doc = normalize(doc);
-    if (!doc.name) doc.name = t('store.k6', { v0: item ? localName(item) : id });
-    const ed = editorOf(doc);
-    for (const p of item?.parts ?? []) if (ed.enabled[p.id] === undefined) ed.enabled[p.id] = p.defaultEnabled;
-    doc.editor = ed as unknown as SkinDocument['editor'];
-    set({ doc, projectPath: null });
-    if (!hadId) get().autosave();
+    // Each weapon keeps its skins as autosaved projects; open the one edited last, else the newest, else a new one.
+    const skins = await get().refreshSkins();
+    const pick = skins.find((k) => k.id === localStorage.getItem(`sf.skin.${id}`)) ?? skins[0];
+    const doc = (pick && (await loadSkin(pick.path))) || (await blankSkin(id, skins.length));
+    openSkin(doc);
+    if (!pick) await persistAutosave();
     try {
       const preview = await call('preview.weapon', { id });
       if (get().weaponId === id) set({ preview, previewLoading: false, progress: null });
@@ -382,6 +386,60 @@ export const useStore = create<State>((set, get) => ({
       if (get().weaponId === id) set({ previewLoading: false, progress: null });
       get().fail(e, t('store.k7'));
     }
+  },
+
+  async refreshSkins() {
+    const id = get().weaponId;
+    if (!id) return [];
+    const skins: ProjectEntry[] = await call('project.list', { dir: skinDir(id) }).catch((e) => (get().log(`project.list: ${detail(e)}`), []));
+    if (get().weaponId === id) set({ skins });
+    return skins;
+  },
+  async refreshInstalled() {
+    const s = get();
+    const profile = s.profiles.find((p) => p.path === s.prefs.profilePath);
+    const installed = profile?.hasBepInEx ? await call('pack.list', { profile: profile.path }).catch(() => []) : [];
+    set({ installed });
+  },
+  async switchSkin(id) {
+    const entry = get().skins.find((k) => k.id === id);
+    if (!entry || get().doc.id === id) return;
+    await persistAutosave();
+    const doc = await loadSkin(entry.path);
+    if (doc) openSkin(doc);
+  },
+  async newSkin(copy) {
+    const s = get();
+    if (!s.weaponId) return;
+    await persistAutosave();
+    let doc: SkinDocument;
+    if (copy) {
+      doc = structuredClone(s.doc);
+      doc.id = newSkinId(doc);
+      doc.name = t('store.skinCopy', { v0: s.doc.name });
+    } else doc = await blankSkin(s.weaponId, s.skins.length);
+    openSkin(doc);
+    await persistAutosave();
+  },
+  async deleteSkin(id) {
+    const s = get();
+    const entry = s.skins.find((k) => k.id === id);
+    const profile = s.profiles.find((p) => p.path === s.prefs.profilePath);
+    if (!entry || !s.weaponId) return;
+    // The edited skin must not be written back by a pending autosave.
+    if (s.doc.id === id) clearTimeout(autosaveTimer);
+    try {
+      if (profile && s.installed.some((p) => p.id === id)) await call('pack.remove', { profile: profile.path, skinId: id });
+      await call('project.delete', { path: entry.path });
+    } catch (e) {
+      return get().fail(e, t('store.skinDeleteFailed'));
+    }
+    const rest = await get().refreshSkins();
+    void get().refreshInstalled();
+    if (get().doc.id !== id) return;
+    const next = (rest[0] && (await loadSkin(rest[0].path))) || (await blankSkin(s.weaponId, 0));
+    openSkin(next);
+    if (!rest.length) await persistAutosave();
   },
 
   edit(fn, coalesceKey) {
@@ -735,16 +793,60 @@ function dropEmptyParts(d: SkinDocument) {
   d.parts = d.parts!.filter((t) => t && (t.position != null || t.rotation != null || t.scale != null || t.visible != null));
 }
 
-export function autosavePath(weaponId: string): string {
-  return `${useStore.getState().dataDir}\\autosave\\${weaponId}.sfproj`;
+/** Folder of one item's skins. */
+const skinDir = (weaponId: string): string => `${useStore.getState().dataDir}\\autosave\\${weaponId}`;
+
+/** Autosave of one skin; by default the skin being edited. */
+export function autosavePath(weaponId: string, skinId = useStore.getState().doc.id): string {
+  return `${skinDir(weaponId)}\\${skinId}.sfproj`;
+}
+
+/** A skin's autosave, or null (with a plain message) when it does not open. */
+async function loadSkin(path: string): Promise<SkinDocument | null> {
+  try {
+    return await call('project.load', { path });
+  } catch (e) {
+    // The backend's code would blame the app version.
+    useStore.getState().log(t('store.k2', { v0: detail(e) }));
+    useStore.getState().toast('error', t('store.autosaveLoad'));
+    return null;
+  }
+}
+
+/** A new skin for the item; the second and later ones get a number in their name. */
+async function blankSkin(weaponId: string, existing: number): Promise<SkinDocument> {
+  const s = useStore.getState();
+  const item = s.catalog.find((c) => c.id === weaponId);
+  const doc = await call('project.new', { weaponId }).catch((e) => {
+    s.log(`project.new: ${detail(e)}`);
+    return { materials: [], attachments: [], target: { weapon: weaponId } } as SkinDocument;
+  });
+  doc.name = t('store.k6', { v0: item ? localName(item) : weaponId }) + (existing ? ` ${existing + 1}` : '');
+  return doc;
+}
+
+/** Makes a skin of the current item the edited one. */
+function openSkin(loaded: SkinDocument) {
+  const s = useStore.getState();
+  const id = s.weaponId!;
+  const item = s.catalog.find((c) => c.id === id);
+  const doc = normalize({ ...loaded, target: { ...loaded.target, weapon: id } });
+  if (!doc.name) doc.name = t('store.k6', { v0: item ? localName(item) : id });
+  const ed = editorOf(doc);
+  for (const p of item?.parts ?? []) if (ed.enabled[p.id] === undefined) ed.enabled[p.id] = p.defaultEnabled;
+  doc.editor = ed as unknown as SkinDocument['editor'];
+  localStorage.setItem(`sf.skin.${id}`, doc.id!);
+  useStore.setState({ doc, projectPath: null, selection: null, undo: [], redo: [], unmatched: [], lastEditKey: null });
 }
 
 export async function persistAutosave() {
-  const { weaponId, doc } = useStore.getState();
+  const { weaponId, doc, skins } = useStore.getState();
   if (!weaponId) return;
   try {
     await call('project.save', { path: autosavePath(weaponId), project: doc });
     useStore.setState({ autosaveError: null });
+    // A new skin or a new name shows in the skin list.
+    if (!skins.some((k) => k.id === doc.id && k.name === doc.name)) await useStore.getState().refreshSkins();
   } catch (e) {
     useStore.getState().log(t('store.k27', { v0: detail(e) }));
     useStore.setState({ autosaveError: friendly(e, t('store.k28')) });

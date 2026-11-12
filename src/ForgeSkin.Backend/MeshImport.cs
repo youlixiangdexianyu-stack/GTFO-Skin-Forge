@@ -24,7 +24,7 @@ public static class MeshImport
 
         var min = mesh.Positions.Aggregate(Vector3.Min);
         var max = mesh.Positions.Aggregate(Vector3.Max);
-        return new { forgeskinmesh, preview, bounds = new { min = new[] { min.X, min.Y, min.Z }, max = new[] { max.X, max.Y, max.Z } } };
+        return new { forgeskinmesh, glb = preview, bounds = new { min = new[] { min.X, min.Y, min.Z }, max = new[] { max.X, max.Y, max.Z } } };
     }
 
     public static ForgeSkinMesh ToForgeSkinMesh(MeshData m) => new()

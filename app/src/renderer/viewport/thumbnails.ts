@@ -1,6 +1,7 @@
-// Weapon-list thumbnails: renders each catalog item's preview offscreen with the 3D view's materials, one at a time
-// while the app is idle, and keeps the image in localStorage (per viewer convenience). Each image is stored with a hash
-// of the preview it came from, so a new preview build (new cache, materials or textures) renders it again.
+// Thumbnails: each catalog item's preview (the weapon gallery) and each skin (the skin strip), rendered offscreen with
+// the 3D view's materials, one at a time while the app is idle, and kept in localStorage (per viewer convenience). Each
+// image is stored with a hash of what it came from (preview, and the skin's document), so a change renders it again.
+// Skin thumbnails show textures and material settings, not attachments or dynamic layers.
 import {
   AmbientLight,
   Box3,
@@ -35,7 +36,7 @@ const hash = (text: string) => [...text].reduce((h, c) => Math.imul(h ^ c.charCo
 
 let running = false;
 
-async function render(renderer: WebGLRenderer, env: Texture, preview: WeaponPreview): Promise<string | null> {
+async function render(renderer: WebGLRenderer, env: Texture, preview: WeaponPreview, doc = {} as SkinDocument): Promise<string | null> {
   const gltf = await new GLTFLoader().loadAsync(fileUrl(preview.glb));
   restoreUnityNames(gltf);
   const scene = new Scene();
@@ -52,14 +53,13 @@ async function render(renderer: WebGLRenderer, env: Texture, preview: WeaponPrev
   });
   const mats = new Map<string, MeshStandardMaterial>();
   editableMaterials(gltf.scene, mats);
-  const empty = {} as SkinDocument;
   const keep = new Set<string>();
   await Promise.allSettled(
     [...mats].flatMap(([name, mat]) =>
       paintMaterial(
         mat,
         name,
-        empty,
+        doc,
         preview,
         keep,
         () => false,
@@ -91,31 +91,44 @@ async function render(renderer: WebGLRenderer, env: Texture, preview: WeaponPrev
   return url;
 }
 
+let shared: { renderer: WebGLRenderer; env: Texture } | null = null;
+let queue: Promise<unknown> = Promise.resolve();
+
+/** Runs `job` with the offscreen renderer, after any render already queued. */
+function withRenderer<T>(job: (renderer: WebGLRenderer, env: Texture) => Promise<T>): Promise<T> {
+  const run = queue.then(() => {
+    if (!shared) {
+      const canvas = document.createElement('canvas');
+      canvas.width = 256;
+      canvas.height = 128;
+      const renderer = new WebGLRenderer({ canvas, alpha: true, antialias: true, preserveDrawingBuffer: true });
+      renderer.outputColorSpace = SRGBColorSpace;
+      shared = { renderer, env: roomReflection(renderer) };
+    }
+    return job(shared.renderer, shared.env);
+  });
+  queue = run.catch(() => undefined);
+  return run;
+}
+
+const idle = async () => {
+  while (useStore.getState().previewLoading || useStore.getState().busy) await new Promise((r) => setTimeout(r, 1000));
+};
+
 /** Fill missing thumbnails in the background; yields to anything the user is doing. */
 export async function fillThumbnails(): Promise<void> {
   if (running) return;
   running = true;
-  const canvas = document.createElement('canvas');
-  canvas.width = 256;
-  canvas.height = 128;
-  const renderer = new WebGLRenderer({
-    canvas,
-    alpha: true,
-    antialias: true,
-    preserveDrawingBuffer: true,
-  });
-  renderer.outputColorSpace = SRGBColorSpace;
-  const env = roomReflection(renderer, '#ffffff');
   try {
     // Images from earlier thumbnail formats are never read again.
     for (const k of Object.keys(localStorage)) if (k.startsWith('sf.thumb.') && !k.startsWith('sf.thumb.v3.')) localStorage.removeItem(k);
     for (const item of useStore.getState().catalog) {
-      while (useStore.getState().previewLoading || useStore.getState().busy) await new Promise((r) => setTimeout(r, 1000));
+      await idle();
       try {
         const preview = await call('preview.weapon', { id: item.id });
         const source = String(hash(JSON.stringify(preview)));
         if (thumbOf(item.id) && read(`${key(item.id)}.src`) === source) continue;
-        const url = await render(renderer, env, preview);
+        const url = await withRenderer((renderer, env) => render(renderer, env, preview));
         if (url) {
           localStorage.setItem(key(item.id), url);
           localStorage.setItem(`${key(item.id)}.src`, source);
@@ -127,8 +140,29 @@ export async function fillThumbnails(): Promise<void> {
       await new Promise((r) => setTimeout(r, 150));
     }
   } finally {
-    env.dispose();
-    renderer.dispose();
     running = false;
+  }
+}
+
+const skinKey = (skinId: string) => key(`skin.${skinId}`);
+export const skinThumbOf = (skinId: string) => read(skinKey(skinId));
+
+/** Renders one skin of `weaponId` (its document, or the file at `path`) unless the stored image is still current. */
+export async function skinThumbnail(weaponId: string, skinId: string, source: { doc?: SkinDocument; path?: string }): Promise<void> {
+  await idle();
+  try {
+    const doc = source.doc ?? (source.path ? await call('project.load', { path: source.path }) : null);
+    if (!doc) return;
+    const preview = useStore.getState().weaponId === weaponId && useStore.getState().preview ? useStore.getState().preview! : await call('preview.weapon', { id: weaponId });
+    // Editor state (pending matches, previews) does not change the look.
+    const src = String(hash(JSON.stringify(preview) + JSON.stringify({ ...doc, editor: null })));
+    if (skinThumbOf(skinId) && read(`${skinKey(skinId)}.src`) === src) return;
+    const url = await withRenderer((renderer, env) => render(renderer, env, preview, doc));
+    if (!url) return;
+    localStorage.setItem(skinKey(skinId), url);
+    localStorage.setItem(`${skinKey(skinId)}.src`, src);
+    window.dispatchEvent(new Event(THUMB_EVENT));
+  } catch {
+    /* a missing thumbnail only shows the weapon's own */
   }
 }

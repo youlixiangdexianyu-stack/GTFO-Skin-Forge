@@ -138,6 +138,9 @@ public static class Game
         return null;
     }
 
+    // major.minor.build: the file version always carries a fourth part (1.0.0.0), the plugin is versioned 1.0.0.
+    static string ShortVersion(FileVersionInfo v) => $"{v.FileMajorPart}.{v.FileMinorPart}.{v.FileBuildPart}";
+
     static ProfileInfo Profile(string dir, bool custom)
     {
         var dll = Path.Combine(PluginDir(dir), "SkinForge.Plugin.dll");
@@ -145,7 +148,7 @@ public static class Game
         var modified = new[] { dir, Path.Combine(dir, "BepInEx"), Path.Combine(dir, "BepInEx", "plugins"), Path.Combine(dir, "BepInEx", "LogOutput.log") }
             .Where(p => Directory.Exists(p) || File.Exists(p)).Select(File.GetLastWriteTimeUtc).Max();
         return new ProfileInfo(Path.GetFileName(dir.TrimEnd('\\', '/')), dir, reason == null,
-            File.Exists(dll) ? FileVersionInfo.GetVersionInfo(dll).FileVersion : null, File.Exists(dll) && Install.PluginCurrent(dir), Install.Development(dir), reason, custom, modified);
+            File.Exists(dll) ? ShortVersion(FileVersionInfo.GetVersionInfo(dll)) : null, File.Exists(dll) && Install.PluginCurrent(dir), Install.Development(dir), reason, custom, modified);
     }
 
     // Accepts a profile root, its BepInEx folder or a game folder holding BepInEx.
@@ -173,18 +176,6 @@ public static class Game
         settings["profiles"] = new JsonArray(list.Select(p => (JsonNode)p).ToArray());
         WriteSettings(settings);
         return new { removed = dir };
-    }
-
-    // Starts GTFO with the profile's BepInEx, the way r2modman does (doorstop 4 arguments; the game folder holds winhttp.dll).
-    public static object Launch(string profile)
-    {
-        if (Running) throw new BackendException("game-running", "GTFO is already running");
-        var core = Path.Combine(profile, "BepInEx", "core", "BepInEx.Unity.IL2CPP.dll");
-        if (!File.Exists(core)) throw new BackendException("not-found", $"No BepInEx in {profile}");
-        var exe = Path.Combine(Dir, "GTFO.exe");
-        Process.Start(new ProcessStartInfo(exe) { WorkingDirectory = Dir, UseShellExecute = false,
-            ArgumentList = { "--doorstop-enabled", "true", "--doorstop-target-assembly", core } });
-        return new { started = exe };
     }
 
     // Lines the plugin wrote to its own log after `since` (ISO time, UTC): {time, level, message}.

@@ -11,7 +11,9 @@ namespace SkinForge.Backend;
 // that is it, its parent's GLB node, vanilla local pose in Unity space (rotation as quaternion x, y, z, w) and the
 // renderer nodes at or under it.
 public sealed record PreviewTransform(string Name, string? Path, string Node, string? Parent, float[] Position, float[] Rotation, float[] Scale, List<string> Meshes);
-public sealed record PreviewPart(string Id, List<string> Nodes, List<PreviewTransform> Transforms);
+public sealed record PreviewPart(string Id, List<string> Nodes, List<PreviewTransform> Transforms, PreviewAmmo? Ammo);
+// How an ammo part is shown (Catalog.AmmoLayout): the GLB node moved by a world offset (Unity space) and the nodes hidden.
+public sealed record PreviewAmmo(string Node, float[] Offset, List<string> Hidden);
 public sealed record PreviewResult(string Glb, List<PreviewPart> Parts, Dictionary<string, Dictionary<TextureChannel, string>> Textures,
     Dictionary<string, PreviewMaterial> Params);
 
@@ -145,9 +147,11 @@ public static class Preview
                 path == null ? null : nodeName[n.Parent!],
                 [n.Position.X, n.Position.Y, n.Position.Z], [n.Rotation.X, n.Rotation.Y, n.Rotation.Z, n.Rotation.W], [n.Scale.X, n.Scale.Y, n.Scale.Z], under));
         }
+        var ammo = Catalog.AmmoLayout(root, n => meshes[(n.Mesh!.File.path, n.Mesh.PathId)].Data).ToDictionary(a => a.Part,
+            a => new PreviewAmmo(nodeName[a.Shown], [a.Offset.X, a.Offset.Y, a.Offset.Z], a.Hidden.Select(h => nodeName[h]).ToList()));
         var order = Assembly.Slots.Select(s => s.Id).Concat(["ammo_speedloader", "ammo_bullet", "ammo_shell"]).ToList();
         var result = new PreviewResult(glbPath, parts.Keys.Union(transforms.Keys).OrderBy(p => order.IndexOf(p) is var i && i < 0 ? 99 : i)
-            .Select(p => new PreviewPart(p, parts.GetValueOrDefault(p) ?? new(), transforms.GetValueOrDefault(p) ?? new())).ToList(), textures, parameters);
+            .Select(p => new PreviewPart(p, parts.GetValueOrDefault(p) ?? new(), transforms.GetValueOrDefault(p) ?? new(), ammo.GetValueOrDefault(p))).ToList(), textures, parameters);
         File.WriteAllText(cached, JsonSerializer.Serialize(result, Program.Json));
         return result;
     }

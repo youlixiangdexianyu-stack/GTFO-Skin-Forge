@@ -8,6 +8,7 @@ import { Box3, CanvasTexture, Object3D, SRGBColorSpace, Sphere, type Mesh } from
 import { unityDirToThree, type Vec3 } from '../space';
 import { persistAutosave, useStore } from '../store';
 import { Attachments } from './Attachments';
+import { PartMeshes } from './PartMeshes';
 import { ModalTransform, modalState, newGesture, selectedTarget, type Target } from './ModalTransform';
 import { selectedObjects, quiet, SCENE_EVENT, shown, useSceneVersion, viewRefs } from './refs';
 import { WeaponModel } from './WeaponModel';
@@ -86,8 +87,9 @@ export function focusSelection() {
 }
 
 /**
- * The one lighting rig: a room reflection map plus three lights, all tinted by the same colour. The reflection map is
- * rebuilt with the tint, otherwise a coloured light shows next to a white reflection of the room's lamps.
+ * The one lighting rig: a room reflection map whose lamps take the chosen colour, a neutral ambient and fill light, and
+ * the key light in the chosen colour. The room's walls and the fill stay neutral, so the colour reads as coloured lamps
+ * shining on the gun; tinting everything turns a metal gun that colour all over, which looks like a repaint.
  */
 function Environment({ intensity, color }: { intensity: number; color: string }) {
   const { gl, scene } = useThree();
@@ -124,9 +126,9 @@ function Environment({ intensity, color }: { intensity: number; color: string })
   }, [scene]);
   return (
     <>
-      <ambientLight intensity={0.25 * intensity} color={color} />
+      <ambientLight intensity={0.25 * intensity} />
       <directionalLight position={[1.5, 2, 1]} intensity={1.6 * intensity} color={color} />
-      <directionalLight position={[-2, 0.5, -1.5]} intensity={0.6 * intensity} color={color} />
+      <directionalLight position={[-2, 0.5, -1.5]} intensity={0.6 * intensity} />
     </>
   );
 }
@@ -303,6 +305,7 @@ export function Viewport() {
       <Suspense fallback={null}>
         {preview && <WeaponModel key={preview.glb} preview={preview} />}
         {preview && <Attachments />}
+        {preview && <PartMeshes />}
       </Suspense>
       <Gizmo />
       <ModalTransform />

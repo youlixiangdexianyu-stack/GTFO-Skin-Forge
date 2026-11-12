@@ -72,6 +72,16 @@ body {
   -webkit-app-region: no-drag;
   flex-shrink: 0;
 }
+/* One control height on the bar, with even room above and below. */
+.topbar .mantine-Button-root,
+.topbar .mantine-ActionIcon-root {
+  height: 30px;
+  min-height: 30px;
+}
+.topbar .mantine-ActionIcon-root {
+  width: 30px;
+  min-width: 30px;
+}
 .topbar .spacer {
   flex: 1;
   min-width: 8px;
@@ -171,7 +181,7 @@ body {
 /* ---------- left rail ---------- */
 .rail {
   display: grid;
-  grid-template-rows: minmax(200px, 1fr) auto auto minmax(140px, 40%);
+  grid-template-rows: auto 1fr;
   height: 100%;
   background: var(--panel);
 }
@@ -268,7 +278,7 @@ body {
 }
 .part {
   display: grid;
-  grid-template-columns: 22px 24px 22px 1fr auto;
+  grid-template-columns: 22px 24px 22px 1fr auto auto;
   align-items: center;
   gap: 4px;
   padding: 3px 6px;
@@ -286,37 +296,13 @@ body {
   font-size: 12px;
   color: var(--scan);
 }
-.part.attach .row-actions,
-.part.skin .row-actions {
+.part.attach .row-actions {
   display: flex;
   visibility: hidden;
 }
 .part.attach:hover .row-actions,
-.part.attach[aria-selected='true'] .row-actions,
-.part.skin:hover .row-actions,
-.part.skin[aria-selected='true'] .row-actions {
+.part.attach[aria-selected='true'] .row-actions {
   visibility: visible;
-}
-/* One item's skins: a short list between the weapon picker and the part tree. */
-.skins .list {
-  max-height: 132px;
-  overflow-y: auto;
-  padding: 0 6px 6px;
-}
-.part.skin {
-  grid-template-columns: 24px 1fr auto auto;
-}
-.part.add {
-  display: flex;
-  width: 100%;
-  margin-top: 6px;
-  gap: 8px;
-  color: var(--dust);
-  border: 1px dashed var(--line);
-}
-.part.add:hover {
-  color: var(--flare);
-  border-color: var(--flare);
 }
 .effect {
   padding: 8px;
@@ -385,24 +371,154 @@ body {
   overflow: hidden;
   background: radial-gradient(120% 90% at 50% 38%, #3a3e44 0%, #24272b 52%, #16181b 100%);
 }
-.stage-title {
+.stage {
+  container-type: inline-size;
+}
+/* Top left of the 3D view: the item (opens the gallery) and its skins. */
+.stage-head {
   position: absolute;
-  left: 22px;
-  top: 16px;
+  left: 18px;
+  top: 12px;
+  right: 140px;
+  display: grid;
+  justify-items: start;
+  gap: 10px;
   pointer-events: none;
 }
+.stage-head > * {
+  pointer-events: auto;
+}
+.stage-title {
+  padding: 4px 8px;
+  border-radius: 8px;
+}
+.stage-title:hover {
+  background: rgba(20, 22, 25, 0.6);
+}
 .stage-title .name {
-  font: 40px/1 var(--stencil);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font: 30px/1 var(--stencil);
   letter-spacing: 0.03em;
   text-transform: uppercase;
-  color: rgba(233, 228, 216, 0.92);
+  color: rgba(233, 228, 216, 0.95);
   text-shadow: 0 2px 10px rgba(0, 0, 0, 0.6);
 }
+.stage-title .chev {
+  color: var(--flare);
+}
 .stage-title .sub {
-  margin-top: 6px;
+  margin-top: 4px;
   font-size: 12.5px;
   color: #c9c4b8;
   text-shadow: 0 1px 3px rgba(0, 0, 0, 0.8);
+}
+.skin-strip {
+  display: flex;
+  gap: 8px;
+  max-width: 100%;
+  overflow-x: auto;
+  padding-bottom: 4px;
+}
+.skin-card {
+  position: relative;
+  flex: none;
+  display: grid;
+  width: 132px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: rgba(20, 22, 25, 0.82);
+  backdrop-filter: blur(8px);
+  cursor: pointer;
+  overflow: hidden;
+}
+.skin-card:hover {
+  border-color: var(--dust);
+}
+.skin-card[aria-current='true'] {
+  border-color: var(--flare);
+  box-shadow: 0 0 0 1px var(--flare);
+}
+.skin-card .thumb {
+  width: 100%;
+  height: 62px;
+  border-radius: 0;
+}
+.skin-card .row {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 2px 2px 2px 8px;
+  font-size: 12px;
+}
+.skin-card .name {
+  flex: 1;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  color: var(--bone);
+}
+.skin-card .in-game {
+  position: absolute;
+  top: 4px;
+  left: 4px;
+  padding: 0 6px;
+  border-radius: 8px;
+  background: var(--ok);
+  color: #10140f;
+  font-size: 10.5px;
+  font-weight: 600;
+}
+.skin-card .in-game.idle {
+  background: rgba(20, 22, 25, 0.85);
+  color: var(--ok);
+  border: 1px solid var(--ok);
+  visibility: hidden;
+}
+.skin-card:hover .in-game.idle {
+  visibility: visible;
+}
+.skin-card.add {
+  place-items: center;
+  align-content: center;
+  gap: 4px;
+  min-height: 90px;
+  border-style: dashed;
+  color: var(--dust);
+  font-size: 12px;
+}
+.skin-card.add:hover {
+  border-color: var(--flare);
+  color: var(--flare);
+}
+.gallery {
+  display: grid;
+  height: min(70vh, 640px);
+}
+.gallery .picker {
+  height: 100%;
+}
+.weapon-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 4px;
+}
+.tree-group {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 10px;
+  padding: 6px 8px 2px;
+  border-top: 1px solid var(--line-soft);
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  color: var(--dust);
+}
+.part.layer {
+  grid-template-columns: 16px 1fr;
+  font-size: 12px;
+  color: var(--dust);
 }
 .overlay {
   position: absolute;
@@ -417,14 +533,27 @@ body {
   bottom: 14px;
 }
 .overlay.tools {
-  left: 50%;
-  top: 14px;
-  transform: translateX(-50%);
+  right: 14px;
+  top: 130px;
 }
 .overlay.events {
-  left: 50%;
+  left: 150px;
+  right: 150px;
   bottom: 14px;
-  transform: translateX(-50%);
+  width: fit-content;
+  margin-inline: auto;
+  justify-content: center;
+}
+/* Narrow 3D view: the event buttons get their own row above the light and view controls. */
+@container (max-width: 900px) {
+  .overlay.events {
+    bottom: 58px;
+    left: 14px;
+    right: 14px;
+  }
+  .modal-hint {
+    bottom: 120px;
+  }
 }
 .overlay.light {
   left: 14px;

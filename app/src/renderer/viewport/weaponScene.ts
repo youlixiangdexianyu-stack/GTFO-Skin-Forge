@@ -5,6 +5,7 @@ import {
   ClampToEdgeWrapping,
   Color,
   Mesh,
+  type MeshLambertMaterial,
   MeshStandardMaterial,
   PMREMGenerator,
   PropertyBinding,
@@ -48,12 +49,14 @@ export function restoreUnityNames(gltf: {
 }
 
 /** The room reflection map the metal surfaces need, tinted by the light colour (a white room next to coloured lights reads as two lights). */
-export function roomReflection(renderer: WebGLRenderer, color: string): Texture {
+export function roomReflection(renderer: WebGLRenderer, lamp = '#ffffff'): Texture {
   const room = new RoomEnvironment();
-  const tint = new Color(color);
+  // Only the room's lamps (its emissive Lambert panels) take the colour; the walls stay grey, so a metal gun reflects
+  // coloured lights in a neutral room instead of turning that colour all over.
+  const tint = new Color(lamp);
   room.traverse((o) => {
-    const m = (o as Mesh).material as MeshStandardMaterial | undefined;
-    if (m?.color) m.color.multiply(tint);
+    const m = (o as Mesh).material as MeshLambertMaterial | undefined;
+    if (m?.type === 'MeshLambertMaterial') m.emissive.multiply(tint);
   });
   const pmrem = new PMREMGenerator(renderer);
   const env = pmrem.fromScene(room, 0.04).texture;

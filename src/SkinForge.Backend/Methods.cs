@@ -61,7 +61,6 @@ public static class Methods
         "app.info" => new { version = Version, dataDir = Paths.Data },
         "game.locate" => Game.Locate(),
         "game.setDir" => Game.SetDir(Str(p, "dir")),
-        "game.launch" => Game.Launch(Str(p, "profile")),
         "plugin.log" => Game.PluginLog(Str(p, "profile"), (DateTime?)p["since"]),
         "profiles.list" => Game.Profiles(),
         "profiles.add" => Game.AddProfile(Str(p, "path")),

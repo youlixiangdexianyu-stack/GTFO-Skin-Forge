@@ -98,6 +98,13 @@ export function hiddenMeshes(part: string, obj: Object3D): Mesh[] {
   return out;
 }
 
+/** A node's own model (what a replacement swaps): the node itself when it is a mesh, else the meshes glTF split its
+ * mesh into (direct children that are not nodes of their own). Children that are transforms keep their models. */
+export function ownMeshes(obj: Object3D): Mesh[] {
+  if ((obj as Mesh).isMesh) return [obj as Mesh];
+  return obj.children.filter((c): c is Mesh => (c as Mesh).isMesh && !viewRefs.transformKey.has(c) && !viewRefs.nodeToPart.has(c));
+}
+
 /** Whether `o` is drawn: it and every parent are visible. */
 export function shown(o: Object3D): boolean {
   for (let x: Object3D | null = o; x; x = x.parent) if (!x.visible) return false;

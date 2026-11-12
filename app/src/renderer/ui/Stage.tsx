@@ -20,9 +20,10 @@ import { IconArrowsMove, IconFocusCentered, IconFolder, IconMagnet, IconRotate, 
 import { triggersFor } from '../protocol';
 import { useItem, useStore } from '../store';
 import { simulate } from '../viewport/refs';
-import { categoryOf } from './LeftRail';
+import { SkinStrip } from './SkinStrip';
+import { WeaponTitle } from './WeaponGallery';
 import { focusSelection, useModal, useViewStore, Viewport } from '../viewport/Viewport';
-import { lang, t } from '../i18n';
+import { t } from '../i18n';
 
 function FirstRun() {
   const game = useStore((s) => s.game);
@@ -145,13 +146,13 @@ function LightBar() {
 
 function AttachTools() {
   const view = useViewStore();
-  const mode = useStore((s) => s.mode);
   const snap = useStore((s) => s.snapToSurface);
   const selection = useStore((s) => s.selection);
   return (
-    <Group className="overlay tools" gap={4}>
+    <Stack className="overlay tools" gap={4}>
       <SegmentedControl
         size="xs"
+        orientation="vertical"
         value={view.gizmo}
         onChange={(v) => view.set({ gizmo: v as 'translate' })}
         data={[
@@ -184,12 +185,12 @@ function AttachTools() {
           },
         ]}
       />
-      {mode === 'attach' && (
+      {selection?.kind === 'attachment' && (
         <Tooltip label={t('stage.k26')}>
           <Button
+            size="xs"
             variant={snap ? 'light' : 'subtle'}
             color={snap ? 'flare' : 'gray'}
-            disabled={selection?.kind !== 'attachment'}
             leftSection={<IconMagnet size={14} />}
             onClick={() => useStore.setState({ snapToSurface: !snap })}
           >
@@ -197,7 +198,7 @@ function AttachTools() {
           </Button>
         </Tooltip>
       )}
-    </Group>
+    </Stack>
   );
 }
 
@@ -243,11 +244,11 @@ function ModalHint() {
 function EventBar() {
   const item = useItem();
   return (
-    <Group className="overlay events" gap={2} wrap="nowrap">
+    <Group className="overlay events" gap={2}>
       {triggersFor(item)
         .filter((x) => x.simulate)
         .map((x) => (
-          <Button key={x.value} size="compact-xs" variant="subtle" color="gray" onClick={() => simulate(x.value)}>
+          <Button key={x.value} size="compact-xs" variant="subtle" color="flare" onClick={() => simulate(x.value)}>
             {t('stage.simulate', { v0: x.label })}
           </Button>
         ))}
@@ -256,22 +257,15 @@ function EventBar() {
 }
 
 export function Stage() {
-  const item = useItem();
   const preview = useStore((s) => s.preview);
   const loading = useStore((s) => s.previewLoading);
   return (
     <main className="stage">
       <Viewport />
-      {item && (
-        <div className="stage-title">
-          <div className="name">{item.name}</div>
-          <div className="sub">
-            {categoryOf(item)}
-            {lang() === 'zh' && item.nameZh ? ` · ${item.nameZh}` : ''}
-            {item.calibre ? ` · ${item.calibre}` : ''}
-          </div>
-        </div>
-      )}
+      <div className="stage-head">
+        <WeaponTitle />
+        <SkinStrip />
+      </div>
       {loading && (
         <div className="stage-empty">
           <Stack align="center" gap="xs">

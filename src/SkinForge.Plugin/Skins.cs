@@ -63,6 +63,8 @@ sealed class Skin
         bool linear = Linear(channel);
         var key = (linear ? "L:" : "S:") + path;
         if (_textures.ContainsKey(key)) return;
+        var watch = System.Diagnostics.Stopwatch.StartNew();
+        SkinForgePlugin.Info($"decoding {path} ({channel}, compress {compress})");
         var texture = new Texture2D(2, 2, TextureFormat.RGBA32, mips, linear) { name = "SkinForge " + path, hideFlags = HideFlags.DontUnloadUnusedAsset };
         _textures[key] = texture;
         if (!ImageConversion.LoadImage(texture, pack.ReadBytes(path), !compress))
@@ -89,8 +91,10 @@ sealed class Skin
             Object.Destroy(texture);
             _textures[key] = texture = nm;
         }
+        SkinForgePlugin.Info($"{path}: {texture.width}x{texture.height} {texture.format} loaded in {watch.ElapsedMilliseconds} ms, compressing");
         texture.Compress(true);
         texture.Apply(false, true); // drop the CPU copy
+        SkinForgePlugin.Info($"{path}: compressed to {texture.format} in {watch.ElapsedMilliseconds} ms");
     }
 
     static Mesh ToMesh(SfMesh m, string name)
@@ -173,12 +177,21 @@ static class Skins
         Directory.CreateDirectory(dir);
         if (!hotReload) return;
         _watcher = new FileSystemWatcher(plugins) { IncludeSubdirectories = true, NotifyFilter = NotifyFilters.FileName | NotifyFilters.LastWrite | NotifyFilters.Size };
-        FileSystemEventHandler touched = (_, _) => Interlocked.Increment(ref _events);
+        // Only skin inputs count: the plugin's own log (and other mods' files) live in the same tree, and counting them
+        // would reload after every log line, which logs again.
+        FileSystemEventHandler touched = (_, e) => { if (SkinInput(e.Name)) Interlocked.Increment(ref _events); };
         _watcher.Changed += touched;
         _watcher.Created += touched;
         _watcher.Deleted += touched;
-        _watcher.Renamed += (_, _) => Interlocked.Increment(ref _events);
+        _watcher.Renamed += (_, e) => { if (SkinInput(e.Name) || SkinInput(e.OldName)) Interlocked.Increment(ref _events); };
         _watcher.EnableRaisingEvents = true;
+    }
+
+    static bool SkinInput(string? name)
+    {
+        var file = Path.GetFileName(name ?? "");
+        return file.EndsWith(".gtfskin", StringComparison.OrdinalIgnoreCase) || file.Equals("active.json", StringComparison.OrdinalIgnoreCase)
+            || file.Equals(SkinPacks.Marker, StringComparison.OrdinalIgnoreCase);
     }
 
     // Main thread. True when the skins were reloaded and live gear must be re-applied.
@@ -196,6 +209,7 @@ static class Skins
 
     static void Reload()
     {
+        SkinForgePlugin.Info("reloading skins");
         var files = Discover();
         foreach (var gone in ByFile.Keys.Where(f => !files.Contains(f, StringComparer.OrdinalIgnoreCase)).ToList())
         {

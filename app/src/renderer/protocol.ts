@@ -144,8 +144,9 @@ export interface PreviewMaterial extends MaterialParams {
 
 export interface WeaponPreview {
   glb: string;
-  /** Mesh nodes per part, and the part's transforms (first = the part root, path null) in Unity space, vanilla local pose. */
-  parts: { id: string; nodes: string[]; transforms: PreviewTransform[] }[];
+  /** Mesh nodes per part, and the part's transforms (first = the part root, path null) in Unity space, vanilla local pose.
+   * Ammo parts say how they are shown: the node moved by a world offset (Unity space) and the nodes hidden. */
+  parts: { id: string; nodes: string[]; transforms: PreviewTransform[]; ammo: { node: string; offset: [number, number, number]; hidden: string[] } | null }[];
   textures: Record<string, Partial<Record<TextureChannel, string>>>;
   params: Record<string, PreviewMaterial>;
 }
@@ -244,6 +245,7 @@ export interface Methods {
   'assets.status': [Record<string, never>, AssetStatus];
   'assets.export': [{ pack: string; out: string }, { zip: string; buildId: string; files: string[]; warnings: string[] }];
   'plugin.install': [{ profile: string }, unknown];
+  'plugin.log': [{ profile: string; since?: string }, { lines: { time: string; level: 'info' | 'warn'; message: string }[] }];
   'plugin.uninstall': [{ profile: string }, unknown];
   'plugin.setDevelopment': [{ profile: string; on: boolean }, { development: boolean; restartNeeded: boolean }];
   'export.obj': [{ weaponId: string; parts: string[]; mode: 'separate' | 'merged'; outDir: string }, { dir: string; files: string[] }];

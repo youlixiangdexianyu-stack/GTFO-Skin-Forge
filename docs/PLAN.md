@@ -20,8 +20,7 @@ and materials); re-pointing muzzle, sight and hand aligns to a new model is out.
 
 The app is the authoring tool. Players never run it: they install the plugin (the base library on Thunderstore) and
 skin mods that depend on it. 应用到游戏 is the author's test loop: it installs or updates the plugin in the chosen test
-profile, turns hot reload on there and installs the skin, then reports what the game did from the plugin's log; the
-author can also start the game in that profile from the app. Distribution is a separate step: export a skin pack, a
+profile, turns hot reload on there and installs the skin, then reports what the game did from the plugin's log. Distribution is a separate step: export a skin pack, a
 Thunderstore skin mod, or patched game files.
 
 Every feature of the old Python tool stays (§4).
@@ -121,7 +120,6 @@ Logs go to stderr and `<dataDir>/logs/backend.log`, never stdout.
 | `pack.install` | `{pack, profile, activate}` → writes skin + active.json (a running game picks it up only with the development switch on) |
 | `pack.list / pack.remove / pack.activate` | manage installed skins in a profile |
 | `pack.exportMod` | `{packs, out, name, version, description, icon}` → `{mod}`: a Thunderstore skin mod zip (manifest.json, icon.png scaled to 256x256, README.md, `forgeskin.forge`, `skins/*`), depending on the base library |
-| `game.launch` | `{profile}` → starts GTFO.exe with the profile's BepInEx (doorstop arguments as r2modman passes them); `game-running` if it already runs |
 | `plugin.log` | `{profile, since?}` → `{lines:[{time, level, message}]}` from the plugin's own `skinforge.log`, newer than `since` |
 | `plugin.install` | `{profile}` → copies plugin; refuses with `game-running` while GTFO runs and the DLL is locked |
 | `plugin.setDevelopment` | `{profile, on}` → writes `Development` in `BepInEx/config/SkinForge.cfg`; `{development, restartNeeded}`. `profiles.list` reports it as `development` |
@@ -151,7 +149,11 @@ game is not running.
   `SkinPacks.Register(path)`. A mod's or registered skin is active for its target unless `active.json` picks one; among them
   the first by path wins and the others are logged as unused. Hot reload only with the development switch (`Development = true` in
   SkinForge.cfg, set from the app; read at game start): then a `FileSystemWatcher` reloads changed packs and `active.json`
-  within ~0.5 s and re-applies to live weapons. Off (default), nothing watches the folder and changes apply on the next launch.
+  within ~0.5 s and re-applies to live weapons; only skin inputs (`*.gtfskin`, `active.json`, `forgeskin.forge`) count, never
+  the plugin's own log or other mods' files. Off (default), nothing watches the folder and changes apply on the next launch.
+- Hooks: IL2CPP folds identical native bodies, so a hook can run for unrelated objects. A target whose native entry starts
+  with a return or jump (an empty override compiled to a shared `ret` stub, e.g. `MeleeWeaponFirstPerson.OnGearSpawnComplete`)
+  is skipped: its detour hangs the game at startup. Handlers that read their arguments check the object's real class first.
 - Applies after the game finished building a gear (all parts spawned and `GearMaterialFeeder` set up). Overrides go through each
   renderer's `MaterialPropertyBlock` (merged with the feeder's block) or a per-renderer material instance; never the shared material,
   so other guns that use the same part are untouched. Re-applies when the feeder rewrites its blocks.
@@ -295,5 +297,17 @@ Install
 
 1. Packaging: Electron Forge installer bundling the backend and the plugin.
 2. Remove the old Python tool and the two HEL plugins once §4 is verified.
-3. In-game skin picker: choose the active skin per item from the loadout screen, built on ForgeCore's UI once its library
+3. Livery painting (after the editor redesign), like a racing game's livery editor:
+   - basic material presets for a part's paint (metallic/smoothness looks): matte, gloss, satin, metal, brushed metal,
+     chrome, rubber, plastic, carbon fibre, painted steel, worn metal, glow (emissive);
+   - fill: a part painted one colour (the base coat, over or instead of its albedo);
+   - image decals placed on the part's surface in the 3D view, following its curves (position, size, rotation, mirror);
+   - a brush on the surface: straight lines, circles and free-hand strokes;
+   - per layer: tint, opacity, blend mode (normal, multiply, screen, overlay, add) and a mask (painted with the brush,
+     hiding parts of that layer).
+   Decals and strokes are layers under their part in an explicit order that decides what is on top. Preview live; when packing,
+   bake every decal into the part's albedo by rendering the mesh in UV space and projecting each fragment's position
+   into the decal frame, with a depth limit so a decal does not reach the far side. The result is an ordinary texture:
+   no plugin change, and it works for game-file replacement too.
+4. In-game skin picker: choose the active skin per item from the loadout screen, built on ForgeCore's UI once its library
    merge has landed (the plugin then depends on ForgeCore).

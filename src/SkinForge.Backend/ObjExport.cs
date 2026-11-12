@@ -17,14 +17,27 @@ public static class ObjExport
         var unknown = selected.Except(item.Parts.Select(p => p.Id)).ToList();
         if (selected.Count == 0 || unknown.Count > 0) throw new BackendException("bad-request", $"Unknown or no parts: {string.Join(", ", unknown)}");
 
-        var renderers = Catalog.Renderers(item.Build(g)).Where(r => selected.Contains(r.Part)).ToList();
+        var root = item.Build(g);
+        var meshCache = new Dictionary<(string, long), MeshData>();
+        MeshData MeshOf(Node n) => meshCache.TryGetValue((n.Mesh!.File.path, n.Mesh.PathId), out var m) ? m : meshCache[(n.Mesh.File.path, n.Mesh.PathId)] = Unity.ReadMesh(g, n.Mesh);
+        // Ammo as the editor shows it: one piece per ammo part, in a row below the gun; the other rounds are left out.
+        var ammo = Catalog.AmmoLayout(root, MeshOf);
+        Vector3? Offset(Node n)
+        {
+            for (Node? p = n; p != null; p = p.Parent)
+            {
+                if (ammo.Any(a => a.Hidden.Contains(p))) return null;
+                if (ammo.FirstOrDefault(a => a.Shown == p) is { } a) return a.Offset;
+            }
+            return Vector3.Zero;
+        }
+        var renderers = Catalog.Renderers(root).Where(r => selected.Contains(r.Part) && Offset(r.Node) != null).ToList();
         var display = Preview.Safe(item.NameZh != null ? $"{item.NameZh} · {item.Name}" : item.Name);
         var stamp = $"{DateTime.Now:yyyy-MM-dd-HHmmss}-{display}.OBJ";
         var dir = Path.Combine(outDir, stamp);
         for (int n = 2; Directory.Exists(dir); n++) dir = Path.Combine(outDir, $"{stamp}-{n}");
         Directory.CreateDirectory(dir);
         var mtl = $"{display}_materials.mtl";
-        var meshCache = new Dictionary<(string, long), MeshData>();
         var files = new List<string>();
         var materials = new SortedSet<string>(StringComparer.Ordinal);
         var I = CultureInfo.InvariantCulture;
@@ -35,9 +48,8 @@ public static class ObjExport
             sb.Append("o ").Append(partId).Append('\n');
             foreach (var (node, part) in renderers.Where(r => r.Part == partId))
             {
-                var key = (node.Mesh!.File.path, node.Mesh.PathId);
-                if (!meshCache.TryGetValue(key, out var mesh)) meshCache[key] = mesh = Unity.ReadMesh(g, node.Mesh);
-                var world = node.World;
+                var mesh = MeshOf(node);
+                var world = node.World * Matrix4x4.CreateTranslation(Offset(node)!.Value);
                 Matrix4x4.Invert(world, out var inv);
                 var normalMatrix = Matrix4x4.Transpose(inv);
                 sb.Append("g ").Append(node.Name).Append('\n');

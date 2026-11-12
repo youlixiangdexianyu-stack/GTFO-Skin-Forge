@@ -1,18 +1,45 @@
 using System.Reflection;
+using System.Runtime.InteropServices;
 using Gear;
 using Agents;
 using HarmonyLib;
+using Il2CppInterop.Runtime;
+using Il2CppInterop.Runtime.InteropTypes;
 using Player;
 using SkinForge.Format;
 using UnityEngine;
 
 namespace SkinForge.Plugin;
 
+// IL2CPP folds identical native bodies (every empty virtual of the same shape, for one) into one function, so a hooked
+// method can also run for unrelated objects of other classes, even during plugin load. Handlers that read anything from
+// their arguments first check the object's real class; the others only compare pointers with gear they track.
+static class Native
+{
+    public static bool Is<T>(Il2CppObjectBase? o) where T : Il2CppObjectBase =>
+        o != null && o.Pointer != IntPtr.Zero &&
+        IL2CPP.il2cpp_class_is_assignable_from(Il2CppClassPointerStore<T>.NativeClassPtr, IL2CPP.il2cpp_object_get_class(o.Pointer));
+
+    // An empty override compiles to a shared `ret` stub (MeleeWeaponFirstPerson.OnGearSpawnComplete is one): the detour
+    // would catch every method folded into it and corrupt the bytes after it, which hangs the game at startup. Such a
+    // target is skipped; its item is still handled where its parts spawn.
+    public static bool Hookable(MethodBase? method)
+    {
+        if (method == null) return false;
+        var info = (IntPtr)Il2CppInterop.Common.Il2CppInteropUtils.GetIl2CppMethodInfoPointerFieldForGeneratedMethod(method)!.GetValue(null)!;
+        var entry = info == IntPtr.Zero ? IntPtr.Zero : Marshal.ReadIntPtr(info);
+        var first = entry == IntPtr.Zero ? (byte)0xC3 : Marshal.ReadByte(entry);
+        if (first is not (0xC3 or 0xC2 or 0xE9 or 0xEB or 0xCC)) return true;
+        SkinForgePlugin.Info($"skipped {method.DeclaringType?.Name}.{method.Name}: no native body of its own to hook");
+        return false;
+    }
+}
+
 // dump.cs 614836: runs once every part of a gear is spawned and its GearMaterialFeeder is set up.
 [HarmonyPatch(typeof(GearPartHolder), nameof(GearPartHolder.OnAllPartsSpawned))]
 static class PartsSpawnedHook
 {
-    static void Postfix(GearPartHolder __instance) => SkinnedGear.Spawned(__instance);
+    static void Postfix(GearPartHolder __instance) { if (Native.Is<GearPartHolder>(__instance)) SkinnedGear.Spawned(__instance); }
 }
 
 // dump.cs 562404: the feeder re-scans its renderers; our material instances are put back afterwards.
@@ -27,7 +54,8 @@ static class FeederScanHook
 [HarmonyPatch(typeof(Dam_EnemyDamageBase), nameof(Dam_EnemyDamageBase.ProcessReceivedDamage))]
 static class EnemyDamageHook
 {
-    static void Prefix(Dam_EnemyDamageBase __instance, out bool __state) => __state = __instance.Owner != null && __instance.Owner.Alive;
+    static void Prefix(Dam_EnemyDamageBase __instance, out bool __state) =>
+        __state = Native.Is<Dam_EnemyDamageBase>(__instance) && __instance.Owner != null && __instance.Owner.Alive;
 
     static void Postfix(Dam_EnemyDamageBase __instance, Agent damageSource, bool __state)
     {
@@ -63,13 +91,13 @@ static class ReloadEndHook
 [HarmonyPatch(typeof(BWA_Auto), nameof(BWA_Auto.OnFireShotEmptyClip))]
 static class AutoDryFireHook
 {
-    static void Postfix(BWA_Auto __instance) => SkinnedGear.Event(__instance.m_weapon.Pointer, Trigger.DryFire);
+    static void Postfix(BWA_Auto __instance) { if (Native.Is<BWA_Auto>(__instance)) SkinnedGear.Event(__instance.m_weapon?.Pointer ?? IntPtr.Zero, Trigger.DryFire); }
 }
 
 [HarmonyPatch(typeof(BWA_Semi), nameof(BWA_Semi.OnFireShotEmptyClip))]
 static class SemiDryFireHook
 {
-    static void Postfix(BWA_Semi __instance) => SkinnedGear.Event(__instance.m_weapon.Pointer, Trigger.DryFire);
+    static void Postfix(BWA_Semi __instance) { if (Native.Is<BWA_Semi>(__instance)) SkinnedGear.Event(__instance.m_weapon?.Pointer ?? IntPtr.Zero, Trigger.DryFire); }
 }
 
 // dump.cs 565473 and the overrides of the item kinds the catalog has: the item is put away. An override that also runs
@@ -80,7 +108,7 @@ static class UnwieldHook
     static IEnumerable<MethodBase> TargetMethods() =>
         new[] { typeof(ItemEquippable), typeof(BulletWeapon), typeof(MeleeWeaponFirstPerson), typeof(EnemyScanner), typeof(GlueGun),
                 typeof(MineDeployerFirstPerson), typeof(SentryGunFirstPerson) }
-            .Select(t => (MethodBase?)AccessTools.DeclaredMethod(t, nameof(ItemEquippable.OnUnWield))).Where(m => m != null)!;
+            .Select(t => (MethodBase?)AccessTools.DeclaredMethod(t, nameof(ItemEquippable.OnUnWield))).Where(Native.Hookable)!;
 
     static void Postfix(ItemEquippable __instance) => SkinnedGear.Event(__instance.Pointer, Trigger.Unequip);
 }
@@ -132,7 +160,7 @@ static class ItemUsedHook
         AccessTools.DeclaredMethod(typeof(LockMelterFirstPerson), nameof(LockMelterFirstPerson.UseLockMelter)),
         AccessTools.DeclaredMethod(typeof(SyringeFirstPerson), nameof(SyringeFirstPerson.ApplySyringe)),
         AccessTools.DeclaredMethod(typeof(CarryItemEquippableFirstPerson), nameof(CarryItemEquippableFirstPerson.InsertItem)),
-    }.Where(m => m != null)!;
+    }.Where(Native.Hookable)!;
 
     static void Postfix(ItemEquippable __instance) => SkinnedGear.Event(__instance.Pointer, Trigger.Fire);
 }
@@ -154,9 +182,9 @@ static class AimHook
 [HarmonyPatch(typeof(ItemEquippable), nameof(ItemEquippable.OnGearSpawnComplete))]
 static class GearSpawnCompleteHook
 {
-    static void Prefix(ItemEquippable __instance) => SkinnedGear.BeforeItemSetup(__instance);
+    static void Prefix(ItemEquippable __instance) { if (Native.Is<ItemEquippable>(__instance)) SkinnedGear.BeforeItemSetup(__instance); }
 
-    static void Postfix(ItemEquippable __instance) => SkinnedGear.ItemReady(__instance);
+    static void Postfix(ItemEquippable __instance) { if (Native.Is<ItemEquippable>(__instance)) SkinnedGear.ItemReady(__instance); }
 }
 
 // Overrides of the step for synced guns, melee weapons and tools (dump.cs 617542, 615703, 568870, 570177, 616222);
@@ -166,11 +194,11 @@ static class OverriddenGearSpawnCompleteHook
 {
     static IEnumerable<MethodBase> TargetMethods() =>
         new[] { typeof(BulletWeaponSynced), typeof(MeleeWeaponFirstPerson), typeof(MineDeployerFirstPerson), typeof(SentryGunFirstPerson), typeof(EnemyScanner) }
-            .Select(t => (MethodBase?)AccessTools.DeclaredMethod(t, nameof(ItemEquippable.OnGearSpawnComplete))).Where(m => m != null)!;
+            .Select(t => (MethodBase?)AccessTools.DeclaredMethod(t, nameof(ItemEquippable.OnGearSpawnComplete))).Where(Native.Hookable)!;
 
-    static void Prefix(ItemEquippable __instance) => SkinnedGear.BeforeItemSetup(__instance);
+    static void Prefix(ItemEquippable __instance) { if (Native.Is<ItemEquippable>(__instance)) SkinnedGear.BeforeItemSetup(__instance); }
 
-    static void Postfix(ItemEquippable __instance) => SkinnedGear.ItemReady(__instance);
+    static void Postfix(ItemEquippable __instance) { if (Native.Is<ItemEquippable>(__instance)) SkinnedGear.ItemReady(__instance); }
 }
 
 // dump.cs 565452: the item puts its renderers on its view layer (first or third person).
@@ -184,5 +212,5 @@ static class ItemLayerHook
 [HarmonyPatch(typeof(PlayerBackpackManager), nameof(PlayerBackpackManager.SetFPSRendering))]
 static class FpsRenderingHook
 {
-    static void Postfix(GameObject go, bool enable) => SkinnedGear.FpsRenderingSet(go, enable);
+    static void Postfix(GameObject go, bool enable) { if (Native.Is<GameObject>(go)) SkinnedGear.FpsRenderingSet(go, enable); }
 }

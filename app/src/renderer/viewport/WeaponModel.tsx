@@ -1,11 +1,11 @@
 import { useGLTF } from '@react-three/drei';
 import { useFrame, type ThreeEvent } from '@react-three/fiber';
 import { useEffect, useMemo, useRef } from 'react';
-import { Box3, CanvasTexture, Mesh, Vector3, SRGBColorSpace, type MeshStandardMaterial, type Object3D } from 'three';
+import { CanvasTexture, Mesh, Vector3, SRGBColorSpace, type MeshStandardMaterial, type Object3D } from 'three';
 import { drawLayer, LayerSource, loadImage } from '../frames';
 import { CHANNELS, fileUrl, type DynamicLayer, type WeaponPreview } from '../protocol';
 import { editorOf, useStore } from '../store';
-import { poseWith, unityToThree } from '../space';
+import { poseWith, unityDirToThree, unityToThree } from '../space';
 import { releaseTextures } from './textures';
 import { editableMaterials, paintMaterial, restoreUnityNames } from './weaponScene';
 import { displayOffset, hiddenMeshes, partOf, partTarget, pathChain, playTime, registerTransforms, quiet, SCENE_EVENT, viewRefs } from './refs';
@@ -57,7 +57,6 @@ export function WeaponModel({ preview }: { preview: WeaponPreview }) {
     return gltf.scene.clone(true);
   }, [gltf]);
   const doc = useStore((s) => s.doc);
-  const mode = useStore((s) => s.mode);
   const select = useStore((s) => s.select);
   const materials = useRef(new Map<string, MeshStandardMaterial>());
   const compositors = useRef(new Map<string, Compositor>());
@@ -96,7 +95,7 @@ export function WeaponModel({ preview }: { preview: WeaponPreview }) {
       o.quaternion.copy(v.quaternion);
       o.scale.copy(v.scale);
     });
-    layOutAmmo();
+    layOutAmmo(preview.parts);
     scene.traverse((o) => viewRefs.display.set(o, pose(o)));
     // Every drawn mesh belongs to a part and can be selected; anything else is hidden and named once in the log.
     const unmapped: string[] = [];
@@ -230,7 +229,7 @@ export function WeaponModel({ preview }: { preview: WeaponPreview }) {
     if (e.delta > 4 || quiet()) return;
     e.stopPropagation();
     const s = useStore.getState();
-    if (s.snapToSurface && mode === 'attach' && s.selection?.kind === 'attachment') {
+    if (s.snapToSurface && s.selection?.kind === 'attachment') {
       window.dispatchEvent(new CustomEvent('sf:surface', { detail: e }));
       return;
     }
@@ -247,47 +246,25 @@ export function WeaponModel({ preview }: { preview: WeaponPreview }) {
   return <primitive object={scene} onClick={onClick} />;
 }
 
-// Ammo parts sit inside the gun, and some of their nodes rest wherever the game's animator leaves them (an ejected
-// shell's bone can rest well away from the gun). The preview lines every ammo piece up in one row just below the gun
-// instead, each piece on its own. Display only: the offset is baked into `viewRefs.display` at load, never stored in
-// the document and never applied in game. From the muzzle backwards: speed loader, whole bullets, empty shells.
-const AMMO_ORDER = ['ammo_speedloader', 'ammo_bullet', 'ammo_shell'];
-
-function layOutAmmo() {
-  viewRefs.root?.updateMatrixWorld(true);
-  const gun = new Box3();
-  for (const [part, nodes] of viewRefs.partNodes) if (!AMMO_ORDER.includes(part)) nodes.forEach((n) => gun.expandByObject(n));
-  if (gun.isEmpty()) return;
-  const gap = Math.min(0.03, Math.max(0.01, gun.getSize(new Vector3()).length() * 0.04));
-  // One piece per ammo part (a whole round, an empty casing, a speed loader): the first outermost node is shown, the other
-  // rounds of the magazine are hidden. They keep their part, so a skin still applies to all of them in game. A part with
-  // its own root transform (the ejected casing) moves by that root, so the gizmo and layout edits sit on the piece shown.
-  const items = AMMO_ORDER.flatMap((part) => {
-    const root = partTarget(part);
-    const nodes = root ? [root] : (viewRefs.partNodes.get(part) ?? []);
-    const set = new Set(nodes);
-    const [first, ...extra] = nodes
-      .filter((n) => {
-        for (let p = n.parent; p; p = p.parent) if (set.has(p)) return false;
-        return true;
-      })
-      .map((n) => ({ n, box: new Box3().expandByObject(n) }))
-      .filter((r) => !r.box.isEmpty());
-    for (const { n } of extra) {
+// Ammo as the backend lays it out (Catalog.AmmoLayout, shared with the OBJ export): one piece per ammo part in a row
+// below the gun, the other rounds hidden. Display only: the offset is baked into `viewRefs.display` at load, never stored
+// in the document and never applied in game. A part with its own root transform (the ejected casing) moves by that root,
+// so the gizmo and layout edits sit on the piece shown.
+function layOutAmmo(parts: WeaponPreview['parts']) {
+  const root = viewRefs.root;
+  if (!root) return;
+  root.updateMatrixWorld(true);
+  for (const { ammo } of parts) {
+    if (!ammo) continue;
+    for (const name of ammo.hidden) {
+      const n = root.getObjectByName(name);
+      if (!n) continue;
       n.userData.sfExtraAmmo = true;
       n.visible = false;
     }
-    return first ? [first] : [];
-  });
-  const height = Math.max(0, ...items.map((r) => r.box.max.y - r.box.min.y));
-  const bottom = gun.min.y - gap - height;
-  const centerX = (gun.min.x + gun.max.x) / 2;
-  let cursor = gun.min.z; // three -Z is the muzzle (Unity +Z)
-  for (const { n, box } of items) {
-    const delta = new Vector3(centerX - (box.min.x + box.max.x) / 2, bottom - box.min.y, cursor - box.min.z);
-    cursor += box.max.z - box.min.z + gap / 2;
-    const target = n.getWorldPosition(new Vector3()).add(delta);
-    n.position.copy(n.parent!.worldToLocal(target));
+    const n = root.getObjectByName(ammo.node);
+    if (!n?.parent) continue;
+    n.position.copy(n.parent.worldToLocal(n.getWorldPosition(new Vector3()).add(unityDirToThree(ammo.offset))));
     n.updateMatrixWorld(true);
   }
 }

@@ -2,20 +2,20 @@ import { ActionIcon, Button, Drawer, Group, Progress, ScrollArea, Text, Tooltip 
 import { Dropzone } from '@mantine/dropzone';
 import { useHotkeys } from '@mantine/hooks';
 import { IconArrowBackUp, IconArrowForwardUp, IconFileText, IconFolderDown } from '@tabler/icons-react';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Group as PanelGroup, Panel, Separator, useDefaultLayout } from 'react-resizable-panels';
 import { applyToGame, ensurePlugin, openProject } from './actions';
 import { call } from './protocol';
 import { useStore } from './store';
 import { AttachInspector } from './ui/AttachInspector';
-import { DynamicInspector, layerFromFiles } from './ui/DynamicInspector';
+import { LayerInspector, layerFromFiles } from './ui/DynamicInspector';
 import { ExportModDialog } from './ui/ExportModDialog';
 import { LeftRail } from './ui/LeftRail';
-import { nativeFiles, SkinInspector } from './ui/SkinInspector';
+import { nativeFiles, SkinInspector, SoundInspector } from './ui/SkinInspector';
 import { Stage } from './ui/Stage';
 import { TopBar } from './ui/TopBar';
 import { focusSelection, setView, useViewStore } from './viewport/Viewport';
-import { t, useLang } from './i18n';
+import { partLabel, t, useLang } from './i18n';
 
 function StatusBar({ onLog }: { onLog: () => void }) {
   const busy = useStore((s) => s.busy);
@@ -98,9 +98,10 @@ function onGlobalDrop(files: File[]) {
   const project = paths.find((p) => /\.(sfproj|gtfoskin|gtfdyn)$/i.test(p));
   if (project) return void s.loadProject(project);
   if (paths.some((p) => /\.(glb|gltf)$/i.test(p))) return s.toast('info', t('app.k14'));
-  // On the dynamic tab, media dropped while a part is selected becomes a layer on that part.
+  // A video or gif dropped while a part is selected becomes a dynamic layer on it (still images stay textures).
   const part = s.selection?.kind === 'part' ? s.catalog.find((c) => c.id === s.weaponId)?.parts.find((p) => p.id === s.selection!.id) : undefined;
-  if (s.mode === 'dynamic' && part?.materials[0] && layerFromFiles(part.materials[0], part.id, paths)) return;
+  const moving = paths.filter((p) => /\.(mp4|webm|mov|m4v|gif)$/i.test(p));
+  if (part?.materials[0] && moving.length && layerFromFiles(part.materials[0], part.id, moving)) return s.toast('ok', t('app.droppedLayer', { v0: partLabel(part) }));
   void s.matchPaths(paths);
 }
 
@@ -164,17 +165,41 @@ function useAutoPlugin() {
   }, [due, profile?.path, running]);
 }
 
+/** The right panel shows whatever is selected; with nothing selected, the skin as a whole. */
+function Inspector() {
+  const kind = useStore((s) => s.selection?.kind);
+  if (kind === 'attachment') return <AttachInspector />;
+  if (kind === 'layer') return <LayerInspector />;
+  if (kind === 'sound') return <SoundInspector />;
+  return <SkinInspector />;
+}
+
+/** 自动应用: while the game runs, re-apply two seconds after the last change (not while something else is busy). */
+function useAutoApply() {
+  const doc = useStore((s) => s.doc);
+  const on = useStore((s) => s.prefs.autoApply && !!s.game?.running);
+  const opened = useRef(doc.id);
+  useEffect(() => {
+    // Opening another skin or item is not an edit.
+    if (opened.current !== doc.id) return void (opened.current = doc.id);
+    if (!on) return;
+    const id = setTimeout(() => {
+      const s = useStore.getState();
+      if (!s.busy && !s.previewLoading) void applyToGame(true);
+    }, 2000);
+    return () => clearTimeout(id);
+  }, [doc, on]);
+}
+
 export function App() {
   useLang(); // the whole tree re-renders in the new language
-  const mode = useStore((s) => s.mode);
-  // A selected attachment opens its own inspector in every mode.
-  const attachment = useStore((s) => s.selection?.kind === 'attachment');
   const [log, setLog] = useState(false);
   const layout = useDefaultLayout({ id: 'sf.layout', storage: localStorage });
   useShortcuts();
   useEffect(() => void useStore.getState().init(), []);
   useGameRunning();
   useAutoPlugin();
+  useAutoApply();
   return (
     <div className="shell">
       <TopBar />
@@ -189,7 +214,9 @@ export function App() {
         </Panel>
         <Separator className="sep-v" />
         <Panel id="right" defaultSize={360} minSize={300} maxSize={560}>
-          <aside className="inspector">{mode === 'attach' || attachment ? <AttachInspector /> : mode === 'skin' ? <SkinInspector /> : <DynamicInspector />}</aside>
+          <aside className="inspector">
+            <Inspector />
+          </aside>
         </Panel>
       </PanelGroup>
       <StatusBar onLog={() => setLog(!log)} />

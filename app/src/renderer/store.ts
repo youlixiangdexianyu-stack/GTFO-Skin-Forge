@@ -31,11 +31,11 @@ import { localName, setLang, systemLang, t, type Lang } from './i18n';
 
 enablePatches();
 
-export type Mode = 'skin' | 'attach' | 'dynamic';
 export type Selection =
   | { kind: 'part'; id: string; sub?: string | null }
   | { kind: 'attachment'; id: string }
   | { kind: 'layer'; material: string; id: string }
+  | { kind: 'sound'; id: string }
   | null;
 
 
@@ -43,6 +43,8 @@ export interface Prefs {
   ambient: number;
   ambientColor: string;
   autoRotate: boolean;
+  /** While the game runs, apply to the test profile a moment after each change. */
+  autoApply: boolean;
   bloom: boolean;
   sizeMode: SizeMode;
   allowMissing: boolean;
@@ -68,6 +70,7 @@ const DEFAULT_PREFS: Prefs = {
   ambient: 1,
   ambientColor: '#ffffff',
   autoRotate: false,
+  autoApply: false,
   bloom: true,
   sizeMode: 'keep',
   allowMissing: true,
@@ -137,7 +140,6 @@ interface State {
   weaponId: string | null;
   preview: WeaponPreview | null;
   previewLoading: boolean;
-  mode: Mode;
   selection: Selection;
   doc: SkinDocument;
   projectPath: string | null;
@@ -165,7 +167,6 @@ interface State {
   toast(kind: NotifyKind, text: string, action?: NotifyAction): void;
   fail(e: unknown, fallback?: string): void;
   setPrefs(p: Partial<Prefs>): void;
-  setMode(m: Mode): void;
   select(s: Selection): void;
   refreshGame(): Promise<void>;
   chooseGameDir(): Promise<void>;
@@ -222,6 +223,8 @@ interface State {
   // part layout
   setPartTransform(part: string, path: string | null | undefined, fn: (t: PartTransform) => void, coalesceKey?: string): void;
   resetPartTransform(part: string, path: string | null | undefined, row?: 'position' | 'rotation' | 'scale'): void;
+  /** Replaces a node's own model (null puts the game's back); the 3D view shows `glb` in its place. */
+  setPartMesh(part: string, path: string | null | undefined, mesh: { sfmesh: string; glb: string } | null): void;
 }
 
 let initialised = false;
@@ -258,7 +261,6 @@ export const useStore = create<State>((set, get) => ({
   weaponId: null,
   preview: null,
   previewLoading: false,
-  mode: 'skin',
   selection: null,
   doc: normalize({ name: '', materials: [], attachments: [] }),
   projectPath: null,
@@ -318,9 +320,6 @@ export const useStore = create<State>((set, get) => ({
     localStorage.setItem(PREFS_KEY, JSON.stringify(prefs));
     set({ prefs });
     setLang(prefs.lang ?? systemLang());
-  },
-  setMode(mode) {
-    set({ mode, selection: null });
   },
   select(selection) {
     set({ selection });
@@ -784,13 +783,32 @@ export const useStore = create<State>((set, get) => ({
       dropEmptyParts(d);
     });
   },
+  setPartMesh(part, path, mesh) {
+    get().edit((d) => {
+      let t = partTransformOf(d, part, path);
+      if (!t) {
+        t = { part, path: path ?? null, position: null, rotation: null, scale: null, visible: null };
+        d.parts!.push(t);
+      }
+      t.mesh = mesh?.sfmesh ?? null;
+      const ed = d.editor as Record<string, unknown>;
+      const previews = { ...((ed.partMeshPreviews as Record<string, string>) ?? {}) };
+      if (mesh) previews[partMeshKey(part, path)] = mesh.glb;
+      else delete previews[partMeshKey(part, path)];
+      ed.partMeshPreviews = previews;
+      dropEmptyParts(d);
+    });
+  },
 }));
+
+/** Key of a node's replacement model preview in the editor state. */
+export const partMeshKey = (part: string, path?: string | null) => `${part}/${path ?? ''}`;
 
 setLang(useStore.getState().prefs.lang ?? systemLang());
 
 /** An entry that keeps every game value says nothing; leave it out. */
 function dropEmptyParts(d: SkinDocument) {
-  d.parts = d.parts!.filter((t) => t && (t.position != null || t.rotation != null || t.scale != null || t.visible != null));
+  d.parts = d.parts!.filter((t) => t && (t.position != null || t.rotation != null || t.scale != null || t.visible != null || t.mesh != null));
 }
 
 /** Folder of one item's skins. */

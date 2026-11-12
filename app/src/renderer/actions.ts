@@ -2,7 +2,8 @@
 import { bakeGlyphs, bakeLayers } from './frames';
 import { call, type Profile, type SkinDocument } from './protocol';
 import { autosavePath, currentItem, editorOf, useStore } from './store';
-import { partLabel, t } from './i18n';
+import { localName, partLabel, t } from './i18n';
+import { confirmInGame } from './gameLog';
 
 const st = () => useStore.getState();
 
@@ -79,10 +80,15 @@ export function profileProblem(profile: Profile | undefined): string | null {
  * game is closed. Returns false when the plugin is still not the current one.
  */
 export async function ensurePlugin(quiet = false): Promise<boolean> {
+  // Read the profile fresh: the plugin files may have changed on disk since the list was last loaded.
+  await st().refreshProfiles();
   const s = st();
   const profile = s.profiles.find((p) => p.path === s.prefs.profilePath);
   if (!profile?.hasBepInEx || profile.pluginCurrent !== false) return true;
+  // Say which problem this is before fixing it; not an error, the install follows by itself.
+  const why = t(profile.pluginVersion ? 'actions.pluginWrong' : 'actions.pluginMissing');
   try {
+    if (!quiet) s.toast('info', why);
     await call('plugin.install', { profile: profile.path });
     useStore.setState({ pluginPending: null });
     await s.refreshProfiles();
@@ -91,19 +97,21 @@ export async function ensurePlugin(quiet = false): Promise<boolean> {
   } catch (e) {
     if ((e as { code?: string }).code === 'game-running') {
       useStore.setState({ pluginPending: profile.path });
-      if (!quiet) s.toast('error', t('actions.pluginUpdate'));
+      if (!quiet) s.toast('info', `${why} ${t('actions.pluginUpdate')}`);
     } else s.fail(e, t('actions.k15'));
     return false;
   }
 }
 
-export async function applyToGame(): Promise<void> {
+/** Builds the skin and installs it into the test profile. `quiet` (automatic applies) skips silently when something
+ * must be fixed first and reports only the game's warnings. */
+export async function applyToGame(quiet = false): Promise<void> {
   const s = st();
   const problem = preflight();
-  if (problem) return s.toast('error', problem);
+  if (problem) return quiet ? undefined : s.toast('error', problem);
   const profile = s.profiles.find((p) => p.path === s.prefs.profilePath);
   const blocked = profileProblem(profile);
-  if (blocked || !profile) return s.toast('error', blocked ?? '');
+  if (blocked || !profile) return quiet ? undefined : s.toast('error', blocked ?? '');
   try {
     useStore.setState({ busy: t('actions.k10') });
     if (!(await ensurePlugin())) return;
@@ -116,9 +124,15 @@ export async function applyToGame(): Promise<void> {
     }
     const pack = await build(`${s.dataDir}\\packs\\${s.weaponId}.gtfskin`);
     useStore.setState({ busy: t('actions.k11') });
+    const since = new Date().toISOString();
     await call('pack.install', { pack, profile: profile.path, activate: true });
     void s.refreshInstalled();
-    s.toast('ok', await whenSeen(st().profiles.find((p) => p.path === profile.path) ?? profile, devRestart));
+    const now = st().profiles.find((p) => p.path === profile.path) ?? profile;
+    const live = (await call('game.locate', {}).catch(() => null))?.running && now.development && !devRestart;
+    // In a running game the plugin's log says whether the skin really loaded.
+    const item = currentItem();
+    if (live) void confirmInGame(profile.path, since, s.doc.id ?? '', `${s.doc.name} → ${item ? localName(item) : ''}`, quiet);
+    else if (!quiet) s.toast('ok', await whenSeen(now, devRestart));
     s.log(t('actions.k14', { v0: pack, v1: profile.path }));
   } catch (e) {
     s.fail(e, t('actions.k15'));

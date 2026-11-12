@@ -64,18 +64,17 @@ public static class Catalog
         var holder = Holder();
         if (r.AmmoOf != null)
         {
-            // Speed loader, shell and bullet of the weapon side by side.
-            float x = -0.04f;
-            foreach (var (node, part) in Renderers(Build(g, r.AmmoOf)).Where(n => n.Part.StartsWith("ammo")).DistinctBy(n => n.Part)
-                .OrderBy(n => n.Part == "ammo_speedloader" ? 0 : n.Part == "ammo_shell" ? 1 : 2))
+            // One piece per ammo part of the weapon, turned as in the gun and laid out in a row by AmmoLayout. The copies
+            // sit directly under the holder, so the layout's world offsets are their positions.
+            foreach (var (node, part) in Renderers(Build(g, r.AmmoOf)).Where(n => n.Part.StartsWith("ammo")).DistinctBy(n => n.Part))
             {
                 Matrix4x4.Decompose(node.World, out var scale, out var rotation, out _);
                 var copy = new Node { Name = node.Name, Mesh = node.Mesh, Materials = node.Materials };
                 copy.ResetRoot(part);
-                (copy.Scale, copy.Rotation, copy.Position) = (scale, rotation, new Vector3(x, 0, 0));
+                (copy.Scale, copy.Rotation) = (scale, rotation);
                 copy.Attach(holder);
-                x += 0.04f;
             }
+            foreach (var piece in AmmoLayout(holder, n => Unity.ReadMesh(g, n.Mesh!))) piece.Shown.Position += piece.Offset;
         }
         else if (r.Comps != null)
         {
@@ -99,6 +98,56 @@ public static class Catalog
             }
         }
         return holder;
+    }
+
+    public sealed record AmmoPiece(string Part, Node Shown, Vector3 Offset, List<Node> Hidden);
+
+    // How ammo is shown (editor preview and OBJ export): ammo parts sit inside the gun, and some of their nodes rest
+    // wherever the game's animator leaves them (an ejected shell's bone can rest well away from the gun). Each ammo part
+    // shows one piece (a whole round, an empty casing, a speed loader), the first outermost node: the part's own root
+    // transform when it has one (the ejected casing), else a renderer node. The other rounds of the magazine are hidden;
+    // they keep their part, so a skin still applies to all of them in game. The pieces line up in one row just below the
+    // gun (or below the origin when there is no gun), from the muzzle backwards in AmmoParts order. Offsets are world
+    // translations in Unity space; display only, never stored in the document and never applied in game.
+    static readonly string[] AmmoParts = ["ammo_speedloader", "ammo_bullet", "ammo_shell"];
+
+    public static List<AmmoPiece> AmmoLayout(Node root, Func<Node, MeshData> mesh)
+    {
+        var renderers = Renderers(root).ToList();
+        static bool Under(Node n, Node top) { for (Node? p = n; p != null; p = p.Parent) if (p == top) return true; return false; }
+        (Vector3 Min, Vector3 Max) Bounds(Func<(Node Node, string Part), bool> include)
+        {
+            var (min, max) = (new Vector3(float.MaxValue), new Vector3(float.MinValue));
+            foreach (var r in renderers.Where(include))
+            {
+                var world = r.Node.World;
+                foreach (var p in mesh(r.Node).Positions) { var w = Vector3.Transform(p, world); (min, max) = (Vector3.Min(min, w), Vector3.Max(max, w)); }
+            }
+            return (min, max);
+        }
+        var gun = Bounds(r => !r.Part.StartsWith("ammo"));
+        if (gun.Min.X > gun.Max.X) gun = (Vector3.Zero, Vector3.Zero);
+        float gap = Math.Clamp((gun.Max - gun.Min).Length() * 0.04f, 0.01f, 0.03f);
+
+        var items = new List<(string Part, Node Node, (Vector3 Min, Vector3 Max) Box, List<Node> Hidden)>();
+        foreach (var part in AmmoParts)
+        {
+            var own = renderers.Where(r => r.Part == part).Select(r => r.Node).ToList();
+            var top = own.Select(n => { Node? t = null; for (Node? p = n; p != null; p = p.Parent) if (p.Part == part) t = p; return t; }).FirstOrDefault(t => t != null);
+            var nodes = (top == null ? own : own.Where(n => !Under(n, top)).Prepend(top)).ToList();
+            var pieces = nodes.Where(n => !nodes.Any(m => m != n && Under(n, m)))
+                .Select(n => (Node: n, Box: Bounds(r => Under(r.Node, n)))).Where(x => x.Box.Min.X <= x.Box.Max.X).ToList();
+            if (pieces.Count > 0) items.Add((part, pieces[0].Node, pieces[0].Box, pieces.Skip(1).Select(x => x.Node).ToList()));
+        }
+        float height = items.Select(i => i.Box.Max.Y - i.Box.Min.Y).DefaultIfEmpty(0).Max();
+        float bottom = gun.Min.Y - gap - height, centerX = (gun.Min.X + gun.Max.X) / 2, cursor = gun.Max.Z; // Unity +Z is the muzzle
+        var result = new List<AmmoPiece>();
+        foreach (var (part, node, box, hidden) in items)
+        {
+            result.Add(new AmmoPiece(part, node, new Vector3(centerX - (box.Min.X + box.Max.X) / 2, bottom - box.Min.Y, cursor - box.Max.Z), hidden));
+            cursor -= box.Max.Z - box.Min.Z + gap / 2;
+        }
+        return result;
     }
 
     public static CatalogItem Item(List<CatalogItem> items, string id) =>
@@ -158,7 +207,7 @@ public static class Catalog
     {
         var items = new List<CatalogItem>();
         var categories = g.Blocks("GearCategory");
-        var calibres = new Dictionary<string, (JsonObject Calibre, Recipe Weapon)>();
+        var calibres = new Dictionary<string, (JsonObject Calibre, Recipe Weapon, int AmmoParts)>();
         var attachments = new SortedSet<(int Order, string Slot, string Block, uint Id)>();
 
         foreach (var gear in g.Blocks("PlayerOfflineGear").Values.Where(b => (int)b["Type"]! == 1 && (bool)b["internalEnabled"]!))
@@ -184,7 +233,9 @@ public static class Catalog
                 slotName, (uint)gear["persistentID"]!, (string?)calibre?["label"], parts)
             { Source = recipe, Order = (int?)naming?["order"] ?? 500, CategoryZh = (string?)naming?["categoryZh"] });
 
-            if (calibre != null) calibres.TryAdd((string)calibre["id"]!, (calibre, recipe));
+            int ammoParts = parts.Count(p => p.Role == "ammo");
+            if (calibre != null && (!calibres.TryGetValue((string)calibre["id"]!, out var had) || had.AmmoParts < ammoParts))
+                calibres[(string)calibre["id"]!] = (calibre, recipe, ammoParts);
             foreach (var (comp, slot, block, order) in new[] { (23, "mag", "GearMagPart", 0), (25, "flashlight", "GearFlashlightPart", 1), (21, "sight", "GearSightPart", 2) })
                 if (comps.TryGetValue(comp, out var pid) && pid != 0) attachments.Add((order, slot, block, pid));
         }
@@ -232,8 +283,9 @@ public static class Catalog
             items.Add(new CatalogItem("lens_" + Slug(material), material.Replace('_', ' '), null, "lens", "attachment", null, null,
                 [new CatalogPart("lens", "lens", (string)Naming["partsZh"]!["lens"]!, [material], true)]) { Source = recipe, CategoryZh = CategoryZh("lens") });
 
-        // Ammo per calibre, taken from the first weapon that uses it: speed loader, shell, bullet side by side.
-        foreach (var (calId, (calibre, weapon)) in calibres.OrderBy(kv => kv.Key))
+        // Ammo per calibre, taken from the first weapon that uses it with the most ammo parts (a gun without a magazine has
+        // no whole rounds): one piece per ammo part, laid out as in Build.
+        foreach (var (calId, (calibre, weapon, _)) in calibres.OrderBy(kv => kv.Key))
         {
             var recipe = new Recipe(AmmoOf: weapon);
             items.Add(new CatalogItem("ammo_" + calId, (string)calibre["label"]!, (string?)calibre["nameZh"], "ammo", "ammo", null,

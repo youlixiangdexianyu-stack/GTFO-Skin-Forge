@@ -3,6 +3,8 @@ import { Dropzone, type FileWithPath } from '@mantine/dropzone';
 import { IconBox, IconCheck, IconChevronRight, IconDeviceDesktop, IconFolderOpen, IconPlayerPlay, IconPlus, IconTrash, IconX } from '@tabler/icons-react';
 import { importMesh } from '../actions';
 import { FEATURE, FeatureHead, FeatureTile, Info } from './Features';
+import { PartLayers } from './DynamicInspector';
+import { PartModel } from './PartModel';
 import { useState, type ReactElement } from 'react';
 import { MAX_SECONDS } from '../audio';
 import { baseName, CHANNELS, fileUrl, triggersFor, type Attachment, type CatalogPart, type SkinSound, type TextureChannel, type Trigger } from '../protocol';
@@ -182,18 +184,20 @@ function PartPanel({ part }: { part: CatalogPart }) {
         <h3>{t('skinInspector.k13')}</h3>
         <EmissiveSection material={material} />
       </div>
+      <PartLayers part={part} />
+      <PartAttachments part={part.id} />
       <div className="section">
         <h3>{t('skinInspector.k29')}</h3>
         <MaterialParams material={material} />
       </div>
-      <PartAttachments part={part.id} />
+      <PartModel part={part.id} />
     </>
   );
 }
 
 const AUDIO_EXT = ['wav', 'mp3', 'ogg', 'flac', 'm4a', 'aac', 'opus', 'webm'];
 
-async function pickSound() {
+export async function pickSound() {
   const [f] = await window.forge.openDialog('files', [{ get name() { return t('skinInspector.k30'); }, extensions: AUDIO_EXT }]);
   if (f) await useStore.getState().addSound(f);
 }
@@ -250,15 +254,17 @@ function PartAttachments({ part }: { part: string }) {
 }
 
 /** Sounds played in game (locally) when an event happens. */
+const playSound = (x: SkinSound) => {
+  const a = new Audio(fileUrl(x.file ?? ''));
+  a.volume = x.volume ?? 1;
+  void a.play();
+};
+
+/** The skin's sounds as a list; clicking one opens it. */
 function Sounds() {
-  const triggers = triggersFor(useItem()).filter((x) => x.value !== 'always');
   const sounds = useStore((s) => s.doc.sounds ?? []).filter((x): x is SkinSound => !!x);
-  const { updateSound, removeSound } = useStore.getState();
-  const play = (x: SkinSound) => {
-    const a = new Audio(fileUrl(x.file ?? ''));
-    a.volume = x.volume ?? 1;
-    void a.play();
-  };
+  const triggers = triggersFor(useItem());
+  const { select } = useStore.getState();
   return (
     <div className="section">
       <FeatureHead feature="sound" title={t('skinInspector.k31')} info={`${t('skinInspector.k33')} ${MAX_SECONDS} ${t('skinInspector.k34')}`}>
@@ -267,42 +273,75 @@ function Sounds() {
         </Button>
       </FeatureHead>
       {!sounds.length && <p className="hint">{t('skinInspector.noSounds')}</p>}
-      {sounds.map((x) => (
-        <div key={x.id} className="effect">
-          <Group gap={6} wrap="nowrap">
-            <Select size="xs" w={96} value={x.trigger ?? 'kill'} data={triggers} allowDeselect={false} onChange={(v) => v && updateSound(x.id!, (s) => void (s.trigger = v as Trigger))} />
-            <Text size="xs" truncate style={{ flex: 1 }}>
-              {x.name || baseName(x.file ?? '')}
-            </Text>
-            <Tooltip label={t('skinInspector.k35')}>
-              <ActionIcon size="sm" variant="subtle" color="gray" onClick={() => play(x)}>
-                <IconPlayerPlay size={14} />
-              </ActionIcon>
-            </Tooltip>
-            <Tooltip label={t('skinInspector.k36')}>
-              <ActionIcon size="sm" variant="subtle" color="gray" onClick={() => removeSound(x.id!)}>
-                <IconTrash size={14} />
-              </ActionIcon>
-            </Tooltip>
-          </Group>
-          <Field label={t('skinInspector.k37')}>
-            <Slider
-              value={Math.round((x.volume ?? 1) * 100)}
-              min={0}
-              max={100}
-              step={1}
-              label={(v) => `${v}%`}
-              onChange={(v) => updateSound(x.id!, (s) => void (s.volume = Math.min(100, Math.max(0, v)) / 100), 'vol')}
-            />
-          </Field>
-          {x.trigger === 'lowAmmo' && (
-            <Field label={t('skinInspector.k38')}>
-              <Slider value={x.lowAmmoFraction ?? 0.2} min={0.05} max={0.9} step={0.05} onChange={(v) => updateSound(x.id!, (s) => void (s.lowAmmoFraction = v), 'low')} />
-            </Field>
-          )}
-        </div>
-      ))}
+      <div className="list">
+        {sounds.map((x) => (
+          <UnstyledButton key={x.id} className="item" onClick={() => select({ kind: 'sound', id: x.id! })}>
+            <ActionIcon size="sm" variant="subtle" color="green" aria-label={t('skinInspector.k35')} onClick={(e) => (e.stopPropagation(), playSound(x))}>
+              <IconPlayerPlay size={14} />
+            </ActionIcon>
+            <div style={{ minWidth: 0 }}>
+              <Text size="sm" truncate>
+                {x.name || baseName(x.file ?? '')}
+              </Text>
+              <Text size="xs" c="dimmed">
+                {triggers.find((g) => g.value === (x.trigger ?? 'kill'))?.label}
+              </Text>
+            </div>
+            <IconChevronRight size={14} />
+          </UnstyledButton>
+        ))}
+      </div>
     </div>
+  );
+}
+
+/** One sound: when it plays, how loud, preview and delete. */
+export function SoundInspector() {
+  const id = useStore((s) => (s.selection?.kind === 'sound' ? s.selection.id : null));
+  const x = useStore((s) => s.doc.sounds?.find((v) => v?.id === id));
+  const triggers = triggersFor(useItem()).filter((g) => g.value !== 'always');
+  const { updateSound, removeSound, select } = useStore.getState();
+  if (!x) return null;
+  return (
+    <>
+      <div className="insp-head">
+        <UnstyledButton className="kind" onClick={() => select(null)}>
+          ← {t('skinInspector.k31')}
+        </UnstyledButton>
+        <div className="title">{x.name || baseName(x.file ?? '')}</div>
+        <div className="meta">{baseName(x.file ?? '')}</div>
+      </div>
+      <div className="section">
+        <Field label={t('skinInspector.soundWhen')}>
+          <Select value={x.trigger ?? 'kill'} data={triggers} allowDeselect={false} onChange={(v) => v && updateSound(x.id!, (s) => void (s.trigger = v as Trigger))} />
+        </Field>
+        <Field label={t('skinInspector.k37')}>
+          <Slider
+            value={Math.round((x.volume ?? 1) * 100)}
+            min={0}
+            max={100}
+            step={1}
+            label={(v) => `${v}%`}
+            onChange={(v) => updateSound(x.id!, (s) => void (s.volume = Math.min(100, Math.max(0, v)) / 100), 'vol')}
+          />
+        </Field>
+        {x.trigger === 'lowAmmo' && (
+          <Field label={t('skinInspector.k38')}>
+            <Slider value={x.lowAmmoFraction ?? 0.2} min={0.05} max={0.9} step={0.05} onChange={(v) => updateSound(x.id!, (s) => void (s.lowAmmoFraction = v), 'low')} />
+          </Field>
+        )}
+      </div>
+      <div className="section">
+        <Group justify="space-between">
+          <Button variant="light" color="green" leftSection={<IconPlayerPlay size={14} />} onClick={() => playSound(x)}>
+            {t('skinInspector.k35')}
+          </Button>
+          <Button variant="default" color="red" leftSection={<IconTrash size={14} />} onClick={() => (removeSound(x.id!), select(null))}>
+            {t('skinInspector.k36')}
+          </Button>
+        </Group>
+      </div>
+    </>
   );
 }
 
@@ -322,6 +361,7 @@ function Overview() {
   const unmatched = useStore((s) => s.unmatched);
   const attachments = (doc.attachments ?? []).filter(Boolean).length;
   const sounds = (doc.sounds ?? []).filter(Boolean).length;
+  const layers = (doc.materials ?? []).reduce((n, m) => n + (m?.layers ?? []).filter(Boolean).length, 0);
   return (
     <>
       <div className="insp-head">
@@ -391,6 +431,19 @@ function Overview() {
           <AddAttachmentMenu>
             <FeatureTile feature="attachment" title={t('skinInspector.attachTile')} count={attachments} />
           </AddAttachmentMenu>
+          <Menu position="bottom-start">
+            <Menu.Target>
+              <FeatureTile feature="layer" title={t('dynamicInspector.k33')} count={layers} />
+            </Menu.Target>
+            <Menu.Dropdown>
+              <Menu.Label>{t('skinInspector.pickPart')}</Menu.Label>
+              {item?.parts.map((p) => (
+                <Menu.Item key={p.id} onClick={() => select({ kind: 'part', id: p.id })}>
+                  {partLabel(p)}
+                </Menu.Item>
+              ))}
+            </Menu.Dropdown>
+          </Menu>
           <FeatureTile feature="sound" title={t('skinInspector.k31')} count={sounds} onClick={() => void pickSound()} />
         </SimpleGrid>
       </div>

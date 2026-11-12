@@ -1,4 +1,4 @@
-import { ActionIcon, Button, Checkbox, Group, Kbd, SegmentedControl, Select, Switch, TextInput } from '@mantine/core';
+import { ActionIcon, Button, Checkbox, Group, SegmentedControl, Select, Switch, TextInput } from '@mantine/core';
 import { useState } from 'react';
 import { cssFont, DEFAULT_FONT, FONT_GROUPS, isFontFile, loadFont, systemFonts } from '../fonts';
 import { IconPlus, IconTrash, IconX } from '@tabler/icons-react';
@@ -239,31 +239,8 @@ function AttachmentPanel({ a }: { a: Attachment }) {
   );
 }
 
-function Overview() {
-  return (
-    <>
-      <div className="insp-head">
-        <div className="kind">{t('attachInspector.k44')}</div>
-        <div className="title">{t('attachInspector.k45')}</div>
-        <div className="meta">{t('attachInspector.k46')}</div>
-      </div>
-      <div className="section">
-        <p className="hint">
-          {t('attachInspector.k47')}<Kbd>G</Kbd> {t('attachInspector.k48')} <Kbd>R</Kbd> {t('attachInspector.k49')} <Kbd>S</Kbd> {t('attachInspector.k50')} <Kbd>X</Kbd>/<Kbd>Y</Kbd>/<Kbd>Z</Kbd> {t('attachInspector.k51')} <Kbd>Enter</Kbd> {t('attachInspector.k52')} <Kbd>Esc</Kbd> {t('attachInspector.k53')} <b>{t('attachInspector.k54')}</b> {t('attachInspector.k55')}
-        </p>
-      </div>
-    </>
-  );
-}
-
 export function AttachInspector() {
   const selection = useStore((s) => s.selection);
   const a = useStore((s) => (selection?.kind === 'attachment' ? s.doc.attachments?.find((x) => x?.id === selection.id) : undefined));
-  if (a) return <AttachmentPanel a={a} />;
-  return (
-    <>
-      <Overview />
-      <SelectionLayout />
-    </>
-  );
+  return a ? <AttachmentPanel a={a} /> : null;
 }

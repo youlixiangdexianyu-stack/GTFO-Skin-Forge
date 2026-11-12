@@ -5,12 +5,12 @@ import type Konva from 'konva';
 import { useEffect, useRef, useState, type ComponentType } from 'react';
 import { Image as KImage, Layer, Stage, Transformer } from 'react-konva';
 import { baseTexturePath, LayerSource, loadImage, naturalSort, sourceSize } from '../frames';
-import { baseName, CHANNELS, triggersFor, type DynamicLayer, type LayerKind, type PlayMode, type TextureChannel, type Trigger } from '../protocol';
+import { baseName, CHANNELS, triggersFor, type CatalogPart, type DynamicLayer, type LayerKind, type PlayMode, type TextureChannel, type Trigger } from '../protocol';
 import { materialOf, useItem, useStore } from '../store';
 import { Color, Field, Num, Slider, Vec } from './fields';
-import { SelectionLayout } from './SelectionLayout';
+import { FeatureHead } from './Features';
 import { CHANNEL_LABEL } from './SkinInspector';
-import { partLabel, t } from '../i18n';
+import { t } from '../i18n';
 
 const KINDS: { id: LayerKind; label: string; icon: ComponentType<{ size?: number }> }[] = [
   { id: 'image', get label() { return t('dynamicInspector.k1'); }, icon: IconPhoto },
@@ -26,7 +26,7 @@ const PLAY_MODES: { value: PlayMode; label: string }[] = [
 const IMAGES = [{ get name() { return t('dynamicInspector.k1'); }, extensions: ['png', 'jpg', 'jpeg', 'webp', 'gif', 'bmp'] }];
 const VIDEOS = [{ get name() { return t('dynamicInspector.k3'); }, extensions: ['mp4', 'webm', 'mov', 'm4v'] }];
 
-async function addLayer(material: string, part: string, kind: LayerKind) {
+export async function addLayer(material: string, part: string, kind: LayerKind) {
   const { addLayer } = useStore.getState();
   if (kind === 'text') return addLayer(material, part, { kind, get name() { return t('dynamicInspector.k4'); }, text: { content: 'GTFO', sizePx: 96, color: [1, 1, 1, 1] }, uvSize: [0.3, 0.12] });
   const files = await window.forge.openDialog('files', kind === 'video' ? VIDEOS : IMAGES);
@@ -250,27 +250,26 @@ function LayerPanel({ material, layer }: { material: string; layer: DynamicLayer
   );
 }
 
-function PartLayers({ partId }: { partId: string }) {
-  const item = useItem();
+/** A part's dynamic layers, per material, with adding right there. */
+export function PartLayers({ part }: { part: CatalogPart }) {
   const doc = useStore((s) => s.doc);
+  const selection = useStore((s) => s.selection);
   const { select, updateLayer } = useStore.getState();
-  const part = item?.parts.find((p) => p.id === partId);
-  if (!part) return null;
   return (
-    <>
-      <div className="insp-head">
-        <div className="kind">{t('dynamicInspector.k33')}</div>
-        <div className="title">{partLabel(part)}</div>
-        <div className="meta">{t('dynamicInspector.k34')}</div>
-      </div>
+    <div className="section">
+      <FeatureHead feature="layer" title={t('dynamicInspector.k33')} info={`${t('dynamicInspector.k34')} ${t('dynamicInspector.k38')}`} />
       {part.materials.map((mat) => {
         const layers = (materialOf(doc, mat)?.layers ?? []).filter(Boolean) as DynamicLayer[];
         return (
-          <div className="section" key={mat}>
-            {part.materials.length > 1 && <h3>{mat}</h3>}
-            <SimpleGrid cols={4} spacing={4} mb="sm">
+          <div key={mat} style={{ marginBottom: 8 }}>
+            {part.materials.length > 1 && (
+              <Text size="xs" c="dimmed" mb={4}>
+                {mat}
+              </Text>
+            )}
+            <SimpleGrid cols={4} spacing={4} mb={6}>
               {KINDS.map((k) => (
-                <Button key={k.id} variant="default" px={4} leftSection={<k.icon size={13} />} onClick={() => void addLayer(mat, part.id, k.id)}>
+                <Button key={k.id} size="xs" variant="light" color="violet" px={4} leftSection={<k.icon size={13} />} onClick={() => void addLayer(mat, part.id, k.id)}>
                   {k.label}
                 </Button>
               ))}
@@ -279,11 +278,16 @@ function PartLayers({ partId }: { partId: string }) {
               {layers.map((l) => {
                 const K = KINDS.find((k) => k.id === l.kind);
                 return (
-                  <UnstyledButton key={l.id} className="item" onClick={() => select({ kind: 'layer', material: mat, id: l.id! })}>
+                  <UnstyledButton
+                    key={l.id}
+                    className="item"
+                    aria-selected={selection?.kind === 'layer' && selection.id === l.id}
+                    onClick={() => select({ kind: 'layer', material: mat, id: l.id! })}
+                  >
                     <ActionIcon
                       variant="subtle"
                       size="sm"
-                      color={l.visible === false ? 'dark.3' : 'gray'}
+                      color={l.visible === false ? 'dark.3' : 'violet'}
                       onClick={(e) => (e.stopPropagation(), updateLayer(mat, l.id!, (x) => void (x.visible = x.visible === false)))}
                     >
                       {l.visible === false ? <IconEyeOff size={14} /> : <IconEye size={14} />}
@@ -303,33 +307,14 @@ function PartLayers({ partId }: { partId: string }) {
           </div>
         );
       })}
-    </>
+    </div>
   );
 }
 
-export function DynamicInspector() {
+/** The selected dynamic layer. */
+export function LayerInspector() {
   const selection = useStore((s) => s.selection);
   const layer = useStore((s) => (selection?.kind === 'layer' ? materialOf(s.doc, selection.material)?.layers?.find((l) => l?.id === selection.id) : undefined));
-  if (selection?.kind === 'layer' && layer) return <LayerPanel material={selection.material} layer={layer} />;
-  if (selection?.kind === 'part')
-    return (
-      <>
-        <PartLayers partId={selection.id} />
-        <SelectionLayout />
-      </>
-    );
-  return (
-    <>
-      <div className="insp-head">
-        <div className="kind">{t('dynamicInspector.k33')}</div>
-        <div className="title">{t('dynamicInspector.k36')}</div>
-        <div className="meta">{t('dynamicInspector.k37')}</div>
-      </div>
-      <div className="section">
-        <p className="hint">
-          {t('dynamicInspector.k38')} <b>{t('dynamicInspector.k39')}</b>{t('dynamicInspector.k40')}
-        </p>
-      </div>
-    </>
-  );
+  if (selection?.kind !== 'layer' || !layer) return null;
+  return <LayerPanel material={selection.material} layer={layer} />;
 }

@@ -2,45 +2,41 @@ import { ActionIcon, Badge, Button, Checkbox, Group, Menu, Modal, Popover, Segme
 import {
   IconBolt,
   IconBox,
-  IconWorldUpload,
   IconCheck,
   IconChecklist,
   IconChevronDown,
   IconCopy,
-  IconDeviceFloppy,
-  IconEraser,
-  IconFolder,
-  IconFolderOpen,
   IconFileImport,
+  IconFileText,
   IconFileZip,
+  IconFolder,
   IconFolderPlus,
-  IconInfoCircle,
   IconMinus,
   IconPackage,
   IconPackageExport,
+  IconPlug,
+  IconPlugOff,
   IconRefresh,
   IconRestore,
+  IconSend,
   IconSettings,
   IconSquare,
   IconStack2,
   IconTrash,
+  IconWorldUpload,
   IconX,
 } from '@tabler/icons-react';
 import { useEffect, useState } from 'react';
-import { applyToGame, exportObj, exportPack, exportThunderstore, openProject, profileProblem } from '../actions';
+import { applyToGame, exportObj, exportPack, exportThunderstore, profileProblem } from '../actions';
 import { detail, friendly } from '../errors';
 import { call, type BackendError, type InstalledPack, type SizeMode, type VerifyResult } from '../protocol';
-import { useStore, type Mode } from '../store';
+import { useStore } from '../store';
 import logo from '../../../assets/icon.png';
 import { localName, t, useLang, type Lang } from '../i18n';
 import { Info } from './Features';
 import { exportGameFiles, ReplaceModal, RestoreModal } from './GameFiles';
+import { GameLog } from './GameLog';
 
-const MODES: { value: Mode; label: string }[] = [
-  { value: 'skin', get label() { return t('topBar.k1'); } },
-  { value: 'attach', get label() { return t('topBar.k2'); } },
-  { value: 'dynamic', get label() { return t('topBar.k3'); } },
-];
 
 const SIZES: { value: SizeMode; label: string }[] = [
   { value: 'keep', get label() { return t('topBar.k4'); } },
@@ -86,7 +82,18 @@ function TargetMenu() {
   const gameDot = !game ? '' : !game.found ? 'bad' : game.running ? 'live' : 'ok';
   const dot = pending ? 'warn' : problem ? 'bad' : gameDot;
   const color = pending ? 'yellow' : !game ? 'gray' : !game.found || problem ? 'red' : game.running ? 'flare' : 'teal';
-  const tip = [problem ?? t('topBar.k12'), state, pending ? t('topBar.pluginPending') : null].filter(Boolean).join(' · ');
+  const tip = [t('topBar.testProfile'), problem ?? current?.name, state, pending ? t('topBar.pluginPending') : null].filter(Boolean).join(' · ');
+  const plugin = async (install: boolean) => {
+    const s = useStore.getState();
+    if (!current) return;
+    try {
+      await call(install ? 'plugin.install' : 'plugin.uninstall', { profile: current.path });
+      await s.refreshProfiles();
+      s.toast('ok', install ? t('topBar.k23') : t('topBar.k21'));
+    } catch (e) {
+      s.fail(e);
+    }
+  };
   const [open, setOpen] = useState(false);
   return (
     <Menu position="bottom-end" width={280} opened={open} onChange={setOpen}>
@@ -105,7 +112,12 @@ function TargetMenu() {
         </Tooltip>
       </Menu.Target>
       <Menu.Dropdown>
-        <Menu.Label>{t('topBar.k12')}</Menu.Label>
+        <Menu.Label>
+          <Group gap={6} wrap="nowrap">
+            {t('topBar.testProfile')}
+            <Info label={t('topBar.testProfileInfo')} />
+          </Group>
+        </Menu.Label>
         {profiles.map((p) => (
           <Menu.Item
             key={p.path}
@@ -138,6 +150,25 @@ function TargetMenu() {
             {t('topBar.pluginPending')}
           </Text>
         )}
+        {current?.hasBepInEx && (
+          <>
+            <Menu.Divider />
+            <Menu.Label>
+              {t('topBar.k18')}
+              {current.pluginVersion ? t('topBar.k19', { v0: current.pluginVersion }) : t('topBar.k20')}
+              {current.pluginVersion && current.pluginCurrent === false && ` · ${t('topBar.pluginWrong')}`}
+            </Menu.Label>
+            {current.pluginVersion ? (
+              <Menu.Item leftSection={<IconPlugOff size={14} />} color="red" onClick={() => void plugin(false)}>
+                {t('topBar.k22')}
+              </Menu.Item>
+            ) : (
+              <Menu.Item leftSection={<IconPlug size={14} />} onClick={() => void plugin(true)}>
+                {t('topBar.k24')}
+              </Menu.Item>
+            )}
+          </>
+        )}
         <Menu.Divider />
         <Menu.Label>
           <Group gap={6} wrap="nowrap">
@@ -161,27 +192,16 @@ function TargetMenu() {
   );
 }
 
-/** Settings that change rarely: language, the plugin's development mode for the chosen profile, the data folder. */
+/** Settings that change rarely: language and the data folder. (Live reload needs no switch: 应用到游戏 turns it on
+ * in the test profile.) */
 function SettingsMenu() {
   const lang = useLang();
-  const profile = useStore((s) => s.profiles.find((p) => p.path === s.prefs.profilePath));
   const { setPrefs, dataDir } = useStore.getState();
-  const setDevelopment = async (on: boolean) => {
-    const s = useStore.getState();
-    if (!profile) return;
-    try {
-      const r = await call('plugin.setDevelopment', { profile: profile.path, on });
-      await s.refreshProfiles();
-      if (r.restartNeeded) s.toast('info', t('topBar.devRestart'));
-    } catch (e) {
-      s.fail(e);
-    }
-  };
   return (
     <Popover position="bottom-end" width={300} shadow="md">
       <Popover.Target>
         <Tooltip label={t('topBar.settings')}>
-          <ActionIcon size={34} variant="subtle" color="gray" aria-label={t('topBar.settings')}>
+          <ActionIcon size={30} variant="subtle" color="gray" aria-label={t('topBar.settings')}>
             <IconSettings size={19} />
           </ActionIcon>
         </Tooltip>
@@ -203,20 +223,6 @@ function SettingsMenu() {
               ]}
             />
           </Stack>
-          {profile?.hasBepInEx && (
-            <Group gap={6} wrap="nowrap">
-              <Switch
-                size="sm"
-                label={t('topBar.devLabel')}
-                checked={!!profile.development}
-                onChange={(e) => void setDevelopment(e.currentTarget.checked)}
-                style={{ flex: 1 }}
-              />
-              <Tooltip label={t('topBar.devInfo')} multiline w={280}>
-                <IconInfoCircle size={16} color="var(--scan)" style={{ flexShrink: 0 }} />
-              </Tooltip>
-            </Group>
-          )}
           <Button variant="default" size="xs" leftSection={<IconFolder size={14} />} onClick={() => void window.forge.openPath(dataDir)}>
             {t('topBar.k58')}
           </Button>
@@ -280,20 +286,6 @@ function InstalledModal({ opened, onClose }: { opened: boolean; onClose: () => v
     <Modal opened={opened} onClose={onClose} title={t('topBar.k17', { v0: profile?.name ?? t('topBar.noProfile') })} size="lg">
       {profile && (
         <Stack>
-          <Group justify="space-between">
-            <Text c="dimmed" size="sm">
-              {t('topBar.k18')}{profile.pluginVersion ? t('topBar.k19', { v0: profile.pluginVersion }) : t('topBar.k20')}
-            </Text>
-            {profile.pluginVersion ? (
-              <Button variant="default" color="red" onClick={() => act(() => call('plugin.uninstall', { profile: profile.path }), t('topBar.k21'))}>
-                {t('topBar.k22')}
-              </Button>
-            ) : (
-              <Button variant="default" onClick={() => act(() => call('plugin.install', { profile: profile.path }), t('topBar.k23'))}>
-                {t('topBar.k24')}
-              </Button>
-            )}
-          </Group>
           {packs === null && <Text c="dimmed">{t('topBar.k25')}</Text>}
           {packs?.length === 0 && <Text c="dimmed">{t('topBar.k26')}</Text>}
           {!!packs?.length && (
@@ -394,16 +386,15 @@ function VerifyModal({ opened, onClose }: { opened: boolean; onClose: () => void
   );
 }
 
+/** The author's test loop: apply into the test profile, automatically if wanted, and see what the game did. */
 function ApplyButton() {
   const busy = useStore((s) => s.busy);
   const prefs = useStore((s) => s.prefs);
   const setPrefs = useStore((s) => s.setPrefs);
-  const { saveProject, newProject } = useStore.getState();
   const problem = useStore((s) => profileProblem(s.profiles.find((p) => p.path === s.prefs.profilePath)));
   const [installed, setInstalled] = useState(false);
   const [verify, setVerify] = useState(false);
-  const [replace, setReplace] = useState(false);
-  const [restore, setRestore] = useState(false);
+  const [log, setLog] = useState(false);
   return (
     <>
       <Group gap={0} className="primary">
@@ -412,54 +403,33 @@ function ApplyButton() {
             size="sm"
             loading={!!busy}
             disabled={!!problem}
-            leftSection={<IconBolt size={16} />}
+            leftSection={prefs.autoApply ? <IconRefresh size={16} /> : <IconBolt size={16} />}
             onClick={() => void applyToGame()}
             style={{ borderTopRightRadius: 0, borderBottomRightRadius: 0 }}
           >
             {t('topBar.k45')}
           </Button>
         </Tooltip>
-        <Menu position="bottom-end" width={290} closeOnItemClick>
+        <Menu position="bottom-end" width={300} closeOnItemClick>
           <Menu.Target>
             <Button size="sm" px={8} aria-label={t('topBar.k46')} style={{ borderTopLeftRadius: 0, borderBottomLeftRadius: 0, borderLeft: '1px solid rgba(0,0,0,.2)' }}>
               <IconChevronDown size={16} />
             </Button>
           </Menu.Target>
           <Menu.Dropdown>
+            <Group gap={6} wrap="nowrap" px="sm" py={8}>
+              <Switch size="sm" label={t('topBar.autoApply')} checked={prefs.autoApply} onChange={(e) => setPrefs({ autoApply: e.currentTarget.checked })} style={{ flex: 1 }} />
+              <Info label={t('topBar.autoApplyInfo')} />
+            </Group>
+            <Menu.Divider />
             <Menu.Item leftSection={<IconStack2 size={14} />} onClick={() => setInstalled(true)}>
               {t('topBar.k47')}
             </Menu.Item>
             <Menu.Item leftSection={<IconChecklist size={14} />} onClick={() => setVerify(true)}>
               {t('topBar.k48')}
             </Menu.Item>
-            <Menu.Divider />
-            <Menu.Item leftSection={<IconPackageExport size={14} />} onClick={() => void exportPack()}>
-              {t('topBar.k49')}
-            </Menu.Item>
-            <Menu.Item leftSection={<IconWorldUpload size={14} />} onClick={() => void exportThunderstore()}>
-              {t('actions.exportMod')}
-            </Menu.Item>
-            <Menu.Item leftSection={<IconBox size={14} />} onClick={() => void exportObj('separate')}>
-              {t('topBar.k50')}
-            </Menu.Item>
-            <Menu.Item leftSection={<IconPackage size={14} />} onClick={() => void exportObj('merged')}>
-              {t('topBar.k51')}
-            </Menu.Item>
-            <Menu.Divider />
-            <Menu.Label>
-              <Group gap={6} wrap="nowrap">
-                {t('gameFiles.group')}
-                <Info label={t('gameFiles.groupInfo')} />
-              </Group>
-            </Menu.Label>
-            <Menu.Item leftSection={<IconFileImport size={14} />} onClick={() => setReplace(true)}>
-              {t('gameFiles.replace')}
-            </Menu.Item>
-            <Menu.Item leftSection={<IconRestore size={14} />} onClick={() => setRestore(true)}>
-              {t('gameFiles.restore')}
-            </Menu.Item>
-            <Menu.Item leftSection={<IconFileZip size={14} />} onClick={() => void exportGameFiles()}>
-              {t('gameFiles.export')}
+            <Menu.Item leftSection={<IconFileText size={14} />} onClick={() => setLog(true)}>
+              {t('gameLog.title')}
             </Menu.Item>
             <Menu.Divider />
             <Menu.Label>{t('topBar.k52')}</Menu.Label>
@@ -469,28 +439,60 @@ function ApplyButton() {
             <div style={{ padding: '2px 12px 10px' }}>
               <Checkbox size="xs" label={t('topBar.k53')} checked={prefs.allowMissing} onChange={(e) => setPrefs({ allowMissing: e.currentTarget.checked })} />
             </div>
-            <Menu.Divider />
-            <Menu.Item
-              leftSection={<IconFolderOpen size={14} />}
-              rightSection={<Text size="xs" c="dimmed">Ctrl O</Text>}
-              onClick={() => void openProject()}
-            >
-              {t('topBar.k54')}
-            </Menu.Item>
-            <Menu.Item leftSection={<IconDeviceFloppy size={14} />} rightSection={<Text size="xs" c="dimmed">Ctrl S</Text>} onClick={() => void saveProject()}>
-              {t('topBar.k55')}
-            </Menu.Item>
-            <Menu.Item leftSection={<IconDeviceFloppy size={14} />} onClick={() => void saveProject(true)}>
-              {t('topBar.k56')}
-            </Menu.Item>
-            <Menu.Item leftSection={<IconEraser size={14} />} onClick={() => void newProject()}>
-              {t('topBar.k57')}
-            </Menu.Item>
           </Menu.Dropdown>
         </Menu>
       </Group>
       <InstalledModal opened={installed} onClose={() => setInstalled(false)} />
       <VerifyModal opened={verify} onClose={() => setVerify(false)} />
+      <GameLog opened={log} onClose={() => setLog(false)} />
+    </>
+  );
+}
+
+/** Getting the skin to other players: packs, a Thunderstore mod, game files, models. */
+function PublishMenu() {
+  const [replace, setReplace] = useState(false);
+  const [restore, setRestore] = useState(false);
+  return (
+    <>
+      <Menu position="bottom-end" width={300}>
+        <Menu.Target>
+          <Button size="sm" variant="light" color="cyan" leftSection={<IconSend size={15} />} rightSection={<IconChevronDown size={14} />}>
+            {t('topBar.publish')}
+          </Button>
+        </Menu.Target>
+        <Menu.Dropdown>
+          <Menu.Item leftSection={<IconWorldUpload size={14} />} onClick={() => void exportThunderstore()}>
+            {t('actions.exportMod')}
+          </Menu.Item>
+          <Menu.Item leftSection={<IconPackageExport size={14} />} onClick={() => void exportPack()}>
+            {t('topBar.k49')}
+          </Menu.Item>
+          <Menu.Divider />
+          <Menu.Label>
+            <Group gap={6} wrap="nowrap">
+              {t('gameFiles.group')}
+              <Info label={t('gameFiles.groupInfo')} />
+            </Group>
+          </Menu.Label>
+          <Menu.Item leftSection={<IconFileImport size={14} />} onClick={() => setReplace(true)}>
+            {t('gameFiles.replace')}
+          </Menu.Item>
+          <Menu.Item leftSection={<IconRestore size={14} />} onClick={() => setRestore(true)}>
+            {t('gameFiles.restore')}
+          </Menu.Item>
+          <Menu.Item leftSection={<IconFileZip size={14} />} onClick={() => void exportGameFiles()}>
+            {t('gameFiles.export')}
+          </Menu.Item>
+          <Menu.Divider />
+          <Menu.Item leftSection={<IconBox size={14} />} onClick={() => void exportObj('separate')}>
+            {t('topBar.k50')}
+          </Menu.Item>
+          <Menu.Item leftSection={<IconPackage size={14} />} onClick={() => void exportObj('merged')}>
+            {t('topBar.k51')}
+          </Menu.Item>
+        </Menu.Dropdown>
+      </Menu>
       <ReplaceModal opened={replace} onClose={() => setReplace(false)} />
       <RestoreModal opened={restore} onClose={() => setRestore(false)} />
     </>
@@ -498,17 +500,16 @@ function ApplyButton() {
 }
 
 export function TopBar() {
-  const mode = useStore((s) => s.mode);
-  const setMode = useStore((s) => s.setMode);
   return (
     <header className="topbar">
       <div className="brand">
         <img className="logo" src={logo} alt="" />
         <b>SKIN FORGE</b>
       </div>
-      <SegmentedControl className="modes" value={mode} onChange={(v) => setMode(v as Mode)} data={MODES} size="sm" />
       <div className="spacer" />
       <SettingsMenu />
+      <PublishMenu />
+      <span className="bar-sep" />
       <TargetMenu />
       <ApplyButton />
       <WindowControls />

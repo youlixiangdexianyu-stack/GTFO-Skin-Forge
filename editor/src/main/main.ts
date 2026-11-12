@@ -1,5 +1,5 @@
 import { app, autoUpdater, BrowserWindow, dialog, ipcMain, net, protocol, shell, type OpenDialogOptions } from 'electron';
-import { appendFileSync, cpSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { appendFileSync, cpSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { mkdir, stat, writeFile } from 'node:fs/promises';
 import { basename, dirname, isAbsolute, join, normalize, resolve, sep } from 'node:path';
 import { pathToFileURL } from 'node:url';
@@ -208,6 +208,43 @@ function registerIpc() {
 }
 
 const updateLog = (message: string) => appLog('update', message);
+const REPO = 'youlixiangdexianyu-stack/GTFO-Skin-Forge';
+
+// The download takes minutes and Squirrel reports no progress: the window shows a bar from the package's size in the
+// feed's RELEASES and the size of the file Update.exe is writing into <install>/packages/. Unknown sizes show a moving bar.
+let watching = false;
+async function watchDownload() {
+  if (watching) return;
+  watching = true;
+  let file: string | null = null;
+  let total = 0;
+  try {
+    const feed = `https://update.electronjs.org/${REPO}/${process.platform}-${process.arch}/${app.getVersion()}/RELEASES`;
+    const [, url, size] = (await (await net.fetch(feed)).text()).replace(/^\uFEFF/, '').trim().split(/\r?\n/).pop()!.split(' ');
+    file = join(dirname(process.execPath), '..', 'packages', decodeURIComponent(url.split('/').pop()!));
+    total = Number(size) || 0;
+  } catch (e) {
+    updateLog(`progress: no package size: ${String(e)}`);
+  }
+  const tick = () => {
+    let received = 0;
+    try {
+      if (file) received = statSync(file).size;
+    } catch {
+      // not started yet
+    }
+    send('update:progress', received, total);
+  };
+  tick();
+  const timer = setInterval(tick, 1000);
+  const stop = (done: boolean) => () => {
+    clearInterval(timer);
+    watching = false;
+    send('update:progress', done ? total || 1 : -1, total || 1);
+  };
+  autoUpdater.once('update-downloaded', stop(true));
+  autoUpdater.once('error', stop(false));
+}
 
 // Every file dialog opens where the last one of its kind was confirmed (a purpose, else the kind and file types), kept
 // across runs in <dataDir>/dialogs.json.
@@ -247,11 +284,10 @@ app.whenReady().then(() => {
   createWindow();
   // An installed copy checks this repository's GitHub releases (update.electronjs.org) at start and hourly, downloads a
   // newer one in the background and offers to restart into it. The bundled plugin updates with it.
-  // The download takes a while; the window says it has started so a quiet start is not taken for no update.
-  autoUpdater.on('update-available', () => send('update:available'));
+  autoUpdater.on('update-available', () => void watchDownload());
   if (app.isPackaged)
     updateElectronApp({
-      updateSource: { type: UpdateSourceType.ElectronPublicUpdateService, repo: 'youlixiangdexianyu-stack/GTFO-Skin-Forge' },
+      updateSource: { type: UpdateSourceType.ElectronPublicUpdateService, repo: REPO },
       logger: { log: updateLog, info: updateLog, warn: updateLog, error: updateLog },
       onNotifyUser: makeUserNotifier({
         title: 'ForgeSkin 有新版本',

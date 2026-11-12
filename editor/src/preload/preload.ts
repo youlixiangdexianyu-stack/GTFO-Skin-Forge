@@ -38,7 +38,8 @@ const api = {
   checkUpdate: (): Promise<'dev' | 'latest' | 'downloading' | 'error'> => ipcRenderer.invoke('update:check'),
   version: (): Promise<string> => ipcRenderer.invoke('app:version'),
   onMaximized: (cb: (maximized: boolean) => void) => subscribe('win:maximized', cb),
-  onUpdateAvailable: (cb: () => void) => subscribe('update:available', cb),
+  /** A found update downloading: bytes so far and in all (0 when unknown); received -1 means it failed, = total done. */
+  onUpdateProgress: (cb: (received: number, total: number) => void) => subscribe('update:progress', cb),
 };
 
 export type ForgeApi = typeof api;

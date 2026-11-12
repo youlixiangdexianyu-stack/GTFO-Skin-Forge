@@ -30,6 +30,8 @@
   "actions.k24": "3D 模型",
   "actions.k25": "正在导入模型…",
   "actions.k26": "模型已挂到选中的部件上。按 G 移动，R 旋转，S 缩放。",
+  "app.updating": "正在下载新版本 {{v0}}%",
+  "app.updatingUnknown": "正在下载新版本",
   "app.k1": "后台服务重启中…",
   "app.k2": "就绪",
   "app.k3": "日志",

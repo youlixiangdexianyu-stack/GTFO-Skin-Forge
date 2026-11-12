@@ -25,6 +25,7 @@ function StatusBar({ onLog }: { onLog: () => void }) {
   // Backend progress only matters while the user waits on something (thumbnails load quietly in the background).
   const progress = useStore((s) => (s.busy || s.previewLoading ? s.progress : null));
   const cache = useStore((s) => s.cache);
+  const update = useStore((s) => s.update);
   const undo = useStore((s) => s.undo.length);
   const redo = useStore((s) => s.redo.length);
   const { undoEdit, redoEdit } = useStore.getState();
@@ -45,6 +46,12 @@ function StatusBar({ onLog }: { onLog: () => void }) {
       )}
       <span className="grow">{text}</span>
       {progress && <Progress w={120} size="xs" value={(progress.done / Math.max(1, progress.total)) * 100} />}
+      {update && (
+        <Group gap={6} wrap="nowrap">
+          <span>{update.total ? t('app.updating', { v0: Math.floor((update.received / update.total) * 100) }) : t('app.updatingUnknown')}</span>
+          <Progress w={120} size="xs" value={update.total ? (update.received / update.total) * 100 : 100} animated={!update.total} striped={!update.total} />
+        </Group>
+      )}
       {cache && (
         <Tooltip label={t('app.k4')}>
           <Group gap={6} wrap="nowrap">

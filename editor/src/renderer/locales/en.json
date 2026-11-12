@@ -30,6 +30,8 @@
   "actions.k24": "3D model",
   "actions.k25": "Importing model…",
   "actions.k26": "Model attached to the selected part. Press G to move, R to rotate, S to scale.",
+  "app.updating": "Downloading the new version {{v0}}%",
+  "app.updatingUnknown": "Downloading the new version",
   "app.k1": "Restarting the background service…",
   "app.k2": "Ready",
   "app.k3": "Log",

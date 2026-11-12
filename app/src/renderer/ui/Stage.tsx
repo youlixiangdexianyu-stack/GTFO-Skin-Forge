@@ -124,6 +124,7 @@ function LightBar() {
               label={t('stage.k20')}
               value={prefs.ambientColor}
               onChange={(v) => setPrefs({ ambientColor: v })}
+              onChangeEnd={(v) => setPrefs({ ambientColor: v })} // the picker's onChange lags one move (see fields Color)
               popoverProps={{ withinPortal: false }}
             />
             <Switch label={t('stage.k21')} checked={prefs.bloom} onChange={(e) => setPrefs({ bloom: e.currentTarget.checked })} />

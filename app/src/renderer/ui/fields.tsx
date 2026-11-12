@@ -90,7 +90,9 @@ export function Color({ value, onChange, rgb, alpha }: { value: number[]; onChan
   };
   return (
     <div style={{ display: 'grid', gap: 6 }}>
-      <ColorInput format={alpha ? 'hexa' : 'hex'} value={toHex(value, !!alpha)} onChange={set} withEyeDropper={false} />
+      {/* Mantine 8's picker calls onChange with the colour before the latest move (its state updater runs after the
+          call), so a single click or the end of a drag never arrived; onChangeEnd carries the picked colour. */}
+      <ColorInput format={alpha ? 'hexa' : 'hex'} value={toHex(value, !!alpha)} onChange={set} onChangeEnd={set} withEyeDropper={false} />
       {rgb && <Vec value={value.slice(0, 3)} labels={['R', 'G', 'B']} min={0} step={0.1} onChange={(v) => onChange(value.length > 3 ? [...v, value[3]] : v)} />}
     </div>
   );

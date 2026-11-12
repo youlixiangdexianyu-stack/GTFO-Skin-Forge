@@ -32,16 +32,10 @@ sealed class SkinnedGear
     readonly Component _root; // the holder, or the item
     readonly uint _itemId; // ItemDataBlock persistentID of an item without holder
     readonly ItemEquippable? _item; // null for the menu preview
-    readonly IntPtr _holderPointer, _feeder;
+    readonly IntPtr _holderPointer;
     readonly string _label;
     public string Label => _label;
-    // Backup: a copy of each replaced original, used when the game destroyed the original meanwhile (see ApplyMaterials).
-    readonly List<(Renderer Renderer, Il2CppReferenceArray<Material> Original, Il2CppReferenceArray<Material> Mine, Material?[] Backup)> _swaps = new();
-    // Looks drawn with a borrowed gear shader (BlendHS parts), and the feeder blocks taken off their renderers: the
-    // feeder's block holds the BlendHS palette and would override the borrowed shader's colour and emission.
-    readonly HashSet<IntPtr> _borrowed = new();
-    readonly List<(Renderer Renderer, MaterialPropertyBlock Block)> _blocks = new();
-    static readonly MaterialPropertyBlock NoBlock = new();
+    readonly List<(Renderer Renderer, Il2CppReferenceArray<Material> Original, Il2CppReferenceArray<Material> Mine)> _swaps = new();
     readonly List<Object> _created = new();
     readonly List<(Material Material, int Property, RenderTexture Target)> _targets = new();
     readonly List<ITriggered> _animated = new(); // layers and effects, ticked every frame
@@ -76,7 +70,6 @@ sealed class SkinnedGear
         _itemPointer = item?.Pointer ?? IntPtr.Zero;
         _clipSize = item?.ClipSize ?? 0;
         for (int i = 0; i < _on.Length; i++) _on[i] = new List<ITriggered>();
-        _feeder = holder?.MaterialFeeder?.Pointer ?? IntPtr.Zero;
         _label = item == null ? $"{holder!.GearIDRange?.PublicGearName} [menu]" : $"{item.PublicName} [{(item.m_isFirstPerson ? "1P" : "3P")}{(holder == null ? " item" : "")}]";
     }
 
@@ -138,22 +131,6 @@ sealed class SkinnedGear
     static void Note(GearPartHolder holder, string message)
     {
         if (Reported.Add(holder.Pointer)) ForgeSkinPlugin.Info(message);
-    }
-
-    public static void FeederScanned(IntPtr feeder)
-    {
-        try
-        {
-            foreach (var gear in Live)
-                if (gear._feeder == feeder)
-                {
-                    foreach (var swap in gear._swaps)
-                        if (swap.Renderer != null) swap.Renderer.sharedMaterials = swap.Mine;
-                    foreach (var (renderer, _) in gear._blocks)
-                        if (renderer != null) renderer.SetPropertyBlock(NoBlock);
-                }
-        }
-        catch (Exception e) { ForgeSkinPlugin.Fail($"feeder rescan: {e.Message}"); }
     }
 
     public static void Tick(float now, float time)
@@ -373,25 +350,15 @@ sealed class SkinnedGear
     {
         foreach (var pose in _poses) pose.Revert();
         _poses.Clear();
-        foreach (var (renderer, original, _, backup) in _swaps)
+        foreach (var (renderer, original, mine) in _swaps)
         {
-            if (renderer != null)
-            {
-                for (int i = 0; i < original.Length; i++)
-                    if (backup[i] != null && original[i] == null) // destroyed by the game while ours was shown
-                    {
-                        original[i] = backup[i];
-                        backup[i] = null;
-                    }
-                renderer.sharedMaterials = original;
-            }
-            foreach (var b in backup)
-                if (b != null) Object.Destroy(b);
+            if (renderer == null) continue;
+            var now = renderer.sharedMaterials;
+            for (int i = 0; i < original.Length; i++)
+                if (mine[i] != original[i])
+                    ForgeSkinPlugin.Info($"{_label}: revert {renderer.name}[{i}]: showing {Describe(i < now.Length ? now[i] : null)}, restoring {Describe(original[i])}");
+            renderer.sharedMaterials = original;
         }
-        foreach (var (renderer, block) in _blocks)
-            if (renderer != null) renderer.SetPropertyBlock(block);
-        _blocks.Clear();
-        _borrowed.Clear();
         foreach (var o in _created)
             if (o != null) Object.Destroy(o);
         _swaps.Clear();
@@ -422,8 +389,6 @@ sealed class SkinnedGear
             var mesh = BaseName(MeshOf(renderer)?.name ?? "");
             overrides.TryGetValue(mesh, out var byMesh);
             Il2CppReferenceArray<Material>? mine = null;
-            Material?[]? backup = null;
-            bool borrowed = false;
             for (int i = 0; i < original.Length; i++)
             {
                 var source = original[i];
@@ -440,16 +405,11 @@ sealed class SkinnedGear
                 }
                 mine ??= renderer.sharedMaterials;
                 mine[i] = look;
-                // A copy of every original we replace: the game may destroy its own per-gear copy while ours is shown
-                // (re-equip, loadout changes), and revert must never put a destroyed material back.
-                backup ??= new Material[original.Length];
-                backup[i] = new Material(source) { name = source.name };
-                if (_borrowed.Contains(look.Pointer)) borrowed = true;
+                ForgeSkinPlugin.Info($"{_label}: swap {renderer.name}[{i}] {Describe(source)} -> {Describe(look)}");
             }
             if (mine == null) continue;
             renderer.sharedMaterials = mine;
-            _swaps.Add((renderer, original, mine, backup!));
-            if (borrowed) ClearBlock(renderer);
+            _swaps.Add((renderer, original, mine));
         }
         foreach (var (name, o) in overrides)
         {
@@ -518,7 +478,6 @@ sealed class SkinnedGear
             if (look.HasProperty(Color)) look.SetColor(Color, UnityEngine.Color.white);
             SetEmission(look, UnityEngine.Color.black);
             SetEmissive(look, false);
-            _borrowed.Add(look.Pointer);
             ForgeSkinPlugin.Info($"{_label}: material {source.name} ({BlendHS}) drawn with {template.shader.name} copied from {template.name}");
         }
         else look = Own(new Material(source) { name = name });
@@ -702,13 +661,8 @@ sealed class SkinnedGear
         }
     }
 
-    void ClearBlock(Renderer renderer)
-    {
-        var block = new MaterialPropertyBlock();
-        if (renderer.HasPropertyBlock()) renderer.GetPropertyBlock(block);
-        _blocks.Add((renderer, block));
-        renderer.SetPropertyBlock(NoBlock);
-    }
+    // Instance ids in the log tell the game's copies from ours and show when one was destroyed.
+    static string Describe(Material? m) => m is null ? "none" : m == null ? "a destroyed material" : $"{m.name}#{m.GetInstanceID()}";
 
     // A material of this gear drawn with a textured gear shader (texture and emission slots, not BlendHS).
     Material? TexturedTemplate()
@@ -756,11 +710,37 @@ sealed class SkinnedGear
                 if (gear._root == null || !(gear._root.transform.IsChildOf(t) || t.IsChildOf(gear._root.transform))) continue;
                 foreach (var (root, _, _) in gear._roots)
                     if (root != null) PlayerBackpackManager.SetFPSRendering(root, enable);
+                gear.TakeBack(t, enable);
             }
         }
         catch (Exception e) { ForgeSkinPlugin.Fail($"first-person rendering sync: {e.Message}"); }
         finally { _syncing = false; }
     }
+
+    // SetFPSRendering (GameAssembly 0x175B6F0) gives every enabled renderer under `go` a fresh copy of its slot-0
+    // material (MaterialRef.MakeUnique 0x14FA420: Instantiate, "_unique_<n>", renderer.sharedMaterial = copy) and sets
+    // ENABLE_FPS_RENDERING on the copies only. On a renderer we skinned that copy is a frozen copy of our look, which no
+    // longer follows our animated layers and which nobody destroys. Ours goes back with the keyword the game just set.
+    void TakeBack(Transform go, bool enable)
+    {
+        foreach (var (renderer, original, mine) in _swaps)
+        {
+            if (renderer == null || !renderer.transform.IsChildOf(go)) continue;
+            var now = renderer.sharedMaterials;
+            bool changed = false;
+            for (int i = 0; i < mine.Length && i < now.Length; i++)
+            {
+                if (mine[i] == original[i] || now[i] == mine[i]) continue;
+                ForgeSkinPlugin.Info($"{_label}: fps rendering {enable}: {renderer.name}[{i}] was given {Describe(now[i])}, ours {Describe(mine[i])} put back");
+                if (now[i] != null && now[i].name.StartsWith(mine[i].name, StringComparison.Ordinal)) Object.Destroy(now[i]);
+                if (enable) mine[i].EnableKeyword(FpsKeyword); else mine[i].DisableKeyword(FpsKeyword);
+                changed = true;
+            }
+            if (changed) renderer.sharedMaterials = mine;
+        }
+    }
+
+    const string FpsKeyword = "ENABLE_FPS_RENDERING";
 
     void SyncLayers()
     {

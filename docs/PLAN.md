@@ -160,7 +160,8 @@ game is not running.
   is skipped: its detour hangs the game at startup. Handlers that read their arguments check the object's real class first.
 - Applies after the game finished building a gear (all parts spawned and `GearMaterialFeeder` set up). Overrides go through each
   renderer's `MaterialPropertyBlock` (merged with the feeder's block) or a per-renderer material instance; never the shared material,
-  so other guns that use the same part are untouched. Re-applies when the feeder rewrites its blocks.
+  so other guns that use the same part are untouched. The game's first-person switch (`SetFPSRendering`) gives each renderer a fresh
+  copy of its material; ours is put back right after it with the keyword the game set, and the copy is destroyed.
 - Applies to the local player's gear, first and third person.
 - Attachments are parented to the named transform under the anchor part and follow animation, recoil and ADS.
 - Part layout is written once per assembled gear (absolute local values, only the fields set); no per-frame work. Hiding a

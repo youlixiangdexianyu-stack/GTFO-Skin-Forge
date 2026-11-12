@@ -42,13 +42,6 @@ static class PartsSpawnedHook
     static void Postfix(GearPartHolder __instance) { if (Native.Is<GearPartHolder>(__instance)) SkinnedGear.Spawned(__instance); }
 }
 
-// dump.cs 562404: the feeder re-scans its renderers; our material instances are put back afterwards.
-[HarmonyPatch(typeof(GearMaterialFeeder), nameof(GearMaterialFeeder.ScanAndSetupParts))]
-static class FeederScanHook
-{
-    static void Postfix(GearMaterialFeeder __instance) => SkinnedGear.FeederScanned(__instance.Pointer);
-}
-
 // dump.cs 544371: the funnel every hit on an enemy passes on this machine (the shooter's own hits are applied locally
 // too). With the local player as source and the enemy alive before: dead after is a kill, alive after is a hit.
 [HarmonyPatch(typeof(Dam_EnemyDamageBase), nameof(Dam_EnemyDamageBase.ProcessReceivedDamage))]

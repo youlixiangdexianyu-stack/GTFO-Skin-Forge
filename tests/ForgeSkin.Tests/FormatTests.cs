@@ -88,6 +88,7 @@ public class FormatTests
         { "no-anchor", (d, _) => d.Attachments[0].Part = "" },
         { "empty-attachment", (d, _) => d.Attachments[0].Mesh = null },
         { "bad-screen", (d, _) => d.Attachments[1].Screen!.Digits = 9 },
+        { "bad-screen", (d, _) => (d.Attachments[1].Screen!.Source, d.Attachments[1].Screen!.Style) = (ScreenSource.Kills, ScreenStyle.Bar) },
         { "no-glyphs", (d, _) => d.Attachments[1].Screen!.GlyphMeshes = null },
         { "bad-mesh", (_, f) => f["meshes/m1.forgeskinmesh"] = [1, 2, 3, 4, 5, 6, 7, 8] },
         // A valid header whose counts claim far more than the data holds: caught before anything is allocated.

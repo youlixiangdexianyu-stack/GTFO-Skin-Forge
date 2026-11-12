@@ -1,13 +1,13 @@
 // Renders dynamic-layer frames and screen glyph strips in the renderer and writes them as PNGs for pack.build.
 // Contract with the backend/plugin: each frame in <projectDir>/.frames/<layerId>/NNNN.png is the final pixels of the
 // target region (base texture + layer, opacity baked; the plugin copies without blending); rect.json gives the region in
-// base-texture pixels with a top-left origin. The glyph strip is "0123456789 -" in 12 equal cells, white on transparent;
+// base-texture pixels with a top-left origin. The glyph strip is GLYPHS (Screen.Glyphs) in equal cells, white on transparent;
 // a static screen's text is one image <attachmentId>-text.png. The backend traces both into meshes.
 import { cssFont, loadFont } from './fonts';
 import { dirName, fileUrl, type CatalogItem, type DynamicLayer, type Screen, type SkinDocument, type WeaponPreview } from './protocol';
 import { t } from './i18n';
 
-export const GLYPHS = '0123456789 -';
+export const GLYPHS = '0123456789 -%';
 const MAX_FRAMES = 240;
 const collator = new Intl.Collator(undefined, { numeric: true, sensitivity: 'base' });
 
@@ -296,21 +296,28 @@ export function screenTextCanvas(font: string | null | undefined, text: string, 
   return c;
 }
 
+type Source = Screen['source'];
+/** Ammo counts (the low-ammo colour applies); percentages (shown with '%'); sources with a maximum (can be a bar). */
+export const isAmmo = (s: Source) => !s || s === 'ammoClip' || s === 'ammoReserve' || s === 'ammoTotal';
+export const isPercent = (s: Source) => s === 'accuracy' || s === 'health' || s === 'infection';
+export const isBounded = (s: Source) => isAmmo(s) || isPercent(s);
+
 /**
  * How many digits a counter screen shows, as the plugin decides it: a set number, or automatically the digits of the
- * largest value its source can show (magazine: clip size; reserve: its maximum; total: both). Kills have no maximum:
- * automatic kills show the value's own digits (up to 4). `max` is null where the editor does not know the weapon's ammo.
+ * largest value its source can show (magazine: clip size; reserve: its maximum; total: both; percentages: 3, then '%').
+ * Counts have no maximum: automatically they show the value's own digits (kills up to 4, damage up to 6). `max` is the
+ * ammo maximum, null where the editor does not know the weapon's ammo or the source is not ammo.
  */
 export function screenDigits(s: Screen, item: CatalogItem | undefined): { digits: number; max: number | null; grow: boolean } {
   const clip = item?.clipSize ?? null;
   const reserve = item?.maxReserve ?? null;
   const max =
-    s.source === 'ammoReserve' ? reserve
+    !isAmmo(s.source) ? null
+    : s.source === 'ammoReserve' ? reserve
     : s.source === 'ammoTotal' ? (clip != null && reserve != null ? clip + reserve : null)
-    : s.source === 'kills' || s.source === 'static' ? null
     : clip;
-  const grow = !s.digits && s.source === 'kills';
-  const digits = s.digits ? s.digits : grow ? 4 : max != null ? Math.min(6, String(Math.max(0, max)).length) : 2;
+  const grow = !s.digits && !isBounded(s.source) && s.source !== 'static';
+  const digits = s.digits ? s.digits : grow ? (s.source === 'kills' ? 4 : 6) : isPercent(s.source) ? 3 : max != null ? Math.min(6, String(Math.max(0, max)).length) : 2;
   return { digits, max, grow };
 }
 

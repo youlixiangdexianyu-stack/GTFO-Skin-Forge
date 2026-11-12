@@ -11,6 +11,7 @@ import {
   IconFileZip,
   IconFolder,
   IconFolderPlus,
+  IconListCheck,
   IconMinus,
   IconPackage,
   IconPackageExport,
@@ -462,6 +463,10 @@ function PublishMenu() {
           </Button>
         </Menu.Target>
         <Menu.Dropdown>
+          <Menu.Item leftSection={<IconListCheck size={14} />} onClick={() => useStore.setState({ checkOpen: true })}>
+            {t('check.open')}
+          </Menu.Item>
+          <Menu.Divider />
           <Menu.Item leftSection={<IconWorldUpload size={14} />} onClick={() => void exportThunderstore()}>
             {t('actions.exportMod')}
           </Menu.Item>

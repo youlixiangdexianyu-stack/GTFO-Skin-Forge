@@ -3,7 +3,7 @@ import { useState } from 'react';
 import { cssFont, DEFAULT_FONT, FONT_GROUPS, isFontFile, loadFont, systemFonts } from '../fonts';
 import { IconPlus, IconTrash, IconX } from '@tabler/icons-react';
 import { baseName, triggersFor, type Attachment, type CatalogItem, type Screen, type ScreenSource, type Trigger, type TriggerEffect } from '../protocol';
-import { screenDigits } from '../frames';
+import { isBounded, isPercent, screenDigits } from '../frames';
 import { useItem, useStore } from '../store';
 import { Color, Field, Num, Slider, Vec } from './fields';
 import { SelectionLayout } from './SelectionLayout';
@@ -15,6 +15,12 @@ const SOURCES: { value: ScreenSource; label: string }[] = [
   { value: 'ammoReserve', get label() { return t('attachInspector.k2'); } },
   { value: 'ammoTotal', get label() { return t('attachInspector.k3'); } },
   { value: 'kills', get label() { return t('attachInspector.k4'); } },
+  { value: 'damageDealt', get label() { return t('attachInspector.damageDealt'); } },
+  { value: 'damageDealtAll', get label() { return t('attachInspector.damageDealtAll'); } },
+  { value: 'damageTaken', get label() { return t('attachInspector.damageTaken'); } },
+  { value: 'accuracy', get label() { return t('attachInspector.accuracy'); } },
+  { value: 'health', get label() { return t('attachInspector.health'); } },
+  { value: 'infection', get label() { return t('attachInspector.infection'); } },
   { value: 'static', get label() { return t('attachInspector.k5'); } },
 ];
 
@@ -22,6 +28,8 @@ const SOURCES: { value: ScreenSource; label: string }[] = [
 function autoDigits(s: Screen, item: CatalogItem | undefined): string {
   const { digits, max } = screenDigits(s, item);
   if (s.source === 'kills') return t('attachInspector.autoKills');
+  if (isPercent(s.source)) return t('attachInspector.autoPercent');
+  if (!isBounded(s.source)) return t('attachInspector.autoDamage');
   return max != null ? t('attachInspector.autoDigits', { v0: max, v1: digits }) : t('attachInspector.autoUnknown', { v0: digits });
 }
 
@@ -149,9 +157,29 @@ function AttachmentPanel({ a }: { a: Attachment }) {
         <div className="section">
           <h3>{t('attachInspector.k19')}</h3>
           <Field label={t('attachInspector.k15')}>
-            <Select value={s.source ?? 'ammoClip'} onChange={(v) => v && upScreen((x) => void (x.source = v as ScreenSource))} data={SOURCES} />
+            <Select
+              value={s.source ?? 'ammoClip'}
+              data={SOURCES}
+              onChange={(v) =>
+                v &&
+                upScreen((x) => {
+                  x.source = v as ScreenSource;
+                  if (!isBounded(x.source)) x.style = 'digits'; // only a source with a maximum can fill a bar
+                })
+              }
+            />
           </Field>
-          {s.source === 'static' ? (
+          {isBounded(s.source) && (
+            <Field label={t('attachInspector.style')}>
+              <SegmentedControl
+                size="xs"
+                value={s.style ?? 'digits'}
+                data={[{ value: 'digits', get label() { return t('attachInspector.styleDigits'); } }, { value: 'bar', get label() { return t('attachInspector.styleBar'); } }]}
+                onChange={(v) => upScreen((x) => void (x.style = v as 'digits' | 'bar'))}
+              />
+            </Field>
+          )}
+          {s.style === 'bar' && isBounded(s.source) ? null : s.source === 'static' ? (
             <Field label={t('attachInspector.k24')}>
               <TextInput
                 value={s.staticText ?? ''}

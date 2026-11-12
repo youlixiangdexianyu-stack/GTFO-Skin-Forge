@@ -9,6 +9,7 @@ import { call } from './protocol';
 import { useStore } from './store';
 import { AttachInspector } from './ui/AttachInspector';
 import { LayerInspector, layerFromFiles } from './ui/DynamicInspector';
+import { CheckDialog } from './ui/CheckDialog';
 import { ExportModDialog } from './ui/ExportModDialog';
 import { LeftRail } from './ui/LeftRail';
 import { LiveryInspector } from './ui/LiveryPanel';
@@ -209,6 +210,7 @@ export function App() {
         <Panel id="left" defaultSize={300} minSize={240} maxSize={460}>
           <LeftRail />
           <ExportModDialog />
+          <CheckDialog />
         </Panel>
         <Separator className="sep-v" />
         <Panel id="stage" minSize={400}>

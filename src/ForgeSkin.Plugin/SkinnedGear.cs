@@ -48,7 +48,11 @@ sealed class SkinnedGear
     readonly bool[] _logged = new bool[TriggerCount];
     readonly IntPtr _itemPointer;
     int _layerCount;
-    public int Kills; // this weapon's kills this level
+    // This level (reset by StateChanged): kills, damage dealt to enemies, and the gun's shots resolved / that hit.
+    public int Kills, Shots, ShotHits;
+    public float Damage;
+    readonly bool _gun; // a ranged gun: its Fire is a shot that hits or misses
+    int _shotFrame = -1, _hitFrame = -1; // frame of the unresolved shot (-1: none) and of the last Hit/Kill
     readonly List<AmmoScreen> _screens = new();
     readonly List<Transform> _faceCamera = new();
     readonly List<PartPose> _poses = new();
@@ -73,6 +77,7 @@ sealed class SkinnedGear
         _holderPointer = _root.Pointer;
         _itemPointer = item?.Pointer ?? IntPtr.Zero;
         _clipSize = item?.ClipSize ?? 0;
+        _gun = item != null && Native.Is<BulletWeapon>(item);
         for (int i = 0; i < _on.Length; i++) _on[i] = new List<ITriggered>();
         _label = item == null ? $"{holder!.GearIDRange?.PublicGearName} [menu]" : $"{item.PublicName} [{(item.m_isFirstPerson ? "1P" : "3P")}{(holder == null ? " item" : "")}]";
     }
@@ -150,6 +155,7 @@ sealed class SkinnedGear
         }
         if (Pending.Count > 0 && now >= _nextPending) ResolvePending(now);
         PollWielded(time);
+        PollPlayer();
         for (int i = Live.Count - 1; i >= 0; i--)
         {
             var gear = Live[i];
@@ -173,7 +179,33 @@ sealed class SkinnedGear
         if (state != eGameStateName.Generating) return;
         _wielded = IntPtr.Zero;
         _inventory = null;
+        _playerDamage = null;
         Reported.Clear();
+        DamageAll = DamageTaken = 0;
+        foreach (var gear in Live)
+        {
+            gear.Kills = gear.Shots = gear.ShotHits = 0;
+            gear.Damage = 0;
+            gear._shotFrame = -1;
+        }
+    }
+
+    // The local player this level: damage dealt with all their weapons and damage taken; health and infection in percent.
+    public static float DamageAll, DamageTaken, Health, Infection;
+    static Dam_PlayerDamageBase? _playerDamage; // the local player's, kept while it lives
+    static float _lastHealth;
+    static readonly IntPtr HealthField = Native.FieldInfo<Dam_SyncedDamageBase>("<Health>k__BackingField"),
+        HealthMaxField = Native.FieldInfo<Dam_SyncedDamageBase>("<HealthMax>k__BackingField");
+
+    // Health is read from its field each frame (the getter would box): a drop is damage taken; a rise (heal, revive) is not.
+    static void PollPlayer()
+    {
+        if (_playerDamage == null) return;
+        float health = Native.Float(_playerDamage, HealthField), max = Native.Float(_playerDamage, HealthMaxField);
+        if (_lastHealth >= 0 && health < _lastHealth) DamageTaken += _lastHealth - health;
+        _lastHealth = health;
+        Health = max > 0 ? health / max * 100f : 0f;
+        Infection = _playerDamage.Infection * 100f;
     }
 
     // A first-person item only exists for the local player. A third-person one waits for its owner, which can be set
@@ -232,7 +264,12 @@ sealed class SkinnedGear
 
     static void PollWielded(float time)
     {
-        if (_inventory == null) _inventory = PlayerManager.GetLocalPlayerAgent()?.Inventory;
+        if (_inventory == null && PlayerManager.GetLocalPlayerAgent() is { } local)
+        {
+            _inventory = local.Inventory;
+            _playerDamage = local.Damage;
+            _lastHealth = -1; // the first read is not a drop
+        }
         // The pointer only: the property would allocate a wrapper every frame.
         var pointer = _inventory == null ? IntPtr.Zero : Native.Call(_inventory, WieldedGetter);
         if (pointer == _wielded) return;
@@ -858,7 +895,7 @@ sealed class SkinnedGear
 
     // ---- events (main thread, from the hooks) ----
 
-    public static void Event(IntPtr item, Trigger trigger)
+    public static void Event(IntPtr item, Trigger trigger, float damage = 0)
     {
         try
         {
@@ -870,6 +907,16 @@ sealed class SkinnedGear
                 // An item without holder gets Equip and Unequip from the wielded-item poll only.
                 if (gear._holder == null && trigger is Trigger.Equip or Trigger.Unequip) continue;
                 if (trigger == Trigger.Kill) gear.Kills++;
+                if (trigger is Trigger.Kill or Trigger.Hit)
+                {
+                    gear.Damage += damage;
+                    gear._hitFrame = Time.frameCount;
+                }
+                if (trigger == Trigger.Fire && gear._gun)
+                {
+                    if (gear._shotFrame >= 0) gear.ResolveShot(time);
+                    gear._shotFrame = Time.frameCount;
+                }
                 if (trigger == Trigger.Equip) gear.Equipped();
                 if (trigger == Trigger.Unequip)
                 {
@@ -882,15 +929,27 @@ sealed class SkinnedGear
         catch (Exception e) { ForgeSkinPlugin.Fail($"event {trigger}: {e.Message}"); }
     }
 
-    // Damage the local player dealt to a living enemy: a kill when it died, else a hit, for the item in their hands
-    // (gun or melee weapon alike).
-    public static void Damaged(Agents.Agent? source, bool killed)
+    // Damage the local player dealt to a living enemy (the health it lost): a kill when it died, else a hit, for the item
+    // in their hands (gun or melee weapon alike).
+    public static void Damaged(Agents.Agent? source, bool killed, float damage)
     {
         if (source == null) return;
         var local = PlayerManager.GetLocalPlayerAgent();
         if (local == null || local.Pointer != source.Pointer) return;
+        DamageAll += damage;
         var wielded = local.Inventory?.WieldedItem;
-        if (wielded != null) Event(wielded.Pointer, killed ? Trigger.Kill : Trigger.Hit);
+        if (wielded != null) Event(wielded.Pointer, killed ? Trigger.Kill : Trigger.Hit, damage);
+    }
+
+    // A gun's shot is decided at the end of the frame after it: hitscan damage of the local shooter is applied in the
+    // shot's own frame, so a Hit/Kill from then on is its hit (a shotgun's pellets are one shot); none is a Miss.
+    void ResolveShot(float time)
+    {
+        bool hit = _hitFrame >= _shotFrame;
+        _shotFrame = -1;
+        Shots++;
+        if (hit) ShotHits++;
+        else Raise(Trigger.Miss, _on[(int)Trigger.Miss], time);
     }
 
     // The item's attached flashlight was switched; only a change is an event.
@@ -1003,12 +1062,13 @@ sealed class SkinnedGear
 
     void Update(float time)
     {
+        if (_shotFrame >= 0 && Time.frameCount > _shotFrame + 1) ResolveShot(time);
         if (_item != null && (_screens.Count > 0 || _lowAmmo.Count > 0 || _on[(int)Trigger.Empty].Count > 0))
         {
             int clip = _item.GetCurrentClip();
             if (clip == 0 && _lastClip > 0) Raise(Trigger.Empty, _on[(int)Trigger.Empty], time);
             _lastClip = clip;
-            for (int i = 0; i < _screens.Count; i++) _screens[i].Update(clip, Kills);
+            for (int i = 0; i < _screens.Count; i++) _screens[i].Update(clip);
             for (int i = 0; i < _lowAmmo.Count; i++)
             {
                 bool below = _clipSize > 0 && clip < _clipSize * _lowAmmo[i].Fraction;

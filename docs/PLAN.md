@@ -65,7 +65,7 @@ poses with one helper (`unityToThree` / `threeToUnity` in `app/src/renderer/spac
 - `SkinPack.Open` validates; error codes: `schema`, `no-id`, `no-gear`, `no-manifest`, `no-material`, `bad-path`,
   `missing-file`, `bad-image`, `bad-trigger`, `bad-vector`, `no-atlas`, `bad-atlas`, `no-anchor`, `empty-attachment`, `bad-screen`, `no-glyphs`, `bad-mesh`, `bad-audio`, `duplicate-material` (two
   overrides of one material name). Colours, sizes and other vectors must have their length and be finite; fractions and volumes
-  lie in 0–1. A mesh entry must start with the `.forgeskinmesh` magic; `ForgeSkinMesh.Read` checks the counts against the data
+  lie in 0–1. A screen styled `bar` needs a source with a maximum (`bad-screen`). A mesh entry must start with the `.forgeskinmesh` magic; `ForgeSkinMesh.Read` checks the counts against the data
   length before allocating, and a broken GLB is `bad-mesh` when packing or importing.
 - `.forgeskinmesh` is the attachment mesh format (see `ForgeSkinMesh`).
 - `SkinDocument.Parts` (`PartTransform`): part id (same ids as `Attachment.Part`), optional child path under it (as
@@ -78,10 +78,15 @@ poses with one helper (`unityToThree` / `threeToUnity` in `app/src/renderer/spac
   packs, consumables, carry items, hacking tool), filled from the catalog when packing; all null for attachment skins.
   `Key()` is the target key: `gear:<gearId>` or `item:<itemId>`.
 - Triggers (`Trigger`: always, kill, hit, fire, dryFire, reloadStart, reloadEnd, equip, unequip, aim, aimEnd, lowAmmo, empty,
-  ammoPickup, flashlightOn, flashlightOff; every one but `always` is an event). `DynamicLayer.Trigger` + `Play` (loop / once /
+  ammoPickup, flashlightOn, flashlightOff, miss; every one but `always` is an event). `DynamicLayer.Trigger` + `Play` (loop / once /
   loopFor seconds): a non-`always` layer shows the base texture until its event, then plays. `Attachment.Effects`: list of
-  {trigger, action: flash (emission colour, intensity, seconds) / show (seconds)}. `ScreenSource.Kills` counts the local
-  player's kills with this weapon this level.
+  {trigger, action: flash (emission colour, intensity, seconds) / show (seconds)}.
+- `ScreenSource`: ammoClip, ammoReserve, ammoTotal, static, and for the local player over the current level (reset when the
+  next level starts generating): kills and damageDealt with this weapon, damageDealtAll with all their weapons, damageTaken,
+  accuracy (percent of this gun's shots that hit an enemy; 0 before the first shot); health and infection are their current
+  percent. `Screen.Style`: `digits` or `bar`; a bar only for a source with a maximum (ammo against its maximum,
+  percentages against 100), never for counts or static text. The glyph strip is `Screen.Glyphs` "0123456789 -%"; a pack
+  baked with the earlier 12-glyph strip (no '%') stays valid and its percentages show without '%'.
 - `SkinDocument.Sounds` (`SkinSound`): {trigger (not always), file, volume 0–1, lowAmmoFraction}. The file is Ogg Vorbis, mono
   or stereo, at most 10 s; the editor converts any audio the author picks (WAV, MP3, FLAC, OGG, M4A) to Ogg Vorbis locally with
   `wasm-media-encoders` and keeps an existing Ogg Vorbis file as is. Packed as `sounds/<id>.ogg`.
@@ -133,7 +138,8 @@ app moves its pre-rename Electron profile (`%APPDATA%/GTFO Skin Forge`) to `%APP
 | `match.files` | `{weaponId, files:[...]}` → same, for drag-and-drop of loose files |
 | `project.new/load/save` | SkinDocument in/out; `project.load` also imports legacy `.gtfoskin`, `.gtfdyn` and DLY presets |
 | `project.list` | `{dir}` → `[{path, id, name, modified}]`, newest first; a file that does not parse is listed under its file name |
-| `project.delete` | `{path}` → deletes one `.forgeskinproj` |
+| `project.delete` | `{path}` → deletes one `.forgeskinproj` and its `<name>.snapshots/` folder |
+| `project.missing` | `{project}` → `{files}`: the files the document names (every reference `project.save` maps; a font only when it is a font file, not a family name) that are not on disk |
 | `mesh.import` | `{glb}` → `{forgeskinmesh (cache path), preview glb, bounds}` |
 | `pack.build` | `{project, projectPath, out, sizeMode: keep/original/1k/2k/4k}` → `{pack, warnings}`; resizes keeping aspect, bakes layer atlases from frame PNGs the renderer wrote and traces screen glyph strips and static texts into meshes |
 | `pack.install` | `{pack, profile, activate}` → writes skin + active.json (a running game picks it up only with the development switch on) |
@@ -200,7 +206,7 @@ game is not running.
   The backend compares it with its own assembly (`assembly.verify`); any transform off by more than 1 mm or 0.1° fails.
 - Screens: everything is opaque geometry with the gear shader (it has no transparency and other shaders break the first-person
   projection): a border ring `BorderWidth` wide, a panel quad inside it (each left out only when fully transparent), and the
-  text as real glyph meshes. The pack carries one mesh per glyph "0123456789 -" (blank has none) traced from the strip the app
+  text as real glyph meshes. The pack carries one mesh per glyph of `Screen.Glyphs` (blank has none) traced from the strip the app
   renders with the chosen font (marching squares at alpha 0.5, simplified, triangulated with holes by LibTessDotNet); a static
   screen carries its whole text, any characters, as one mesh the same way. Text shrinks to fit 95% of the inner width.
   Colours: albedo is the colour (a 1×1 texture); with `GlowInGame` text and border also emit the colour at `Glow` × 0.2,
@@ -208,8 +214,13 @@ game is not running.
   1.0, HSU lights 0.54, tool screens 0.45–0.74, shotgun lights 0.07), so the default 1.5 glows clearly and the slider's top
   (5) matches the flashlight lens. The panel emits its colour at the shader's unit 0.01 (shown as itself, no bloom). Below the low-ammo threshold the text's albedo and emission both switch to `LowAmmoColor`; with `LowAmmoGradient` on the tint blends in as the clip falls from `LowAmmoGradientStart` down to the threshold.
   `Digits` 0 is automatic: the digits of the largest value the source can show (clip size, the storage's bullet max cap, or
-  both); automatic kills show the value's own digits, centred, up to 4; `PadZero` pads to that width. Updates only when the
-  value changes; `AmmoClip` reads the weapon's current clip, `AmmoReserve` / `AmmoTotal` the player's ammo storage.
+  both); automatic counts show the value's own digits, centred (kills up to 4, damage up to 6); percentages 3 digits then a
+  '%' cell; `PadZero` pads to that width. Damage is shown as an integer. Updates only when the value changes; `AmmoClip`
+  reads the weapon's current clip, `AmmoReserve` / `AmmoTotal` the player's ammo storage. Damage dealt is the health the
+  enemy lost in the enemy-damage hook (before minus after, never below 0). Damage taken, health and infection are read
+  each frame from the local player's `Dam_PlayerDamageBase` fields (no allocation): a health drop is damage taken, a rise
+  (heal, revive) is not. Style `bar`: one quad in the text colour (with the low-ammo tint for ammo), pivot on the border's
+  inner left edge, as high as the text, scaled in X to the fraction when the value changes.
   After creating a screen the plugin logs one line with the text and border colours and emission actually applied and the
   template material's shader and keywords.
 - Dynamic layers: atlas frames are copied into the target texture region with `Graphics.CopyTexture` (GPU), never a full re-upload.
@@ -217,6 +228,9 @@ game is not running.
   range rebuilt from a packet the game's own gear (`GearManager.GetAllGearForSlot`) with the same components.
 - Events come from the local player's own gear only:
   - kill / hit: the local player's damage made an enemy die / hit it and it lived, while this gear was wielded (guns and melee);
+  - miss: a gun's (`BulletWeapon`) fire with no hit or kill from that frame to the end of the next one (hitscan damage of
+    the local shooter is applied in the shot's frame; a shotgun's pellets are one shot). The same shot/hit tracking counts
+    `accuracy`; melee weapons and tools have no shots;
   - fire: a gun's fire animation, a melee attack, a C-foam burst, a mine or sentry placed, a resource pack applied,
     a throwable thrown, a syringe or lock melter used, a carry item inserted; dryFire: a gun's trigger on an empty clip;
   - reloadStart / reloadEnd: the reload sequence started / its completion callback ran;
@@ -289,6 +303,16 @@ Skin workspace
 - Undo (Ctrl+Z) for mapping, part toggles and emissive edits.
 - OBJ export: per part or merged (continuous indices), original material names, MTL and manifest; timestamped folders.
 - Save/load projects; autosave.
+- 版本快照 (snapshots), per skin: save the edited skin under a name (default the time), list them (name, time), restore one
+  (after a confirm; the current state is saved as a snapshot first and the restore is one undo step; the skin keeps its id
+  and name), delete one (after a confirm). Stored with `project.save` in `<dataDir>/autosave/<item>/<skinId>.snapshots/<time>.forgeskinproj`,
+  the snapshot's name in the document's `name`; its paths are relative to that folder (`../sounds/...`), so they resolve
+  after restore. `project.list` of the item folder does not look into subfolders, so snapshots are not skins. Deleting the
+  skin deletes them.
+- 导出前体检 (check): every skin of the item through the build checks (unconfirmed matches, numbers the pack refuses, an
+  empty skin, missing channels when not allowed) plus the files it names that are gone (`project.missing`); OK or each
+  problem in plain words. A problem of the edited skin selects what it is about; another skin's opens that skin. Apply and
+  export point to it when their check fails. Baked layer atlases are checked only by the build.
 - Several skins per item: create (blank or a copy of the current one), rename, delete (with confirmation; also removes it
   from the chosen profile), switch which one is edited, and choose which one the game uses. Each skin is its own project
   with its own skin id, autosaved to `<dataDir>/autosave/<item>/<skinId>.forgeskinproj`. "Apply to game" installs the edited skin
@@ -307,8 +331,10 @@ Attachment and screen workspace (replaces DLY, generalised to every weapon)
   starts, glow strength and 游戏里发光 (glow in game)
   on/off; digits 自动
   (automatic, the default) or 1–6, the info tip saying what automatic picks for the weapon or that its ammo limit is unknown;
-  static text takes any characters and fonts: bundled, installed on the computer, or a font file. The preview draws the face
-  as the plugin builds it.
+  static text takes any characters and fonts: bundled, installed on the computer, or a font file. Sources: ammo (mag,
+  reserve, total), kills, damage dealt (this weapon / all weapons), damage taken, accuracy, health, infection, fixed text;
+  a 数字 / 进度条 (digits / bar) switch only for sources with a maximum. The preview draws the face as the plugin builds it,
+  with sample values: ammo counts down, damage counts up, percentages show 87%.
 - Edit outline, corner handles and RGB axes; "focus selection".
 - Modal G/R/S with X/Y/Z axis lock in part-local axes; click/Enter confirm, right-click/Esc cancel; rotation rings; scale handle;
   numeric fields stay in sync.

@@ -1,13 +1,14 @@
 // The current item's skins as thumbnail cards under the item's name: switch, make, copy, rename, delete, and pick the
 // one the game uses. Each card shows the weapon wearing that skin.
 import { ActionIcon, Button, Group, Menu, Modal, Text, TextInput, Tooltip, UnstyledButton } from '@mantine/core';
-import { IconCopy, IconDeviceFloppy, IconDots, IconEraser, IconFolderOpen, IconPencil, IconPlus, IconTrash } from '@tabler/icons-react';
+import { IconCopy, IconDeviceFloppy, IconDots, IconEraser, IconFolderOpen, IconHistory, IconPencil, IconPlus, IconTrash } from '@tabler/icons-react';
 import { useEffect, useState } from 'react';
 import { activateSkin, openProject } from '../actions';
 import type { ProjectEntry } from '../protocol';
 import { useStore } from '../store';
 import { skinThumbnail, skinThumbOf, thumbOf } from '../viewport/thumbnails';
 import { useThumbs } from './WeaponGallery';
+import { SnapshotsModal } from './Snapshots';
 import { t } from '../i18n';
 
 /** Re-renders the edited skin's thumbnail a moment after the last change; the others once each. */
@@ -27,7 +28,7 @@ function useSkinThumbs() {
   }, [weaponId, doc, ready]);
 }
 
-function SkinCard({ k, onDelete }: { k: ProjectEntry; onDelete: (k: ProjectEntry) => void }) {
+function SkinCard({ k, onDelete, onSnapshots }: { k: ProjectEntry; onDelete: (k: ProjectEntry) => void; onSnapshots: () => void }) {
   const current = useStore((s) => s.doc.id === k.id);
   const name = useStore((s) => (s.doc.id === k.id ? s.doc.name : k.name)) ?? '';
   const weaponId = useStore((s) => s.weaponId);
@@ -86,6 +87,9 @@ function SkinCard({ k, onDelete }: { k: ProjectEntry; onDelete: (k: ProjectEntry
                 <Menu.Item leftSection={<IconDeviceFloppy size={14} />} rightSection={<Text size="xs" c="dimmed">Ctrl S</Text>} onClick={() => void saveProject()}>
                   {t('skins.saveFile')}
                 </Menu.Item>
+                <Menu.Item leftSection={<IconHistory size={14} />} onClick={onSnapshots}>
+                  {t('snapshots.menu')}
+                </Menu.Item>
                 <Menu.Item leftSection={<IconEraser size={14} />} onClick={() => void newProject()}>
                   {t('topBar.k57')}
                 </Menu.Item>
@@ -109,6 +113,7 @@ export function SkinStrip() {
   const current = useStore((s) => s.doc.id);
   const profilePath = useStore((s) => s.prefs.profilePath);
   const [deleting, setDeleting] = useState<ProjectEntry | null>(null);
+  const [snapshots, setSnapshots] = useState(false);
   useThumbs();
   useSkinThumbs();
   useEffect(() => void useStore.getState().refreshInstalled(), [profilePath, weaponId]);
@@ -117,8 +122,9 @@ export function SkinStrip() {
   return (
     <div className="skin-strip">
       {skins.map((k) => (
-        <SkinCard key={k.id} k={k} onDelete={setDeleting} />
+        <SkinCard key={k.id} k={k} onDelete={setDeleting} onSnapshots={() => setSnapshots(true)} />
       ))}
+      <SnapshotsModal opened={snapshots} onClose={() => setSnapshots(false)} />
       <Menu position="bottom-start" withinPortal>
         <Menu.Target>
           <UnstyledButton className="skin-card add" aria-label={t('skins.add')}>

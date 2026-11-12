@@ -5,13 +5,13 @@ using ForgeSkin.Format;
 namespace ForgeSkin.Backend;
 
 // Screen digits as real geometry: the gear shader has no transparency, so a textured quad would draw the glyph's
-// transparent texels as a solid plate. Each cell of the glyph strip ("0123456789 -", white on transparent) is traced at
+// transparent texels as a solid plate. Each cell of the glyph strip (Screen.Glyphs, white on transparent) is traced at
 // alpha 0.5 with marching squares, simplified, and triangulated with its holes (the counters of 0, 6, 8, 9) by LibTess.
 // A glyph mesh is in cell units: height 1, width Aspect, centred on the origin, X right, Y up, facing -Z (the screen's
 // visible side). A blank cell has no mesh. A static screen's text is traced the same way as one image.
 public static class GlyphMesh
 {
-    public const int Count = 12;
+    public static readonly int Count = Screen.Glyphs.Length;
 
     public static (ForgeSkinMesh?[] Glyphs, float Aspect) Build(SKBitmap strip)
     {

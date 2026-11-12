@@ -3,7 +3,7 @@ import { bakeGlyphs, bakeLayers } from './frames';
 import { bakeLivery, hasLivery } from './livery';
 import { decalRenderer } from './viewport/liveryGpu';
 import { call, type Profile, type SkinDocument } from './protocol';
-import { autosavePath, currentItem, editorOf, useStore } from './store';
+import { autosavePath, currentItem, editorOf, useStore, type Selection } from './store';
 import { localName, partLabel, t } from './i18n';
 import { confirmInGame } from './gameLog';
 
@@ -32,48 +32,107 @@ function packDoc(doc = st().doc): SkinDocument {
   return out;
 }
 
-/** Display name of the first thing whose numbers the pack check refuses (SkinPack.Validate `bad-vector`), else null. */
-function badVector(doc: SkinDocument): string | null {
+/** Something to fix before a skin can be built, in plain words, and what to select to fix it. */
+export interface Problem {
+  text: string;
+  select?: Selection;
+}
+
+/** The current item's part that wears `material`. */
+function partOf(material: string | null | undefined): Selection {
+  const p = currentItem()?.parts.find((x) => x.materials.includes(material ?? ''));
+  return p ? { kind: 'part', id: p.id } : null;
+}
+
+/** Everything whose numbers the pack check refuses (SkinPack.Validate `bad-vector`). */
+function badVectors(doc: SkinDocument): Problem[] {
   const ok = (v: number[] | null | undefined, n: number, nullable: boolean) => (v == null ? nullable : v.length === n && v.every(Number.isFinite));
+  const bad = (what: string, select: Selection) => ({ text: t('actions.badVector', { v0: what }), select });
+  const out: Problem[] = [];
   for (const m of doc.materials ?? [])
-    if (m && !(ok(m.params?.emissiveColor, 3, true) && ok(m.params?.tint, 4, true))) return t('actions.badVectorMaterial', { v0: m.material ?? '' });
+    if (m && !(ok(m.params?.emissiveColor, 3, true) && ok(m.params?.tint, 4, true))) out.push(bad(t('actions.badVectorMaterial', { v0: m.material ?? '' }), partOf(m.material)));
   const parts = currentItem()?.parts ?? [];
   for (const p of doc.parts ?? []) {
     if (!p || (ok(p.position, 3, true) && ok(p.rotation, 3, true) && ok(p.scale, 3, true))) continue;
     const part = parts.find((x) => x.id === p.part);
     const name = part ? partLabel(part) : (p.part ?? '');
-    return t('actions.badVectorPart', { v0: p.path ? `${name} / ${p.path.split('/').pop()}` : name });
+    out.push(bad(t('actions.badVectorPart', { v0: p.path ? `${name} / ${p.path.split('/').pop()}` : name }), { kind: 'part', id: p.part ?? '', sub: p.path }));
   }
   for (const a of doc.attachments ?? [])
     if (a && !(ok(a.position, 3, false) && ok(a.rotation, 3, false) && ok(a.scale, 3, false) && (a.effects ?? []).every((e) => !e || ok(e.color, 3, false))))
-      return t('actions.badVectorAttachment', { v0: a.name || a.id || '' });
-  return null;
+      out.push(bad(t('actions.badVectorAttachment', { v0: a.name || a.id || '' }), { kind: 'attachment', id: a.id ?? '' }));
+  return out;
 }
 
 /** Things the user must fix before building `doc` (by default the edited skin), in plain words. */
-function preflight(doc = st().doc): string | null {
+export function problems(doc = st().doc): Problem[] {
   const { prefs } = st();
-  const pending = Object.keys(editorOf(doc).pending).length;
-  if (pending) return t('actions.k1', { v0: pending });
   const item = currentItem();
-  if (!item) return t('actions.k2');
-  const bad = badVector(doc);
-  if (bad) return t('actions.badVector', { v0: bad });
+  if (!item) return [{ text: t('actions.k2') }];
+  const out: Problem[] = [];
+  const pending = Object.keys(editorOf(doc).pending);
+  if (pending.length) out.push({ text: t('actions.k1', { v0: pending.length }), select: partOf(pending[0].slice(0, pending[0].lastIndexOf('|'))) });
+  out.push(...badVectors(doc));
   const hasContent = (doc.materials ?? []).some((m) => m && (Object.keys(m.textures ?? {}).length || m.layers?.length || hasLivery(m) || Object.values(m.params ?? {}).some((v) => v != null)));
   // Part layout, attachments and sounds are changes too, not only textures.
-  if (!hasContent && !(doc.attachments ?? []).length && !(doc.parts ?? []).length && !(doc.sounds ?? []).length) return t('actions.k3');
+  if (!hasContent && !(doc.attachments ?? []).length && !(doc.parts ?? []).length && !(doc.sounds ?? []).length) out.push({ text: t('actions.k3') });
   // The "every channel of every part" check only applies to a skin that replaces textures.
   if (!prefs.allowMissing && hasContent) {
     const ed = editorOf(doc);
     for (const p of item.parts) {
       if (ed.enabled[p.id] === false) continue;
-      for (const mat of p.materials) {
-        const tex = doc.materials?.find((m) => m?.material === mat)?.textures ?? {};
-        if (Object.keys(tex).length < 4) return t('actions.k4', { v0: partLabel(p) });
-      }
+      const short = p.materials.some((mat) => Object.keys(doc.materials?.find((m) => m?.material === mat)?.textures ?? {}).length < 4);
+      if (short) out.push({ text: t('actions.k4', { v0: partLabel(p) }), select: { kind: 'part', id: p.id } });
     }
   }
-  return null;
+  return out;
+}
+
+/** The first thing to fix in `doc`, or null. */
+function preflight(doc = st().doc): string | null {
+  return problems(doc)[0]?.text ?? null;
+}
+
+/** The toast button that opens the full check (导出前体检). */
+const openCheck = () => ({ label: t('check.open'), run: () => useStore.setState({ checkOpen: true }) });
+
+/** What in `doc` names `file`, to select it; null when nothing selectable does. */
+function referrer(doc: SkinDocument, file: string): Selection {
+  const names = (x: unknown) => JSON.stringify(x).includes(JSON.stringify(file));
+  for (const m of doc.materials ?? []) {
+    if (!m) continue;
+    const l = m.layers?.find(names);
+    if (l) return { kind: 'layer', material: m.material ?? '', id: l.id ?? '' };
+    const d = m.livery?.find(names);
+    if (d) return { kind: 'livery', material: m.material ?? '', id: d.id ?? '' };
+    if (names(m)) return partOf(m.material);
+  }
+  const a = doc.attachments?.find(names);
+  if (a) return { kind: 'attachment', id: a.id ?? '' };
+  const p = doc.parts?.find(names);
+  if (p) return { kind: 'part', id: p.part ?? '', sub: p.path };
+  const snd = doc.sounds?.find(names);
+  return snd ? { kind: 'sound', id: snd.id ?? '' } : null;
+}
+
+export interface SkinCheck {
+  id: string;
+  name: string;
+  problems: Problem[];
+}
+
+/** 导出前体检: every skin of the current item through the build checks, plus the files each one names that are gone. */
+export async function checkSkins(): Promise<SkinCheck[]> {
+  const s = st();
+  return Promise.all(
+    s.skins.map(async (k) => {
+      const doc = k.id === s.doc.id ? s.doc : await call('project.load', { path: k.path }).catch(() => null);
+      if (!doc) return { id: k.id, name: k.name, problems: [{ text: t('check.unreadable') }] };
+      const { files } = await call('project.missing', { project: doc });
+      const gone = files.map((f) => ({ text: t('check.missing', { v0: f }), select: referrer(doc, f) }));
+      return { id: k.id, name: doc.name || k.name, problems: [...problems(doc), ...gone] };
+    }),
+  );
 }
 
 /** Builds a skin of the current item: by default the edited one, else `skin` loaded from its autosave. */
@@ -97,7 +156,7 @@ async function build(out: string, skin?: { doc: SkinDocument; path: string }): P
 export async function buildPack(out: string): Promise<string | null> {
   const problem = preflight();
   if (problem) {
-    st().toast('error', problem);
+    st().toast('error', problem, openCheck());
     return null;
   }
   return build(out);
@@ -172,7 +231,7 @@ export async function applyToGame(quiet = false): Promise<void> {
 async function apply(quiet: boolean): Promise<void> {
   const s = st();
   const problem = preflight();
-  if (problem) return quiet ? undefined : s.toast('error', problem);
+  if (problem) return quiet ? undefined : s.toast('error', problem, openCheck());
   const profile = s.profiles.find((p) => p.path === s.prefs.profilePath);
   const blocked = profileProblem(profile);
   if (blocked || !profile) return quiet ? undefined : s.toast('error', blocked ?? '');
@@ -237,7 +296,7 @@ export async function openProject(): Promise<void> {
 export async function exportPack(): Promise<void> {
   const s = st();
   const problem = preflight();
-  if (problem) return s.toast('error', problem);
+  if (problem) return s.toast('error', problem, openCheck());
   const out = await window.forge.saveDialog(`${s.doc.name || s.weaponId}.forgeskin`, [{ name: t('actions.k16'), extensions: ['forgeskin'] }]);
   if (!out) return;
   await exclusive(async () => {
@@ -313,7 +372,7 @@ export async function exportMod(info: ModInfo): Promise<boolean> {
   for (const { skin } of skins) {
     const doc = skin?.doc ?? s.doc;
     const problem = preflight(doc);
-    if (problem) return (s.toast('error', t('exportMod.skinProblem', { v0: doc.name ?? '', v1: problem })), false);
+    if (problem) return (s.toast('error', t('exportMod.skinProblem', { v0: doc.name ?? '', v1: problem }), openCheck()), false);
   }
   const out = await window.forge.saveDialog(`${info.name}-${info.version}.zip`, [{ name: 'Thunderstore', extensions: ['zip'] }]);
   if (!out) return false;
@@ -337,3 +396,31 @@ export async function exportMod(info: ModInfo): Promise<boolean> {
 export function exportThunderstore(): void {
   useStore.setState({ exportModOpen: true });
 }
+
+/** Folder of the edited skin's snapshots, next to its autosave. Paths inside a snapshot are relative to this folder. */
+const snapshotDir = () => autosavePath(st().weaponId!).replace(/\.forgeskinproj$/, '.snapshots');
+
+/** The edited skin's snapshots, newest first; each entry's name is the snapshot's name. */
+export const listSnapshots = () => call('project.list', { dir: snapshotDir() });
+
+/** Saves the edited skin as a snapshot named `name` (default: the time). The snapshot keeps its name in the document's name. */
+export async function saveSnapshot(name?: string): Promise<void> {
+  const now = new Date();
+  const project = { ...st().doc, name: name?.trim() || now.toLocaleString() };
+  await call('project.save', { path: `${snapshotDir()}\\${now.toISOString().replace(/[:.]/g, '-')}.forgeskinproj`, project });
+}
+
+/** Puts a snapshot back into the edited skin as one undoable edit, after snapshotting what it replaces; the skin keeps its
+ * id and name. */
+export async function restoreSnapshot(path: string): Promise<void> {
+  const snap = await call('project.load', { path });
+  await saveSnapshot(t('snapshots.before', { v0: new Date().toLocaleString() }));
+  useStore.setState({ selection: null });
+  st().edit((d) => {
+    const keep = { id: d.id, name: d.name };
+    for (const k of Object.keys(d)) delete (d as Record<string, unknown>)[k];
+    Object.assign(d, snap, keep);
+  });
+}
+
+export const deleteSnapshot = (path: string) => call('project.delete', { path });

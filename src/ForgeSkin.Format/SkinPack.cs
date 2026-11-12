@@ -185,6 +185,8 @@ public sealed class SkinPack : IDisposable
             if (a.Screen != null)
             {
                 if (a.Screen.Digits is < 0 or > 6) throw new SkinFormatException("bad-screen", $"{a.Id}: digits 0 (automatic) to 6");
+                if (a.Screen.Style == ScreenStyle.Bar && !a.Screen.Source.Bounded())
+                    throw new SkinFormatException("bad-screen", $"{a.Id}: a bar needs a source with a maximum, not {a.Screen.Source}");
                 if (!Fraction(a.Screen.LowAmmoGradientStart) || !Fraction(a.Screen.LowAmmoFraction))
                     throw new SkinFormatException("bad-screen", $"{a.Id}: low-ammo fraction and gradient start 0 to 1");
                 Vec(a.Screen.Size, 2, a.Id);
@@ -196,7 +198,9 @@ public sealed class SkinPack : IDisposable
                     throw new SkinFormatException("no-glyphs", $"{a.Id}: glyph meshes not baked");
                 if (a.Screen.GlyphMeshes is { } glyphs)
                 {
-                    if (glyphs.Length != 12 || !(a.Screen.GlyphAspect > 0)) throw new SkinFormatException("no-glyphs", $"{a.Id}: needs 12 glyph meshes and their aspect");
+                    // 12: packs baked before the strip had '%'.
+                    if (glyphs.Length != 12 && glyphs.Length != Screen.Glyphs.Length || !(a.Screen.GlyphAspect > 0))
+                        throw new SkinFormatException("no-glyphs", $"{a.Id}: needs {Screen.Glyphs.Length} glyph meshes and their aspect");
                     foreach (var g in glyphs) File(g, a.Id, mesh: true);
                 }
                 File(a.Screen.TextMesh, a.Id, mesh: true);

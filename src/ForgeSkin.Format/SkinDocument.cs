@@ -173,6 +173,7 @@ public enum Trigger
 {
     Always, Kill, Hit, Fire, DryFire, ReloadStart, ReloadEnd, Equip, Unequip, Aim, AimEnd, LowAmmo, Empty, AmmoPickup,
     FlashlightOn, FlashlightOff,
+    Miss, // a gun's shot that hit no enemy
 }
 public enum PlayMode { Loop, Once, LoopFor }
 
@@ -241,16 +242,36 @@ public sealed class AttachmentMaterial
     public MaterialParams Params { get; set; } = new();
 }
 
-// Kills: the local player's kills with this weapon this level.
-public enum ScreenSource { AmmoClip, AmmoReserve, AmmoTotal, Static, Kills }
+// Counted for the local player over the current level: Kills / DamageDealt with this weapon, DamageDealtAll with all
+// their weapons, DamageTaken by them; Accuracy is the percent of this gun's shots that hit an enemy. Health and
+// Infection are the local player's, in percent.
+public enum ScreenSource { AmmoClip, AmmoReserve, AmmoTotal, Static, Kills, DamageDealt, DamageDealtAll, DamageTaken, Accuracy, Health, Infection }
+
+// Digits: the value as text; Bar: a bar filling from the left, only for sources with a maximum (ScreenSources.Bounded).
+public enum ScreenStyle { Digits, Bar }
+
+public static class ScreenSources
+{
+    // Ammo counts: tinted by the low-ammo colour.
+    public static bool IsAmmo(this ScreenSource s) => s is ScreenSource.AmmoClip or ScreenSource.AmmoReserve or ScreenSource.AmmoTotal;
+    // Shown as 0-100 with a trailing '%'.
+    public static bool IsPercent(this ScreenSource s) => s is ScreenSource.Accuracy or ScreenSource.Health or ScreenSource.Infection;
+    // Has a maximum, so it can fill a bar.
+    public static bool Bounded(this ScreenSource s) => s.IsAmmo() || s.IsPercent();
+}
 
 // A quad in the attachment's local XY plane, `Size` wide/high, visible face toward local -Z. The surface gap is already
 // baked into Attachment.Position (the plugin does not add it); the border is drawn inside the quad edges.
 public sealed class Screen
 {
+    // The glyph strip the app renders and the pack carries one mesh per glyph of. Packs made before '%' carry 12.
+    public const string Glyphs = "0123456789 -%";
+
     public ScreenSource Source { get; set; } = ScreenSource.AmmoClip;
+    public ScreenStyle Style { get; set; }
     // 0: automatic, as many digits as the largest value the source can show (magazine: clip size; reserve: its maximum;
-    // total: both; kills: the value's own digits, up to 4). PadZero pads up to that width.
+    // total: both; kills: the value's own digits, up to 4; damage: up to 6; percentages: 3, then '%').
+    // PadZero pads up to that width.
     public int Digits { get; set; }
     public bool PadZero { get; set; } = true;
     public string? StaticText { get; set; } // any characters, drawn with Font
@@ -277,7 +298,7 @@ public sealed class Screen
     public float LowAmmoGradientStart { get; set; } = 0.4f;
 
     // Filled when packing from the glyph strip the app renders with the chosen font (.frames/<id>-glyphs.png): one mesh
-    // per glyph "0123456789 -" (null for the blank), in cell units (height 1, width GlyphAspect), facing -Z.
+    // per glyph of Glyphs (null for the blank), in cell units (height 1, width GlyphAspect), facing -Z.
     public string?[]? GlyphMeshes { get; set; }
     public float GlyphAspect { get; set; }
     // Filled when packing a static screen from the text the app renders with the chosen font (.frames/<id>-text.png):

@@ -1,5 +1,6 @@
 using SkiaSharp;
 using ForgeSkin.Backend;
+using ForgeSkin.Format;
 using Xunit;
 
 namespace ForgeSkin.Tests;
@@ -9,14 +10,14 @@ public class GlyphMeshTests
 {
     const int CellW = 128, CellH = 192;
 
-    // The strip the app bakes: "0123456789 -", white on transparent, one cell per glyph.
+    // The strip the app bakes: Screen.Glyphs, white on transparent, one cell per glyph.
     public static SKBitmap Strip()
     {
         var bmp = new SKBitmap(new SKImageInfo(CellW * GlyphMesh.Count, CellH, SKColorType.Rgba8888, SKAlphaType.Unpremul));
         using var c = new SKCanvas(bmp);
         c.Clear(SKColors.Transparent);
         using var paint = new SKPaint { Color = SKColors.White, IsAntialias = true, TextSize = CellH * 0.8f, TextAlign = SKTextAlign.Center, Typeface = SKTypeface.FromFamilyName("Arial", SKFontStyle.Bold) };
-        for (int g = 0; g < GlyphMesh.Count; g++) c.DrawText("0123456789 -"[g].ToString(), g * CellW + CellW / 2f, CellH * 0.78f, paint);
+        for (int g = 0; g < GlyphMesh.Count; g++) c.DrawText(Screen.Glyphs[g].ToString(), g * CellW + CellW / 2f, CellH * 0.78f, paint);
         return bmp;
     }
 

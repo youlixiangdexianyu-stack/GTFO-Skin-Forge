@@ -13,7 +13,7 @@ import {
   type MeshStandardMaterial,
   type Object3D,
 } from 'three';
-import { glyphCanvas, GLYPHS, screenDigits, screenTextCanvas } from '../frames';
+import { glyphCanvas, GLYPHS, isAmmo, isBounded, isPercent, screenDigits, screenTextCanvas } from '../frames';
 import { loadFont } from '../fonts';
 import { fileUrl, type Attachment, type Screen, type TriggerEffect } from '../protocol';
 import { unityToThree } from '../space';
@@ -23,8 +23,9 @@ import { t } from '../i18n';
 
 const rgb = (c?: number[] | null) => `rgb(${(c?.[0] ?? 1) * 255},${(c?.[1] ?? 1) * 255},${(c?.[2] ?? 1) * 255})`;
 const mix = (a: number[], b: number[], t: number) => a.map((v, i) => v + (b[i] - v) * t);
+const PERCENT_SAMPLE = 87; // what a percentage screen shows in the editor
 
-/** Screen preview: panel, inner border and a sample value drawn with the glyph strip. */
+/** Screen preview: panel, inner border and a sample value drawn with the glyph strip, or as a bar. */
 function ScreenMesh({ screen, selected, onPick }: { screen: Screen; selected: boolean; onPick: (e: ThreeEvent<MouseEvent>) => void }) {
   const [w, h] = screen.size ?? [0.03, 0.015];
   const sample = useRef(0);
@@ -47,12 +48,16 @@ function ScreenMesh({ screen, selected, onPick }: { screen: Screen; selected: bo
   }, [screen.font]);
 
   const { digits, max, grow } = screenDigits(screen, useItem());
-  const top = max ?? 30; // the sample counts down from the largest value the source shows
+  const ammo = isAmmo(screen.source);
+  const percent = isPercent(screen.source);
+  const bar = screen.style === 'bar' && isBounded(screen.source);
+  // Ammo counts down from the largest value the source shows; percentages show a sample, counts count up.
+  const top = ammo ? (max ?? 30) : 100;
   const kills = screen.source === 'kills';
 
   // 0: text colour, 1: low-ammo colour. With the gradient on, the tint blends in from the chosen clip percentage.
   const tint = (v: number) => {
-    if (!screen.lowAmmoColor || kills || screen.source === 'static' || top <= 0) return 0;
+    if (!screen.lowAmmoColor || !ammo || top <= 0) return 0;
     const threshold = screen.lowAmmoFraction ?? 0.2;
     const fraction = Math.min(1, Math.max(0, v / top));
     const from = screen.lowAmmoGradient ? Math.max(threshold, Math.min(1, screen.lowAmmoGradientStart ?? 0.4)) : threshold;
@@ -90,6 +95,18 @@ function ScreenMesh({ screen, selected, onPick }: { screen: Screen; selected: bo
       ctx.restore();
     }
 
+    const lowAmount = tint(shown);
+    const colour = screen.lowAmmoColor && lowAmount > 0 ? mix(screen.textColor ?? [1, 1, 1], screen.lowAmmoColor, lowAmount) : screen.textColor;
+    if (bar) {
+      // As the plugin builds it: from the border's inner left edge, as high as the text, the value's fraction wide.
+      const bh = Math.min(H * (screen.textScale ?? 0.8), H - 2 * bw);
+      ctx.shadowColor = rgb(colour);
+      ctx.shadowBlur = glow;
+      ctx.fillStyle = rgb(colour);
+      ctx.fillRect(bw, (H - bh) / 2, (px - 2 * bw) * Math.min(1, Math.max(0, shown / top)), bh);
+      texture.needsUpdate = true;
+      return;
+    }
     const inner = (px - 2 * bw) * 0.95;
     let gh = H * (screen.textScale ?? 0.8);
     let image: HTMLCanvasElement;
@@ -97,12 +114,12 @@ function ScreenMesh({ screen, selected, onPick }: { screen: Screen; selected: bo
       image = screenTextCanvas(screen.font, screen.staticText ?? '');
       gh *= Math.min(1, inner / ((gh * image.width) / image.height));
     } else {
-      // Cells of the glyph strip; a counter keeps its width (blank cells for missing leading zeros), automatic kills
-      // show only their own digits.
+      // Cells of the glyph strip; a counter keeps its width (blank cells for missing leading zeros), automatic counts
+      // show only their own digits; percentages end in '%'.
       const v = Math.min(Math.max(0, shown), 10 ** digits - 1);
-      const text = grow ? String(v) : String(v).padStart(digits, screen.padZero !== false ? '0' : ' ');
+      const text = (grow ? String(v) : String(v).padStart(digits, screen.padZero !== false ? '0' : ' ')) + (percent ? '%' : '');
       const cellW = glyphs.width / GLYPHS.length;
-      gh *= Math.min(1, inner / ((gh * cellW * digits) / glyphs.height));
+      gh *= Math.min(1, inner / ((gh * cellW * text.length) / glyphs.height));
       image = document.createElement('canvas');
       image.width = cellW * text.length;
       image.height = glyphs.height;
@@ -112,8 +129,6 @@ function ScreenMesh({ screen, selected, onPick }: { screen: Screen; selected: bo
         if (gi >= 0) g.drawImage(glyphs, gi * cellW, 0, cellW, glyphs.height, i * cellW, 0, cellW, glyphs.height);
       });
     }
-    const lowAmount = tint(shown);
-    const colour = screen.lowAmmoColor && lowAmount > 0 ? mix(screen.textColor ?? [1, 1, 1], screen.lowAmmoColor, lowAmount) : screen.textColor;
     const t = image.getContext('2d')!;
     t.globalCompositeOperation = 'source-in';
     t.fillStyle = rgb(colour);
@@ -125,7 +140,7 @@ function ScreenMesh({ screen, selected, onPick }: { screen: Screen; selected: bo
     texture.needsUpdate = true;
   };
 
-  useEffect(() => draw(kills ? previewEvents.kills : top), [screen, glyphs, top]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => draw(kills ? previewEvents.kills : percent ? PERCENT_SAMPLE : ammo ? top : sample.current), [screen, glyphs, top]); // eslint-disable-line react-hooks/exhaustive-deps
   const last = useRef(0);
   useFrame(({ clock }) => {
     if (kills) {
@@ -133,8 +148,14 @@ function ScreenMesh({ screen, selected, onPick }: { screen: Screen; selected: bo
       if (sample.current !== previewEvents.kills) draw((sample.current = previewEvents.kills));
       return;
     }
-    if (screen.source === 'static' || clock.elapsedTime - last.current < 0.35) return;
+    if (screen.source === 'static' || percent || clock.elapsedTime - last.current < 0.35) return;
     last.current = clock.elapsedTime;
+    if (!ammo) {
+      // Damage counts up by a sample hit.
+      sample.current = (sample.current + 37) % 10 ** digits;
+      draw(sample.current);
+      return;
+    }
     sample.current = (sample.current + 1) % (top + 1);
     draw(top - sample.current);
   });

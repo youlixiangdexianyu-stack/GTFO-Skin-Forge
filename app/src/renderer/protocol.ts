@@ -34,6 +34,7 @@ export const TRIGGERS: { value: Trigger; label: string; simulate?: boolean }[] =
   { value: 'always', get label() { return t('trigger.always'); } },
   { value: 'kill', get label() { return t('trigger.kill'); }, simulate: true },
   { value: 'hit', get label() { return t('trigger.hit'); }, simulate: true },
+  { value: 'miss', get label() { return t('trigger.miss'); }, simulate: true },
   { value: 'fire', get label() { return t('trigger.fire'); }, simulate: true },
   { value: 'dryFire', get label() { return t('trigger.dryFire'); } },
   { value: 'reloadStart', get label() { return t('trigger.reloadStart'); }, simulate: true },
@@ -52,7 +53,7 @@ export const TRIGGERS: { value: Trigger; label: string; simulate?: boolean }[] =
 /** Events a melee weapon raises in the game. */
 const MELEE_TRIGGERS = new Set<Trigger>(['always', 'kill', 'hit', 'fire', 'equip', 'unequip']);
 /** The bio tracker never fires or reloads. */
-const NO_SHOT = new Set<Trigger>(['fire', 'dryFire', 'reloadStart', 'reloadEnd']);
+const NO_SHOT = new Set<Trigger>(['fire', 'dryFire', 'reloadStart', 'reloadEnd', 'miss']);
 
 /** Items (packs, consumables, objective items): used (applied, thrown, placed, inserted), taken out, put away or dropped. */
 const ITEM_TRIGGERS: { value: Trigger; label: string; simulate?: boolean }[] = [
@@ -67,6 +68,8 @@ export function triggersFor(item: { slot: Slot; id: string; itemId?: number | nu
   if (item?.itemId != null) return ITEM_TRIGGERS;
   if (item?.slot === 'melee') return TRIGGERS.filter((x) => MELEE_TRIGGERS.has(x.value));
   if (item?.id === 'bio_tracker') return TRIGGERS.filter((x) => !NO_SHOT.has(x.value));
+  // Only a gun's shot can miss.
+  if (item?.slot === 'tool') return TRIGGERS.filter((x) => x.value !== 'miss');
   return TRIGGERS;
 }
 
@@ -239,6 +242,7 @@ export interface Methods {
   'project.save': [{ path: string; project: SkinDocument }, { path: string }];
   'project.list': [{ dir: string }, ProjectEntry[]];
   'project.delete': [{ path: string }, unknown];
+  'project.missing': [{ project: SkinDocument }, { files: string[] }];
   'mesh.import': [{ glb: string }, MeshImport];
   'pack.build': [{ project: SkinDocument; projectPath: string; out: string; sizeMode: SizeMode }, { pack: string; warnings: string[] }];
   'pack.install': [{ pack: string; profile: string; activate: boolean }, unknown];

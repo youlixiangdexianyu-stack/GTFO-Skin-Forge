@@ -211,6 +211,8 @@ interface State {
   selectWeapon(id: string): Promise<void>;
   /** The Thunderstore export dialog is open. */
   exportModOpen: boolean;
+  /** The 导出前体检 dialog is open. */
+  checkOpen: boolean;
   /** The current item's skins (each its own autosaved project), newest first. */
   skins: ProjectEntry[];
   /** Skins installed in the chosen profile. */
@@ -306,6 +308,7 @@ export const useStore = create<State>((set, get) => ({
   prefs: loadPrefs(),
   pluginPending: null,
   exportModOpen: false,
+  checkOpen: false,
   skins: [],
   installed: [],
   logs: [],

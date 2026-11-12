@@ -60,7 +60,22 @@ public static class Projects
     {
         if (!path.EndsWith(".forgeskinproj", StringComparison.OrdinalIgnoreCase)) throw new BackendException("bad-request", $"{path} is not a project file");
         File.Delete(path);
+        // A skin's snapshots go with it.
+        var snapshots = Path.ChangeExtension(path, ".snapshots");
+        if (Directory.Exists(snapshots)) Directory.Delete(snapshots, true);
         return new { removed = path };
+    }
+
+    // The files a document names that are not on disk, in document order.
+    public static object Missing(SkinDocument doc)
+    {
+        var missing = new List<string>();
+        MapPaths(doc, p =>
+        {
+            if (!File.Exists(p) && !missing.Contains(p)) missing.Add(p);
+            return p;
+        });
+        return new { files = missing };
     }
 
     public static object Save(SkinDocument doc, string path)
@@ -75,8 +90,11 @@ public static class Projects
         return new { path };
     }
 
-    // Every file reference in a document (texture, layer source, decal image, font, mesh, part mesh, atlas, sound). A texture slot
-    // without a file is dropped (the game texture stays).
+    // A font is a family name (bundled or installed) or a font file.
+    static bool FontFile(string font) => Path.GetExtension(font).ToLowerInvariant() is ".ttf" or ".otf" or ".woff" or ".woff2";
+
+    // Every file reference in a document (texture, layer source, decal image, font file, mesh, part mesh, atlas, sound). A texture
+    // slot without a file is dropped (the game texture stays).
     public static void MapPaths(SkinDocument doc, Func<string, string> map)
     {
         static void Dict(Dictionary<TextureChannel, string> d, Func<string, string> map)
@@ -91,7 +109,7 @@ public static class Projects
             foreach (var l in m.Layers)
             {
                 if (l.Kind != LayerKind.Text) l.Sources = l.Sources.Select(map).ToList();
-                if (l.Text?.Font is { } font) l.Text.Font = map(font);
+                if (l.Text?.Font is { } font && FontFile(font)) l.Text.Font = map(font);
                 if (l.Atlas != null) l.Atlas.Path = map(l.Atlas.Path);
             }
             foreach (var l in m.Livery ?? []) if (l.Image != null) l.Image = map(l.Image);
@@ -100,7 +118,7 @@ public static class Projects
         {
             if (a.Mesh != null) a.Mesh = map(a.Mesh);
             if (a.Material != null) Dict(a.Material.Textures, map);
-            if (a.Screen?.Font is { } font) a.Screen.Font = map(font);
+            if (a.Screen?.Font is { } font && FontFile(font)) a.Screen.Font = map(font);
         }
         foreach (var t in doc.Parts.Where(t => t.Mesh != null)) t.Mesh = map(t.Mesh!);
         foreach (var s in doc.Sounds.Where(s => !string.IsNullOrEmpty(s.File))) s.File = map(s.File);

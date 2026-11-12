@@ -39,7 +39,7 @@ sizePx?: number
 color?: number[]
 } | null)
 fps?: number
-trigger?: ("always" | "kill" | "hit" | "fire" | "dryFire" | "reloadStart" | "reloadEnd" | "equip" | "unequip" | "aim" | "aimEnd" | "lowAmmo" | "empty" | "ammoPickup" | "flashlightOn" | "flashlightOff")
+trigger?: ("always" | "kill" | "hit" | "fire" | "dryFire" | "reloadStart" | "reloadEnd" | "equip" | "unequip" | "aim" | "aimEnd" | "lowAmmo" | "empty" | "ammoPickup" | "flashlightOn" | "flashlightOff" | "miss")
 play?: ("loop" | "once" | "loopFor")
 playSeconds?: number
 lowAmmoFraction?: number
@@ -104,7 +104,8 @@ tint?: Tint
 }
 } | null)
 screen?: ({
-source?: ("ammoClip" | "ammoReserve" | "ammoTotal" | "static" | "kills")
+source?: ("ammoClip" | "ammoReserve" | "ammoTotal" | "static" | "kills" | "damageDealt" | "damageDealtAll" | "damageTaken" | "accuracy" | "health" | "infection")
+style?: ("digits" | "bar")
 digits?: number
 padZero?: boolean
 staticText?: (string | null)
@@ -128,7 +129,7 @@ textMesh?: (string | null)
 textAspect?: number
 } | null)
 effects?: ({
-trigger?: ("always" | "kill" | "hit" | "fire" | "dryFire" | "reloadStart" | "reloadEnd" | "equip" | "unequip" | "aim" | "aimEnd" | "lowAmmo" | "empty" | "ammoPickup" | "flashlightOn" | "flashlightOff")
+trigger?: ("always" | "kill" | "hit" | "fire" | "dryFire" | "reloadStart" | "reloadEnd" | "equip" | "unequip" | "aim" | "aimEnd" | "lowAmmo" | "empty" | "ammoPickup" | "flashlightOn" | "flashlightOff" | "miss")
 action?: ("flash" | "show")
 color?: number[]
 intensity?: number
@@ -147,7 +148,7 @@ mesh?: (string | null)
 sounds?: ({
 id?: string
 name?: string
-trigger?: ("always" | "kill" | "hit" | "fire" | "dryFire" | "reloadStart" | "reloadEnd" | "equip" | "unequip" | "aim" | "aimEnd" | "lowAmmo" | "empty" | "ammoPickup" | "flashlightOn" | "flashlightOff")
+trigger?: ("always" | "kill" | "hit" | "fire" | "dryFire" | "reloadStart" | "reloadEnd" | "equip" | "unequip" | "aim" | "aimEnd" | "lowAmmo" | "empty" | "ammoPickup" | "flashlightOn" | "flashlightOff" | "miss")
 file?: string
 volume?: number
 lowAmmoFraction?: number

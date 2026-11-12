@@ -69,7 +69,7 @@ public class GameTests
             Assert.Equal(45u, p.Manifest.Target.GearId);
             Assert.Equal("textures/Front_UZI_2_Albedo.png", p.Manifest.Materials[0].Textures[TextureChannel.Albedo]);
             Assert.True(ForgeSkinMesh.Read(p.ReadBytes(p.Manifest.Attachments[0].Mesh!)).Indices.Length > 0);
-            Assert.Equal(11, p.Manifest.Attachments[1].Screen!.GlyphMeshes!.Count(g => g != null));
+            Assert.Equal(Screen.Glyphs.Length - 1, p.Manifest.Attachments[1].Screen!.GlyphMeshes!.Count(g => g != null)); // all but the blank
         }
 
         var profile = Directory.CreateDirectory(Path.Combine(dir, "profile", "BepInEx")).Parent!.FullName;

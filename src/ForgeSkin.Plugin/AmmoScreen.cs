@@ -6,18 +6,22 @@ namespace ForgeSkin.Plugin;
 
 // A screen in the attachment's local XY plane, centred on its origin, visible face toward local -Z:
 // border frame (a ring BorderWidth wide inside the edges), panel quad inside it, and one cell per digit whose mesh is
-// swapped between the pack's glyph meshes ("0123456789 -", real stroke geometry) when the value changes. Everything is
-// opaque gear shader (it has no transparency): the colour as albedo, plus the same colour as emission when it glows in game.
+// swapped between the pack's glyph meshes (Screen.Glyphs, real stroke geometry) when the value changes, then a '%' cell
+// for percentages; or, styled as a bar, one quad filling from the left that is scaled in X. Everything is opaque gear
+// shader (it has no transparency): the colour as albedo, plus the same colour as emission when it glows in game.
 sealed class AmmoScreen
 {
-    const int Blank = 10;
+    const int Blank = 10, Percent = 12;
     const float Step = 0.0002f; // metres between the stacked quads, toward the viewer
     static readonly int[] Pow10 = { 1, 10, 100, 1000, 10000, 100000, 1000000 };
 
     readonly ScreenSource _source;
     readonly bool _pad;
     readonly MeshFilter[] _cells;
-    readonly Mesh?[] _glyphs = new Mesh?[12];
+    readonly Mesh?[] _glyphs = new Mesh?[Format.Screen.Glyphs.Length];
+    readonly int _digits; // digit cells; a percentage has one '%' cell after them
+    readonly Transform? _bar; // the bar style's quad, pivot on its left edge
+    readonly float _barWidth;
     readonly Material? _text, _border;
     readonly Material _template;
     readonly float[] _textColor;
@@ -61,7 +65,7 @@ sealed class AmmoScreen
 
         _text = Surface(gear, s.TextColor, _gain);
         Surfaces.Remove(_text);
-        _hasLow = s.LowAmmoColor != null && s.Source is not (ScreenSource.Static or ScreenSource.Kills);
+        _hasLow = s.LowAmmoColor != null && s.Source.IsAmmo();
         _lowColor = _hasLow ? s.LowAmmoColor : null;
         _lowFraction = s.LowAmmoFraction;
         _gradient = s.LowAmmoGradient;
@@ -77,13 +81,25 @@ sealed class AmmoScreen
             gear.Child(root, "text", skin.Mesh(s.TextMesh), _text, -2 * Step).transform.localScale = new Vector3(dh, dh, 1);
             return;
         }
+        if (s.Source.IsAmmo()) _storage = gear.Storage(out _ammoType, out _clipSize);
+        if (s.Style == ScreenStyle.Bar && s.Source.Bounded())
+        {
+            // Fills the inside of the border from its left edge, as high as the text; scaled to the fraction in Update.
+            _barWidth = w - 2 * bw;
+            _bar = gear.Child(root, "bar", gear.Own(Quad(1, Math.Min(dh, h - 2 * bw), fromLeft: true)), _text, -2 * Step).transform;
+            _bar.localPosition = new Vector3(-_barWidth * 0.5f, 0, -2 * Step);
+            _bar.localScale = new Vector3(0, 1, 1);
+            return;
+        }
         if (s.GlyphMeshes == null) return;
-        for (int g = 0; g < 12; g++) _glyphs[g] = s.GlyphMeshes[g] is { } path ? skin.Mesh(path) : null;
-        if (s.Source != ScreenSource.Kills) _storage = gear.Storage(out _ammoType, out _clipSize);
-        // Automatic width: the digits of the largest value the source can show; kills have no maximum and grow up to 4.
-        // Without the storage yet (or in the menu preview, which shows no value) 3, which fits the game's ammo counts.
-        _grow = s.Digits == 0 && s.Source == ScreenSource.Kills;
-        int width = s.Digits > 0 ? s.Digits : _grow ? 4 : _storage != null ? DigitCount(Max()) : 3;
+        // Packs baked before the strip had '%' carry 12 glyphs: their percentages show no '%'.
+        for (int g = 0; g < Math.Min(_glyphs.Length, s.GlyphMeshes.Length); g++) _glyphs[g] = s.GlyphMeshes[g] is { } path ? skin.Mesh(path) : null;
+        // Automatic width: the digits of the largest value the source can show; counts have no maximum and grow (kills up
+        // to 4 digits, damage up to 6); percentages 3. Without the storage yet (or in the menu preview, which shows no
+        // value) 3, which fits the game's ammo counts.
+        _grow = s.Digits == 0 && !s.Source.Bounded();
+        _digits = s.Digits > 0 ? s.Digits : _grow ? (s.Source == ScreenSource.Kills ? 4 : 6) : _storage != null ? DigitCount(Max()) : 3;
+        int width = _digits + (s.Source.IsPercent() && _glyphs[Percent] != null ? 1 : 0);
         _dw = dh * s.GlyphAspect;
         float fit = inner / (_dw * width);
         if (fit < 1) { _dw *= fit; dh *= fit; }
@@ -91,13 +107,13 @@ sealed class AmmoScreen
         _cells = new MeshFilter[width];
         for (int i = 0; i < _cells.Length; i++)
         {
-            _cells[i] = gear.Child(root, "digit" + i, _glyphs[Blank], _text, -2 * Step);
+            _cells[i] = gear.Child(root, "digit" + i, i < _digits ? _glyphs[Blank] : _glyphs[Percent], _text, -2 * Step);
             _cells[i].transform.localScale = new Vector3(dh, dh, 1);
         }
         Place(width);
     }
 
-    readonly bool _grow; // automatic kills: as many cells shown as the value has digits, centred
+    readonly bool _grow; // automatic counts: as many cells shown as the value has digits, centred
     readonly float _dw;
     int _shown;
 
@@ -153,11 +169,12 @@ sealed class AmmoScreen
         }
     }
 
-    static Mesh Quad(float w, float h)
+    // Centred, or with fromLeft its left edge on the origin.
+    static Mesh Quad(float w, float h, bool fromLeft = false)
     {
-        float x = w * 0.5f, y = h * 0.5f;
+        float l = fromLeft ? 0 : -w * 0.5f, r = l + w, y = h * 0.5f;
         var mesh = new Mesh { name = "ForgeSkin quad" };
-        mesh.vertices = new[] { new Vector3(-x, -y, 0), new Vector3(x, -y, 0), new Vector3(-x, y, 0), new Vector3(x, y, 0) };
+        mesh.vertices = new[] { new Vector3(l, -y, 0), new Vector3(r, -y, 0), new Vector3(l, y, 0), new Vector3(r, y, 0) };
         mesh.uv = new[] { new Vector2(0, 0), new Vector2(1, 0), new Vector2(0, 1), new Vector2(1, 1) };
         mesh.normals = new[] { Vector3.back, Vector3.back, Vector3.back, Vector3.back };
         mesh.triangles = new[] { 0, 2, 3, 0, 3, 1 }; // clockwise seen from -Z
@@ -202,26 +219,46 @@ sealed class AmmoScreen
                $"template {_template.name} / {_template.shader.name} keywords [{string.Join(" ", _template.shaderKeywords)}]";
     }
 
-    public void Update(int clip, int kills)
+    public void Update(int clip)
     {
-        if (_cells.Length == 0 || _source == ScreenSource.Static) return;
+        if ((_cells.Length == 0 && _bar == null) || _source == ScreenSource.Static) return;
         int value;
-        if (_source == ScreenSource.Kills) value = kills;
-        else if (_storage == null && (_storage = _gear.Storage(out _ammoType, out _clipSize)) == null) return;
-        else
+        if (_source.IsAmmo())
         {
+            if (_storage == null && (_storage = _gear.Storage(out _ammoType, out _clipSize)) == null) return;
             int reserve = _source == ScreenSource.AmmoClip ? 0 : _storage.GetBulletsInPack(_ammoType);
             value = _source switch { ScreenSource.AmmoClip => clip, ScreenSource.AmmoReserve => reserve, _ => clip + reserve };
         }
+        else value = _source switch
+        {
+            ScreenSource.Kills => _gear.Kills,
+            ScreenSource.DamageDealt => (int)_gear.Damage,
+            ScreenSource.DamageDealtAll => (int)SkinnedGear.DamageAll,
+            ScreenSource.DamageTaken => (int)SkinnedGear.DamageTaken,
+            ScreenSource.Accuracy => _gear.Shots > 0 ? _gear.ShotHits * 100 / _gear.Shots : 0,
+            ScreenSource.Health => Mathf.RoundToInt(SkinnedGear.Health),
+            _ => Mathf.RoundToInt(SkinnedGear.Infection),
+        };
         if (value == _value) return;
         bool first = _value == int.MinValue;
         if (first) ForgeSkinPlugin.Info($"{_label}: screen {_source} first value {value}");
         _value = value;
 
-        int v = Math.Min(Math.Max(0, value), Pow10[_cells.Length] - 1);
-        int shown = _grow ? DigitCount(v) : _cells.Length;
-        Place(shown);
-        for (int i = _cells.Length - 1; i >= 0; i--)
+        // Ammo against its maximum, percentages against 100.
+        int max = _source.IsAmmo() ? Max() : 100;
+        if (_bar != null) _bar.localScale = new Vector3(max > 0 ? _barWidth * Mathf.Clamp01((float)value / max) : 0, 1, 1);
+        else Show(value);
+
+        if (_hasLow) SetMix(Tint(value, max), value, max, first);
+    }
+
+    // The digits of value in the digit cells (the '%' cell keeps its glyph).
+    void Show(int value)
+    {
+        int v = Math.Min(Math.Max(0, value), Pow10[_digits] - 1);
+        int shown = _grow ? DigitCount(v) : _digits;
+        Place(_grow ? shown : _cells.Length); // counts that grow have no '%' cell
+        for (int i = _digits - 1; i >= 0; i--)
         {
             if (i >= shown) { _cells[i].sharedMesh = _glyphs[Blank]; continue; }
             int digit = v % 10;
@@ -229,10 +266,6 @@ sealed class AmmoScreen
             bool blank = !_pad && i != shown - 1 && digit == 0 && v == 0;
             _cells[i].sharedMesh = _glyphs[blank ? Blank : digit];
         }
-
-        if (!_hasLow || _storage == null) return;
-        int max = Max();
-        SetMix(Tint(value, max), value, max, first);
     }
 
     // 0: text colour, 1: low colour. With the gradient on, the tint starts as the clip falls below the gradient start

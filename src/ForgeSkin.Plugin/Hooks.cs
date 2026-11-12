@@ -54,6 +54,8 @@ static class Native
             : throw new MissingFieldException(typeof(T).Name, name);
 
     public static IntPtr Field(Il2CppObjectBase o, IntPtr field) => Marshal.ReadIntPtr(o.Pointer + (int)IL2CPP.il2cpp_field_get_offset(field));
+
+    public static unsafe float Float(Il2CppObjectBase o, IntPtr field) => *(float*)(o.Pointer + (int)IL2CPP.il2cpp_field_get_offset(field));
 }
 
 // dump.cs 614836: runs once every part of a gear is spawned and its GearMaterialFeeder is set up.
@@ -64,16 +66,18 @@ static class PartsSpawnedHook
 }
 
 // dump.cs 544371: the funnel every hit on an enemy passes on this machine (the shooter's own hits are applied locally
-// too). With the local player as source and the enemy alive before: dead after is a kill, alive after is a hit.
+// too). With the local player as source and the enemy alive before: dead after is a kill, alive after is a hit; the
+// damage is the health it lost (before minus after, never below 0).
 [HarmonyPatch(typeof(Dam_EnemyDamageBase), nameof(Dam_EnemyDamageBase.ProcessReceivedDamage))]
 static class EnemyDamageHook
 {
-    static void Prefix(Dam_EnemyDamageBase __instance, out bool __state) =>
-        __state = Native.Is<Dam_EnemyDamageBase>(__instance) && __instance.Owner != null && __instance.Owner.Alive;
+    // The enemy's health before, or -1 when it is not a living enemy.
+    static void Prefix(Dam_EnemyDamageBase __instance, out float __state) =>
+        __state = Native.Is<Dam_EnemyDamageBase>(__instance) && __instance.Owner != null && __instance.Owner.Alive ? __instance.Health : -1;
 
-    static void Postfix(Dam_EnemyDamageBase __instance, Agent damageSource, bool __state)
+    static void Postfix(Dam_EnemyDamageBase __instance, Agent damageSource, float __state)
     {
-        if (__state) SkinnedGear.Damaged(damageSource, !__instance.Owner.Alive);
+        if (__state >= 0) SkinnedGear.Damaged(damageSource, !__instance.Owner.Alive, Math.Max(0, __state - Math.Max(0, __instance.Health)));
     }
 }
 

@@ -1,5 +1,7 @@
 // Multi-step user actions: apply to game, export pack, export OBJ.
 import { bakeGlyphs, bakeLayers } from './frames';
+import { bakeLivery, hasLivery } from './livery';
+import { decalRenderer } from './viewport/liveryGpu';
 import { call, type Profile, type SkinDocument } from './protocol';
 import { autosavePath, currentItem, editorOf, useStore } from './store';
 import { localName, partLabel, t } from './i18n';
@@ -25,7 +27,7 @@ function preflight(): string | null {
   if (pending) return t('actions.k1', { v0: pending });
   const item = currentItem();
   if (!item) return t('actions.k2');
-  const hasContent = (doc.materials ?? []).some((m) => m && (Object.keys(m.textures ?? {}).length || m.layers?.length || Object.values(m.params ?? {}).some((v) => v != null)));
+  const hasContent = (doc.materials ?? []).some((m) => m && (Object.keys(m.textures ?? {}).length || m.layers?.length || hasLivery(m) || Object.values(m.params ?? {}).some((v) => v != null)));
   // Part layout, attachments and sounds are changes too, not only textures.
   if (!hasContent && !(doc.attachments ?? []).length && !(doc.parts ?? []).length && !(doc.sounds ?? []).length) return t('actions.k3');
   // The "every channel of every part" check only applies to a skin that replaces textures.
@@ -48,6 +50,8 @@ async function build(out: string, skin?: { doc: SkinDocument; path: string }): P
   const projectPath = skin?.path ?? s.projectPath ?? autosavePath(s.weaponId!);
   const doc = packDoc(skin?.doc);
   useStore.setState({ busy: t('actions.k5') });
+  // The livery first: it becomes the base the dynamic layers play over.
+  await bakeLivery(doc, s.preview, projectPath, (m) => decalRenderer(m.material ?? '', m.part), (t) => useStore.setState({ busy: t }));
   await bakeLayers(doc, s.preview, projectPath, (t) => useStore.setState({ busy: t }));
   await bakeGlyphs(doc, projectPath);
   useStore.setState({ busy: t('actions.k6') });

@@ -32,6 +32,7 @@ const MESSAGES: Record<string, string> = {
   get 'game-changed'() { return t('errors.gameChanged'); },
   get 'stale-patch'() { return t('errors.stalePatch'); },
   get 'bad-backup'() { return t('errors.badBackup'); },
+  get 'no-livery-view'() { return t('errors.noLiveryView'); },
 };
 
 export function friendly(e: unknown, fallback = t('errors.k25')): string {

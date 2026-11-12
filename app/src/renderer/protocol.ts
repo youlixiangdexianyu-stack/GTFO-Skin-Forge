@@ -24,6 +24,10 @@ export type Trigger = NonNullable<DynamicLayer['trigger']>;
 export type PlayMode = NonNullable<DynamicLayer['play']>;
 export type TriggerEffect = NonNullable<NonNullable<Attachment['effects']>[number]>;
 export type SkinSound = NonNullable<NonNullable<SkinDocument['sounds']>[number]>;
+export type LiveryLayer = NonNullable<NonNullable<MaterialOverride['livery']>[number]>;
+export type LiveryKind = NonNullable<LiveryLayer['kind']>;
+export type BlendMode = NonNullable<LiveryLayer['blend']>;
+export type Finish = NonNullable<MaterialOverride['finish']>;
 
 /** Game events in the order the UI lists them; `simulate` ones get a preview button in the 3D view. */
 export const TRIGGERS: { value: Trigger; label: string; simulate?: boolean }[] = [

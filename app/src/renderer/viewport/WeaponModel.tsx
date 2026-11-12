@@ -2,9 +2,11 @@ import { useGLTF } from '@react-three/drei';
 import { useFrame, type ThreeEvent } from '@react-three/fiber';
 import { useEffect, useMemo, useRef } from 'react';
 import { CanvasTexture, Mesh, Vector3, SRGBColorSpace, type MeshStandardMaterial, type Object3D } from 'three';
-import { drawLayer, LayerSource, loadImage } from '../frames';
+import { baseTexturePath, drawLayer, LayerSource, loadImage } from '../frames';
+import { hasLivery } from '../livery';
+import { LiveryPreview } from './liveryPreview';
 import { CHANNELS, fileUrl, type DynamicLayer, type WeaponPreview } from '../protocol';
-import { editorOf, useStore } from '../store';
+import { editorOf, materialOf, useStore } from '../store';
 import { poseWith, unityDirToThree, unityToThree } from '../space';
 import { releaseTextures } from './textures';
 import { editableMaterials, paintMaterial, restoreUnityNames } from './weaponScene';
@@ -16,14 +18,16 @@ class Compositor {
   canvas = document.createElement('canvas');
   texture = new CanvasTexture(this.canvas);
   private sources: [DynamicLayer, LayerSource][] = [];
-  private base: HTMLImageElement | null = null;
+  private base: CanvasImageSource | null = null;
   private start = performance.now();
 
-  constructor(basePath: string | null, layers: DynamicLayer[]) {
+  /** `base`: the base texture's path, or a canvas drawn live (the livery). */
+  constructor(base: string | HTMLCanvasElement | null, layers: DynamicLayer[]) {
     this.texture.flipY = false;
     this.texture.colorSpace = SRGBColorSpace;
     this.sources = layers.map((l) => [l, new LayerSource(l)]);
-    if (basePath) void loadImage(basePath).then((img) => (this.base = img));
+    if (typeof base === 'string') void loadImage(base).then((img) => (this.base = img));
+    else this.base = base;
     this.canvas.width = this.canvas.height = 1024;
   }
 
@@ -60,6 +64,7 @@ export function WeaponModel({ preview }: { preview: WeaponPreview }) {
   const select = useStore((s) => s.select);
   const materials = useRef(new Map<string, MeshStandardMaterial>());
   const compositors = useRef(new Map<string, Compositor>());
+  const liveries = useRef(new Map<string, LiveryPreview>());
   /** Meshes the part layout hides (restored before each re-apply). */
   const layoutHidden = useRef(new Set<Mesh>());
 
@@ -141,10 +146,22 @@ export function WeaponModel({ preview }: { preview: WeaponPreview }) {
     let cancelled = false;
     const keep = new Set<string>();
     const loads: Promise<unknown>[] = [];
+    // Livery redraws follow the part layout too (a decal sits on its part's root).
+    const layout = JSON.stringify(doc.parts ?? []);
     for (const [name, mat] of materials.current) {
       for (const ch of CHANNELS) {
         compositors.current.get(`${name}|${ch}`)?.dispose();
         compositors.current.delete(`${name}|${ch}`);
+      }
+      const m = materialOf(doc, name);
+      let livery = liveries.current.get(name);
+      if (hasLivery(m)) {
+        if (!livery) liveries.current.set(name, (livery = new LiveryPreview(name)));
+        livery.update(m!, baseTexturePath(doc, preview, name, 'albedo'), layout);
+      } else if (livery) {
+        livery.dispose();
+        liveries.current.delete(name);
+        livery = undefined;
       }
       loads.push(
         ...paintMaterial(
@@ -156,10 +173,11 @@ export function WeaponModel({ preview }: { preview: WeaponPreview }) {
           () => cancelled,
           (path) => useStore.getState().log(t('weaponModel.k3', { v0: path })),
           (ch, base, layers) => {
-            const c = new Compositor(base, layers);
+            const c = new Compositor(ch === 'albedo' && livery ? livery.albedo : base, layers);
             compositors.current.set(`${name}|${ch}`, c);
             return c.texture;
           },
+          livery && ((ch) => livery.texture(ch)),
         ),
       );
     }
@@ -170,7 +188,13 @@ export function WeaponModel({ preview }: { preview: WeaponPreview }) {
     };
   }, [doc, preview]);
 
-  useEffect(() => () => compositors.current.forEach((c) => c.dispose()), []);
+  useEffect(
+    () => () => {
+      compositors.current.forEach((c) => c.dispose());
+      liveries.current.forEach((l) => l.dispose());
+    },
+    [],
+  );
 
   // Leaving this weapon frees its GPU copies (geometry, the editable materials) and drops the previous glTF from the
   // loader cache; a later visit reloads it. Disposed objects that are drawn again are simply re-uploaded (StrictMode).

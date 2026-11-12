@@ -51,6 +51,7 @@ public static class PackBuilder
 
             foreach (var m in doc.Materials)
             {
+                (m.Finish, m.Livery) = (null, null); // the editor baked the livery into this material's textures
                 var sizes = new Dictionary<TextureChannel, (int W, int H)>();
                 foreach (var channel in m.Textures.Keys.ToList())
                 {

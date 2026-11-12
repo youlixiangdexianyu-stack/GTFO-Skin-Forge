@@ -79,6 +79,15 @@ poses with one helper (`unityToThree` / `threeToUnity` in `app/src/renderer/spac
 - `SkinDocument.Sounds` (`SkinSound`): {trigger (not always), file, volume 0–1, lowAmmoFraction}. The file is Ogg Vorbis, mono
   or stereo, at most 10 s; the editor converts any audio the author picks (WAV, MP3, FLAC, OGG, M4A) to Ogg Vorbis locally with
   `wasm-media-encoders` and keeps an existing Ogg Vorbis file as is. Packed as `sounds/<id>.ogg`.
+- Livery (editor only, never in a pack): `MaterialOverride.Finish` (matte, gloss, satin, metal, brushedMetal, chrome, rubber,
+  plastic, carbonFibre, paintedSteel, wornMetal, glow) and `MaterialOverride.Livery` (`LiveryLayer`, bottom first: fill, decal
+  or brush; colour/tint, opacity, blend normal/multiply/screen/overlay/add, mask strokes). A decal is a frame in the part
+  root's space (Unity) projected along its -Z, with size, angle, depth and mirror; brush and mask strokes are UV polylines
+  (u, v, width). The renderer composites it (`livery.ts` `composeLivery`, one implementation for the live 3D view and the
+  pack): decals are drawn by rendering each mesh of the material at its UVs and taking every fragment's position into the
+  decal frame (inside its width, height and depth, on faces looking at it). Before `pack.build` it writes the result as the
+  material's Albedo, a finish's MetallicSmoothness, and for glow the Emissive, so packs and game-file replacement carry
+  ordinary textures and the plugin needs nothing new.
 
 ### 3.2 Install layout (in a BepInEx profile)
 
@@ -297,17 +306,6 @@ Install
 
 1. Packaging: Electron Forge installer bundling the backend and the plugin.
 2. Remove the old Python tool and the two HEL plugins once §4 is verified.
-3. Livery painting (after the editor redesign), like a racing game's livery editor:
-   - basic material presets for a part's paint (metallic/smoothness looks): matte, gloss, satin, metal, brushed metal,
-     chrome, rubber, plastic, carbon fibre, painted steel, worn metal, glow (emissive);
-   - fill: a part painted one colour (the base coat, over or instead of its albedo);
-   - image decals placed on the part's surface in the 3D view, following its curves (position, size, rotation, mirror);
-   - a brush on the surface: straight lines, circles and free-hand strokes;
-   - per layer: tint, opacity, blend mode (normal, multiply, screen, overlay, add) and a mask (painted with the brush,
-     hiding parts of that layer).
-   Decals and strokes are layers under their part in an explicit order that decides what is on top. Preview live; when packing,
-   bake every decal into the part's albedo by rendering the mesh in UV space and projecting each fragment's position
-   into the decal frame, with a depth limit so a decal does not reach the far side. The result is an ordinary texture:
-   no plugin change, and it works for game-file replacement too.
+3. Livery: check a baked livery in game (plugin load and game-file replacement); weapon-list thumbnails do not show it yet.
 4. In-game skin picker: choose the active skin per item from the loadout screen, built on ForgeCore's UI once its library
    merge has landed (the plugin then depends on ForgeCore).

@@ -69,7 +69,7 @@ public static class Projects
         return new { path };
     }
 
-    // Every file reference in a document (texture, layer source, font, mesh, glyph strip, atlas, sound). A texture slot
+    // Every file reference in a document (texture, layer source, decal image, font, mesh, glyph strip, atlas, sound). A texture slot
     // without a file is dropped (the game texture stays).
     public static void MapPaths(SkinDocument doc, Func<string, string> map)
     {
@@ -88,6 +88,7 @@ public static class Projects
                 if (l.Text?.Font is { } font) l.Text.Font = map(font);
                 if (l.Atlas != null) l.Atlas.Path = map(l.Atlas.Path);
             }
+            foreach (var l in m.Livery ?? []) if (l.Image != null) l.Image = map(l.Image);
         }
         foreach (var a in doc.Attachments)
         {

@@ -35,6 +35,7 @@ export type Selection =
   | { kind: 'part'; id: string; sub?: string | null }
   | { kind: 'attachment'; id: string }
   | { kind: 'layer'; material: string; id: string }
+  | { kind: 'livery'; material: string; id: string }
   | { kind: 'sound'; id: string }
   | null;
 
@@ -115,7 +116,7 @@ export function materialOf(doc: SkinDocument, material: string): MaterialOverrid
   return doc.materials?.find((m) => m?.material === material) ?? undefined;
 }
 
-function ensureMaterial(doc: SkinDocument, material: string, part?: string): MaterialOverride {
+export function ensureMaterial(doc: SkinDocument, material: string, part?: string): MaterialOverride {
   let m = materialOf(doc, material);
   if (!m) {
     m = { material, part: part ?? null, textures: {}, params: {}, layers: [] };
@@ -127,7 +128,7 @@ function ensureMaterial(doc: SkinDocument, material: string, part?: string): Mat
   return m;
 }
 
-const uid = () => Math.random().toString(36).slice(2, 10);
+export const uid = () => Math.random().toString(36).slice(2, 10);
 const newSkinId = (doc: SkinDocument) => `${doc.target?.weapon ?? 'skin'}-${uid()}`;
 
 interface State {

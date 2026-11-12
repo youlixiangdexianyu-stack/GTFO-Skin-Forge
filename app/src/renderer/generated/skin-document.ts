@@ -57,6 +57,25 @@ frameHeight?: number
 targetRect?: number[]
 } | null)
 } | null)[]
+finish?: ("matte" | "gloss" | "satin" | "metal" | "brushedMetal" | "chrome" | "rubber" | "plastic" | "carbonFibre" | "paintedSteel" | "wornMetal" | "glow" | null)
+livery?: (({
+id?: string
+name?: string
+kind?: ("fill" | "decal" | "brush")
+visible?: boolean
+color?: number[]
+opacity?: number
+blend?: ("normal" | "multiply" | "screen" | "overlay" | "add")
+image?: (string | null)
+position?: (number[] | null)
+rotation?: (number[] | null)
+angle?: number
+size?: number[]
+depth?: number
+mirror?: boolean
+strokes?: Items[]
+mask?: Items[]
+} | null)[] | null)
 } | null)[]
 attachments?: ({
 id?: string
@@ -133,3 +152,4 @@ editor?: ({
 } | null)
 export type EmissiveColor = (number[] | null)
 export type Tint = (number[] | null)
+export type Items = (number[] | null)

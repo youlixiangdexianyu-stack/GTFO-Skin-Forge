@@ -48,6 +48,7 @@ public sealed class ForgeSkinPlugin : BasePlugin
         bool dev = Config.Bind("General", "Development", false,
             "Development mode: reload the skins whenever the skins folder changes, so 应用到游戏 shows up in a running game. Off: skins load once when the game starts.").Value;
         Skins.Watch(skins, Paths.PluginPath, Path.Combine(Paths.ConfigPath, "ForgeSkin.choices.json"), dev);
+        Icons.SkinsChanged(); // the icons the game cached before may show another skin than the one now active
         Picker.Key = Config.Bind("General", "PickerKey", KeyCode.F8,
             "Opens and closes the in-game skin picker (Esc also closes it). The picks are kept in BepInEx/config/ForgeSkin.choices.json.").Value;
         Holograms.UseShader = Config.Bind("General", "HologramShader", true,

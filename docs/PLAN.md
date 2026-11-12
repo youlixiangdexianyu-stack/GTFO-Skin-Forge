@@ -229,6 +229,15 @@ game is not running.
   Items with their own prefabs (packs, consumables, carry items, hacking tool) have no gear holder: they are skinned on the
   local player's first-person item when it is wielded (the wielded item is compared each frame, one pointer); their third
   person and world copies stay vanilla.
+- Ejected casings: a first-person gun whose skin overrides a material its casing prefab uses (WeaponShellManager's 9mm,
+  .45 ACP, .338, 12 gauge prefabs) gets a casing pool of its own: a copy of the prefab drawn with world-projection copies of
+  the skin's looks, appended after the game's pools at `WeaponShellManager.SetupPools`; while the gun ejects
+  (`BulletWeapon.EjectCasing`) its casing type names that pool. Four pools for the local player's guns, the oldest reused;
+  freed on revert.
+- Gear icons: the gear the game builds for an icon render job (`GearIconRendering.m_currentJob`) is skinned when its parts
+  spawn. After a load, reload or pick, every player gear whose active skin changed (another skin, a rebuilt pack, vanilla;
+  any global skin change counts for all) has the game's cached icons dropped (posted jobs, sprites, render textures, the
+  icon file) and its icon jobs posted again.
 - In-game skin picker: a hotkey (`PickerKey` in ForgeSkin.cfg, default F8) opens a small on-screen list of every target that
   has a loaded skin: its skins by name plus 原版 (vanilla). Picking one applies it to live gear at once (the same re-apply as a
   hot reload) and is kept in `BepInEx/config/ForgeSkin.choices.json` (`{ "<target key>": "<skinId>" | "" }`, "" = vanilla).

@@ -95,6 +95,7 @@ sealed class SkinnedGear
             if (item != null) Consider(holder, item);
             // A menu-mode holder (lobby loadout and gear pages) only ever shows this machine's own gear.
             else if (holder.MenuMode) { Note(holder, $"{holder.GearIDRange?.PublicGearName} [menu]: considered"); Track(holder, null); }
+            else if (Icons.IsJob(holder)) { Note(holder, $"{holder.GearIDRange?.PublicGearName} [icon]: skinned for its icon"); Track(holder, null); }
             // Icon renders, and items that only take their holder at OnGearSpawnComplete.
             else Note(holder, $"{holder.GearIDRange?.PublicGearName}: parts spawned without an item and not in menu mode; waiting for the item");
         }
@@ -132,6 +133,13 @@ sealed class SkinnedGear
             if (p.Holder.Pointer == pointer) return;
         foreach (var g in Live)
             if (g._holderPointer == pointer) return;
+        // The icon renderer's gear is skinned now: it is rendered before the pending list is looked at again.
+        if (Icons.IsJob(holder))
+        {
+            Note(holder, $"{item.PublicName} [icon]: skinned for its icon");
+            Track(holder, item);
+            return;
+        }
         // The gear id is looked up when the skin is applied (and logged with it), not here on the game's spawn path.
         Note(holder, $"{item.PublicName} [{(item.m_isFirstPerson ? "1P" : "3P")}]: considered");
         Pending.Add((holder, item, Time.unscaledTime));
@@ -147,6 +155,7 @@ sealed class SkinnedGear
     {
         if (Skins.Poll(now))
         {
+            Icons.SkinsChanged();
             foreach (var gear in Live)
             {
                 gear.Revert();
@@ -154,6 +163,7 @@ sealed class SkinnedGear
             }
         }
         if (Pending.Count > 0 && now >= _nextPending) ResolvePending(now);
+        Icons.Tick();
         PollWielded(time);
         PollPlayer();
         for (int i = Live.Count - 1; i >= 0; i--)
@@ -315,10 +325,10 @@ sealed class SkinnedGear
         return 0;
     }
 
-    static readonly InventorySlot[] GearSlots = { InventorySlot.GearStandard, InventorySlot.GearSpecial, InventorySlot.GearClass, InventorySlot.GearMelee };
+    internal static readonly InventorySlot[] GearSlots = { InventorySlot.GearStandard, InventorySlot.GearSpecial, InventorySlot.GearClass, InventorySlot.GearMelee };
     const string OfflinePrefix = "OfflineGear_ID_";
 
-    static uint? Offline(string? instance) =>
+    internal static uint? Offline(string? instance) =>
         instance != null && instance.StartsWith(OfflinePrefix, StringComparison.Ordinal) && uint.TryParse(instance.AsSpan(OfflinePrefix.Length), out var id) ? id : null;
 
     static bool SameComps(GearIDRange a, GearIDRange b)
@@ -370,6 +380,7 @@ sealed class SkinnedGear
         }
 
         ApplyMaterials(overrides);
+        SkinCasings(overrides);
         int attachments = 0;
         if (weapon != null)
             foreach (var a in weapon.Doc.Attachments)
@@ -406,8 +417,26 @@ sealed class SkinnedGear
         LogAttachments();
     }
 
+    // A first-person gun's ejected casings in its skin's materials, as world-projection copies of its looks (a casing
+    // flies outside the first-person view).
+    void SkinCasings(Dictionary<string, (Skin Skin, MaterialOverride Override)> overrides)
+    {
+        if (!_gun || _item == null || !_item.m_isFirstPerson || overrides.Count == 0) return;
+        var made = new Dictionary<IntPtr, Material>();
+        Shells.Use(_item, source =>
+        {
+            if (!overrides.TryGetValue(BaseName(source.name), out var o)) return null;
+            if (made.TryGetValue(source.Pointer, out var done)) return done;
+            var basis = _looks.TryGetValue(o.Override, out var look) ? look : Look(o.Skin, o.Override, source);
+            var m = Own(new Material(basis) { name = basis.name + " casing" });
+            Fps(m, false);
+            return made[source.Pointer] = m;
+        }, _label);
+    }
+
     void Revert()
     {
+        if (_item != null) Shells.Release(_item.Pointer);
         // Last first: of two entries on one node, the first one saw the vanilla pose.
         for (int i = _poses.Count - 1; i >= 0; i--) _poses[i].Revert();
         _poses.Clear();
@@ -440,6 +469,7 @@ sealed class SkinnedGear
             if (o != null) Object.Destroy(o);
         _swaps.Clear();
         _created.Clear();
+        _looks.Clear();
         _targets.Clear();
         _animated.Clear();
         foreach (var list in _on) list.Clear();
@@ -452,10 +482,13 @@ sealed class SkinnedGear
         _roots.Clear();
     }
 
+    // The skin's look per material override, kept until the revert (the casing pool copies them).
+    readonly Dictionary<MaterialOverride, Material> _looks = new();
+
     void ApplyMaterials(Dictionary<string, (Skin Skin, MaterialOverride Override)> overrides)
     {
         if (overrides.Count == 0) return;
-        var looks = new Dictionary<MaterialOverride, Material>();
+        var looks = _looks;
         var seen = new SortedSet<string>(StringComparer.Ordinal);
         // The whole item, not only the part holder: the item's own setup may move parts (light, sight, rounds) out of it.
         var top = _item != null ? _item.transform : _root.transform;
@@ -493,11 +526,8 @@ sealed class SkinnedGear
         {
             // A global skin (mags, sights, lights, ammo) covers every gear; only the ones that use its materials take it.
             if (looks.ContainsKey(o.Override) || o.Skin.Doc.Target.Weapon == null) continue;
-            if (o.Override.Part == "ammo_shell")
-            {
-                ForgeSkinPlugin.Info($"{_label}: material {name} is on the ejected casing, which the game spawns only when firing; not skinned");
-                continue;
-            }
+            // The ejected casing exists only once fired: its own pool takes the skin (SkinCasings).
+            if (o.Override.Part == "ammo_shell") continue;
             // No scene-wide search for where else it is drawn: over every renderer of a level that stalls the game for
             // a third of a second per material, on every hot reload. The gear's own slots say what it has instead.
             ForgeSkinPlugin.Fail($"{_label}: material {name} matched no renderer; part {o.Override.Part ?? "-"} " +

@@ -52,7 +52,7 @@ public static class Paths
                 return File.Exists(to) && !File.Exists(Path.Combine(baseDir, stem + m.Groups[2].Value))
                     ? $"\"{m.Groups[1].Value}{renames[m.Groups[2].Value]}\"" : m.Value;
             });
-            if (updated != text) File.WriteAllText(doc, updated);
+            if (updated != text) AtomicFile.WriteText(doc, updated);
         }
         Log.Write($"moved {moved} pre-rename files to the new extensions");
     }
@@ -123,19 +123,33 @@ public static class Program
         JsonNode? id = null;
         try
         {
-            var request = JsonNode.Parse(line)!.AsObject();
-            id = request["id"]?.DeepClone();
-            var method = (string?)request["method"] ?? throw new BackendException("bad-request", "method missing");
-            var result = Methods.Call(method, request["params"] as JsonObject ?? new JsonObject(), id is null ? 0 : (long)id);
+            JsonObject request;
+            string method;
+            long number;
+            try
+            {
+                request = JsonNode.Parse(line)!.AsObject();
+                id = request["id"]?.DeepClone();
+                number = id is null ? 0 : (long)id;
+                method = (string?)request["method"] ?? throw new BackendException("bad-request", "method missing");
+            }
+            catch (Exception e) when (e is JsonException or InvalidOperationException or FormatException or NullReferenceException)
+            {
+                throw new BackendException("bad-request", $"Not a request: {e.Message}");
+            }
+            var result = Methods.Call(method, request["params"] as JsonObject ?? new JsonObject(), number);
             Send(new { id, result });
         }
         catch (Exception e)
         {
+            // Request errors are BackendException("bad-request") from the request and param readers; anything else
+            // unexpected is internal and logged with its stack trace.
             var (code, message) = e switch
             {
                 BackendException b => (b.Code, b.Message),
                 SkinFormatException f => (f.Code, f.Message),
-                JsonException or InvalidOperationException or FormatException => ("bad-request", e.Message),
+                FileNotFoundException or DirectoryNotFoundException => ("not-found", e.Message),
+                IOException when (e.HResult & 0xFFFF) is 32 or 33 => ("file-in-use", e.Message), // sharing or lock violation
                 _ => ("internal", e.Message),
             };
             if (code == "internal") Log.Write($"error {e}");

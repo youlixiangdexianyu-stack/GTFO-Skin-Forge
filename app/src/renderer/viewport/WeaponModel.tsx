@@ -8,7 +8,7 @@ import { LiveryPreview } from './liveryPreview';
 import { fileUrl, type DynamicLayer, type TextureChannel, type WeaponPreview } from '../protocol';
 import { editorOf, materialOf, useStore } from '../store';
 import { poseWith, unityDirToThree, unityToThree } from '../space';
-import { releaseTextures } from './textures';
+import { holdTextures, releaseTextures } from './textures';
 import { editableMaterials, paintMaterial, restoreUnityNames } from './weaponScene';
 import { displayOffset, hiddenMeshes, partOf, partTarget, pathChain, playTime, registerTransforms, quiet, SCENE_EVENT, viewRefs } from './refs';
 import { t } from '../i18n';
@@ -22,8 +22,13 @@ class Compositor {
   private order: LayerSource[] = [];
   private basePath: string | null = null;
   private base: CanvasImageSource | null = null;
+  private livery: LiveryPreview | null = null;
   private fill = '#ffffff';
   private start = performance.now();
+  /** What the canvas shows: the layers' frames and the livery's redraw; `dirty` after an edit or a base load. */
+  private drawn: (CanvasImageSource | null)[] = [];
+  private drawnLivery = -1;
+  private dirty = true;
 
   constructor() {
     this.texture.flipY = false;
@@ -31,18 +36,20 @@ class Compositor {
     this.canvas.width = this.canvas.height = 1024;
   }
 
-  /** Takes the document's current base (a texture path, or the livery's live canvas) and layers; placement and timing edits keep the loaded sources (no reload, no flicker). */
-  set(ch: TextureChannel, base: string | HTMLCanvasElement | null, layers: DynamicLayer[]) {
+  /** Takes the document's current base (a texture path, or the live livery) and layers; placement and timing edits keep the loaded sources (no reload, no flicker). */
+  set(ch: TextureChannel, base: string | LiveryPreview | null, layers: DynamicLayer[]) {
+    this.dirty = true;
     // Without a base texture the plugin draws on white (albedo) or black, so the preview does too.
     this.fill = ch === 'albedo' ? '#ffffff' : '#000000';
+    this.livery = base instanceof LiveryPreview ? base : null;
     if (typeof base !== 'string') {
       this.basePath = null;
-      this.base = base;
+      this.base = this.livery?.albedo ?? null;
     } else if (base !== this.basePath) {
       const basePath = base;
       this.basePath = basePath;
       this.base = null;
-      void loadImage(basePath).then((img) => this.basePath === basePath && (this.base = img), () => undefined);
+      void loadImage(basePath).then((img) => this.basePath === basePath && ((this.base = img), (this.dirty = true)), () => undefined);
     }
     const next = new Map<string, { key: string; src: LayerSource }>();
     this.order = layers.map((l) => {
@@ -57,19 +64,26 @@ class Compositor {
     this.sources = next;
   }
 
+  /** Redraws and uploads only when what it shows changed: an edit, a new frame, a playing video, a livery redraw. */
   draw() {
+    const frames = this.order.map((src) => {
+      const l = src.layer;
+      const time = playTime(l.trigger, l.play, l.playSeconds, src.duration, this.start);
+      return time === null ? null : src.at(time);
+    });
+    const livery = this.livery?.version ?? -1;
+    const same = !this.dirty && livery === this.drawnLivery && frames.every((f, i) => f === this.drawn[i] && !(f instanceof HTMLVideoElement));
+    if (same && frames.length === this.drawn.length) return;
+    this.dirty = false;
+    this.drawn = frames;
+    this.drawnLivery = livery;
     const ctx = this.canvas.getContext('2d')!;
     const W = this.canvas.width;
     const H = this.canvas.height;
     ctx.fillStyle = this.fill;
     ctx.fillRect(0, 0, W, H);
     if (this.base) ctx.drawImage(this.base, 0, 0, W, H);
-    for (const src of this.order) {
-      const l = src.layer;
-      const time = playTime(l.trigger, l.play, l.playSeconds, src.duration, this.start);
-      const f = time === null ? null : src.at(time);
-      if (f) drawLayer(ctx, f, l, W, H);
-    }
+    frames.forEach((f, i) => f && drawLayer(ctx, f, this.order[i].layer, W, H));
     this.texture.needsUpdate = true;
   }
 
@@ -92,6 +106,8 @@ export function WeaponModel({ preview }: { preview: WeaponPreview }) {
   const materials = useRef(new Map<string, MeshStandardMaterial>());
   const compositors = useRef(new Map<string, Compositor>());
   const liveries = useRef(new Map<string, LiveryPreview>());
+  /** Texture keys of each paint still held (holdTextures), oldest first; the last finished one is what the materials show. */
+  const painted = useRef<Set<string>[]>([]);
   /** Meshes the part layout hides (restored before each re-apply). */
   const layoutHidden = useRef(new Set<Mesh>());
 
@@ -172,6 +188,8 @@ export function WeaponModel({ preview }: { preview: WeaponPreview }) {
   useEffect(() => {
     let cancelled = false;
     const keep = new Set<string>();
+    holdTextures(keep);
+    painted.current.push(keep);
     const loads: Promise<unknown>[] = [];
     const used = new Set<string>();
     // Livery redraws follow the part layout too (a decal sits on its part's root).
@@ -200,7 +218,7 @@ export function WeaponModel({ preview }: { preview: WeaponPreview }) {
             const key = `${name}|${ch}`;
             let c = compositors.current.get(key);
             if (!c) compositors.current.set(key, (c = new Compositor()));
-            c.set(ch, ch === 'albedo' && livery ? livery.albedo : base, layers);
+            c.set(ch, ch === 'albedo' && livery ? livery : base, layers);
             used.add(key);
             return c.texture;
           },
@@ -213,8 +231,9 @@ export function WeaponModel({ preview }: { preview: WeaponPreview }) {
         c.dispose();
         compositors.current.delete(key);
       }
-    // Once the materials hold this document's textures, free the ones nothing uses any more (replaced or undone images).
-    void Promise.allSettled(loads).then(() => !cancelled && releaseTextures(keep));
+    // Once the materials hold this document's textures, let go of the earlier paints: their textures that nothing uses any
+    // more (replaced or undone images) are freed.
+    void Promise.allSettled(loads).then(() => !cancelled && releaseTextures(...painted.current.splice(0, painted.current.indexOf(keep))));
     return () => {
       cancelled = true;
     };
@@ -225,6 +244,7 @@ export function WeaponModel({ preview }: { preview: WeaponPreview }) {
       compositors.current.forEach((c) => c.dispose());
       compositors.current.clear();
       liveries.current.forEach((l) => l.dispose());
+      releaseTextures(...painted.current.splice(0));
     },
     [],
   );

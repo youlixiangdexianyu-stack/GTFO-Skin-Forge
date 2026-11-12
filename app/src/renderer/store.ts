@@ -138,6 +138,8 @@ const allFinite = (x: unknown): boolean =>
       : x !== null && typeof x === 'object'
         ? Object.values(x).every(allFinite)
         : true;
+// A value an edit writes; written into an array it must be there (an unset index is the hole above).
+const writesFinite = (p: Patch): boolean => p.op === 'remove' || ((typeof p.path.at(-1) !== 'number' || p.value !== undefined) && allFinite(p.value));
 
 /** Layout entry of a part root (`path` null) or of the child at `path`. */
 export function partTransformOf(doc: SkinDocument, part: string, path?: string | null): PartTransform | undefined {
@@ -402,14 +404,16 @@ export const useStore = create<State>((set, get) => ({
   async selectWeapon(id) {
     const s = get();
     if (s.weaponId === id) return;
+    const ticket = ++opening;
     if (s.weaponId) await persistAutosave();
+    if (ticket !== opening) return;
     localStorage.setItem('sf.weapon', id);
     set({ weaponId: id, preview: null, previewLoading: true, selection: null, undo: [], redo: [], unmatched: [] });
     // Each weapon keeps its skins as autosaved projects; open the one edited last, else the newest, else a new one.
     const skins = await get().refreshSkins();
     const pick = skins.find((k) => k.id === localStorage.getItem(`sf.skin.${id}`)) ?? skins[0];
     const doc = (pick && (await loadSkin(pick.path))) || (await blankSkin(id, skins.length));
-    openSkin(doc);
+    if (!openSkin(doc, id, ticket)) return;
     if (!pick) await persistAutosave();
     try {
       const preview = await call('preview.weapon', { id });
@@ -435,14 +439,17 @@ export const useStore = create<State>((set, get) => ({
   },
   async switchSkin(id) {
     const entry = get().skins.find((k) => k.id === id);
-    if (!entry || get().doc.id === id) return;
+    const weaponId = get().weaponId;
+    if (!entry || !weaponId || get().doc.id === id) return;
+    const ticket = ++opening;
     await persistAutosave();
     const doc = await loadSkin(entry.path);
-    if (doc) openSkin(doc);
+    if (doc) openSkin(doc, weaponId, ticket);
   },
   async newSkin(copy) {
     const s = get();
     if (!s.weaponId) return;
+    const ticket = ++opening;
     await persistAutosave();
     let doc: SkinDocument;
     if (copy) {
@@ -450,8 +457,7 @@ export const useStore = create<State>((set, get) => ({
       doc.id = newSkinId(doc);
       doc.name = t('store.skinCopy', { v0: s.doc.name });
     } else doc = await blankSkin(s.weaponId, s.skins.length);
-    openSkin(doc);
-    await persistAutosave();
+    if (openSkin(doc, s.weaponId, ticket)) await persistAutosave();
   },
   async deleteSkin(id) {
     const s = get();
@@ -460,6 +466,7 @@ export const useStore = create<State>((set, get) => ({
     if (!entry || !s.weaponId) return;
     // The edited skin must not be written back by a pending autosave.
     if (s.doc.id === id) clearTimeout(autosaveTimer);
+    const ticket = ++opening;
     try {
       if (profile && s.installed.some((p) => p.id === id)) await call('pack.remove', { profile: profile.path, skinId: id });
       await call('project.delete', { path: entry.path });
@@ -470,8 +477,7 @@ export const useStore = create<State>((set, get) => ({
     void get().refreshInstalled();
     if (get().doc.id !== id) return;
     const next = (rest[0] && (await loadSkin(rest[0].path))) || (await blankSkin(s.weaponId, 0));
-    openSkin(next);
-    if (!rest.length) await persistAutosave();
+    if (openSkin(next, s.weaponId, ticket) && !rest.length) await persistAutosave();
   },
 
   edit(fn, coalesceKey) {
@@ -479,7 +485,8 @@ export const useStore = create<State>((set, get) => ({
     const [doc, redo, undo] = produceWithPatches(s.doc, (d) => void fn(d as SkinDocument));
     if (!redo.length) return;
     // JSON has no NaN/Infinity: such a value would make the whole document fail to save and pack, so the edit is refused.
-    if (!allFinite(doc)) {
+    // Only what the edit wrote is checked (a brush stroke's move adds a few numbers to a long list).
+    if (!redo.every(writesFinite)) {
       s.log(t('store.refusedEdit'));
       s.toast('error', t('store.refusedEdit'));
       window.forge.appLog('refused edit', `${JSON.stringify(redo)}\n${new Error().stack}`);
@@ -502,14 +509,14 @@ export const useStore = create<State>((set, get) => ({
     const s = get();
     const step = s.undo.at(-1);
     if (!step) return;
-    set({ doc: applyPatches(s.doc, step.undo), undo: s.undo.slice(0, -1), redo: [...s.redo, step], lastEditKey: null });
+    set({ doc: applyPatches(s.doc, keepId(step.undo)), undo: s.undo.slice(0, -1), redo: [...s.redo, step], lastEditKey: null });
     get().autosave();
   },
   redoEdit() {
     const s = get();
     const step = s.redo.at(-1);
     if (!step) return;
-    set({ doc: applyPatches(s.doc, step.redo), redo: s.redo.slice(0, -1), undo: [...s.undo, step], lastEditKey: null });
+    set({ doc: applyPatches(s.doc, keepId(step.redo)), redo: s.redo.slice(0, -1), undo: [...s.undo, step], lastEditKey: null });
     get().autosave();
   },
 
@@ -527,13 +534,18 @@ export const useStore = create<State>((set, get) => ({
   async loadProject(path) {
     try {
       const doc = normalize(await call('project.load', { path }));
-      const weapon = doc.target?.weapon;
-      if (weapon && weapon !== get().weaponId) {
+      // An old preset names no item: it goes on the one being edited, so it autosaves there.
+      const weapon = doc.target!.weapon || get().weaponId;
+      if (!weapon) return get().toast('info', t('actions.k2'));
+      doc.target!.weapon = weapon;
+      if (weapon !== get().weaponId) {
         await persistAutosave();
         set({ weaponId: null });
         await get().selectWeapon(weapon);
+        if (get().weaponId !== weapon) return;
       }
-      set({ doc, projectPath: path.endsWith('.forgeskinproj') ? path : null, undo: [], redo: [] });
+      ++opening; // a skin still loading for this item must not replace the opened project
+      set({ doc, projectPath: path.endsWith('.forgeskinproj') ? path : null, selection: null, unmatched: [], undo: [], redo: [], lastEditKey: null });
       get().autosave();
       get().toast('ok', t('store.k9', { v0: doc.name }));
     } catch (e) {
@@ -547,7 +559,11 @@ export const useStore = create<State>((set, get) => ({
       if (!path) return;
     }
     // Saving as a new skin is the one way to get a new skin id (a second pack in game instead of overwriting).
-    if (saveAs) get().edit((d) => void (d.id = newSkinId(d)));
+    // Not an edit: undo never changes which skin this is.
+    if (saveAs) {
+      set({ doc: { ...get().doc, id: newSkinId(get().doc) } });
+      get().autosave();
+    }
     try {
       await call('project.save', { path, project: get().doc });
       set({ projectPath: path });
@@ -842,6 +858,9 @@ export const useStore = create<State>((set, get) => ({
   },
 }));
 
+/** Undo and redo never change which skin is edited (its id names its autosave and its pack in game). */
+const keepId = (patches: Patch[]) => patches.filter((p) => p.path[0] !== 'id');
+
 /** Key of a node's replacement model preview in the editor state. */
 export const partMeshKey = (part: string, path?: string | null) => `${part}/${path ?? ''}`;
 
@@ -884,10 +903,14 @@ async function blankSkin(weaponId: string, existing: number): Promise<SkinDocume
   return doc;
 }
 
-/** Makes a skin of the current item the edited one. */
-function openSkin(loaded: SkinDocument) {
+/** Bumped by every request to open a skin; a request that is no longer the latest does not open its skin. */
+let opening = 0;
+
+/** Makes a skin of item `id` the edited one, unless the user moved on since request `ticket` (another item or skin was
+ * asked for meanwhile); false then. */
+function openSkin(loaded: SkinDocument, id: string, ticket: number): boolean {
   const s = useStore.getState();
-  const id = s.weaponId!;
+  if (ticket !== opening || s.weaponId !== id) return false;
   const item = s.catalog.find((c) => c.id === id);
   const doc = normalize({ ...loaded, target: { ...loaded.target, weapon: id } });
   if (!doc.name) doc.name = t('store.k6', { v0: item ? localName(item) : id });
@@ -896,6 +919,7 @@ function openSkin(loaded: SkinDocument) {
   doc.editor = ed as unknown as SkinDocument['editor'];
   localStorage.setItem(`sf.skin.${id}`, doc.id!);
   useStore.setState({ doc, projectPath: null, selection: null, undo: [], redo: [], unmatched: [], lastEditKey: null });
+  return true;
 }
 
 export async function persistAutosave() {

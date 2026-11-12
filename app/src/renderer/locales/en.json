@@ -491,6 +491,8 @@
   "exportMod.export": "Export…",
   "exportMod.done": "Thunderstore skin mod exported",
   "exportMod.failed": "Could not export the skin mod",
+  "exportMod.skinProblem": "Skin “{{v0}}”: {{v1}}",
+  "actions.building": "The last build has not finished yet; try again when it is done.",
   "errors.nothingToApply": "Nothing in this skin can go into the game files: only textures and material settings (metallic, smoothness, glow, colour) can.",
   "errors.gameChanged": "The game files changed meanwhile (a game update or a Steam file check). Open “Restore original game assets” to see the state, then try again.",
   "errors.stalePatch": "The game files still hold skins written for an older game version. Run “Verify integrity of game files” in Steam, then try again.",
@@ -638,5 +640,7 @@
   "livery.bar.fill": "Turn on Paint mask to keep areas free of this coat",
   "livery.baking": "Baking livery: {{v0}}",
   "livery.badImage": "This image cannot be opened. Try a PNG or JPG.",
-  "errors.noLiveryView": "The livery is baked in the 3D view: wait until the weapon shows there, then try again."
+  "errors.noLiveryView": "The livery is baked in the 3D view: wait until the weapon shows there, then try again.",
+  "errors.duplicateMaterial": "Two overrides edit the same material: keep one of them and try again.",
+  "errors.fileInUse": "Another program has the file open: close it and try again."
 }

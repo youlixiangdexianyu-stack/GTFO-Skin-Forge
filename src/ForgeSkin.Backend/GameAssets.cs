@@ -176,7 +176,7 @@ public sealed class GameAssets : IDisposable
             _files.Remove(name);
         }
         Directory.CreateDirectory(Cache);
-        File.WriteAllText(cache, JsonSerializer.Serialize(index));
+        AtomicFile.WriteText(cache, JsonSerializer.Serialize(index));
         return index;
     }
 

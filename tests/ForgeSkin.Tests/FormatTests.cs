@@ -90,6 +90,9 @@ public class FormatTests
         { "bad-screen", (d, _) => d.Attachments[1].Screen!.Digits = 9 },
         { "no-glyphs", (d, _) => d.Attachments[1].Screen!.GlyphMeshes = null },
         { "bad-mesh", (_, f) => f["meshes/m1.forgeskinmesh"] = [1, 2, 3, 4, 5, 6, 7, 8] },
+        // A valid header whose counts claim far more than the data holds: caught before anything is allocated.
+        { "bad-mesh", (_, f) => f["meshes/m1.forgeskinmesh"] = [.. Mesh().Take(4), .. BitConverter.GetBytes(int.MaxValue / 3), .. BitConverter.GetBytes(3), 0, 0, 0, 0] },
+        { "duplicate-material", (d, _) => d.Materials.Add(new MaterialOverride { Material = "Front_UZI_2" }) },
         { "bad-trigger", (d, _) => d.Attachments[0].Effects.Add(new AttachmentEffect { Trigger = Trigger.Always }) },
         { "bad-audio", (_, f) => f["sounds/k1.ogg"] = "RIFF0000WAVE"u8.ToArray() },
     };

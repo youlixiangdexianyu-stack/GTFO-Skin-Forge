@@ -157,6 +157,8 @@ export function paintMaterial(
   mat.emissiveIntensity = on ? (params.emissiveIntensity ?? 1) : 0;
   // Blend mode as the game draws it: lenses see-through with a slight reflection, cutouts alpha-tested.
   const glass = info?.kind === 'glass';
+  // Transparency is part of the shader (alphaTest rebuilds it by itself).
+  if (mat.transparent !== glass) mat.needsUpdate = true;
   mat.transparent = glass;
   mat.opacity = glass ? (tint[3] ?? 0.2) : 1;
   mat.depthWrite = !glass;
@@ -165,7 +167,6 @@ export function paintMaterial(
     mat.metalness = 0;
     mat.roughness = 0.05;
   }
-  mat.needsUpdate = true;
   return loads;
 }
 
@@ -207,9 +208,10 @@ function showReticle(mat: MeshStandardMaterial, r: PreviewMaterial['reticles'][n
   });
 }
 
+/** Only a map coming or going changes the shader; another texture in the same slot needs no rebuild. */
 function setSlot(mat: MeshStandardMaterial, ch: TextureChannel, t: Texture | null) {
   const slot = SLOT[ch];
+  if (!mat[slot] !== !t) mat.needsUpdate = true;
   mat[slot] = t;
   if (ch === 'metallicSmoothness') mat.roughnessMap = t;
-  mat.needsUpdate = true;
 }

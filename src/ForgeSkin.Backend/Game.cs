@@ -54,8 +54,7 @@ public static class Game
     static void WriteSettings(JsonObject settings)
     {
         Directory.CreateDirectory(Paths.Data);
-        File.WriteAllText(Paths.Settings + ".tmp", settings.ToJsonString(new JsonSerializerOptions { WriteIndented = true }));
-        File.Move(Paths.Settings + ".tmp", Paths.Settings, true);
+        AtomicFile.WriteText(Paths.Settings, settings.ToJsonString(new JsonSerializerOptions { WriteIndented = true }));
     }
 
     static IEnumerable<string> Candidates()

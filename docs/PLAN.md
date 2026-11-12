@@ -60,7 +60,10 @@ poses with one helper (`unityToThree` / `threeToUnity` in `app/src/renderer/spac
 - `SkinDocument` is both the editor project (`.forgeskinproj`, JSON, file references relative to the project file) and the pack
   manifest (`manifest.json` in a `.forgeskin` zip, references are zip paths). `editor` holds UI state and is dropped when packing.
 - `SkinPack.Open` validates; error codes: `schema`, `no-id`, `no-gear`, `no-manifest`, `no-material`, `bad-path`,
-  `missing-file`, `bad-image`, `bad-trigger`, `bad-vector`, `no-atlas`, `bad-atlas`, `no-anchor`, `empty-attachment`, `bad-screen`, `no-glyphs`, `bad-mesh`, `bad-audio`.
+  `missing-file`, `bad-image`, `bad-trigger`, `bad-vector`, `no-atlas`, `bad-atlas`, `no-anchor`, `empty-attachment`, `bad-screen`, `no-glyphs`, `bad-mesh`, `bad-audio`, `duplicate-material` (two
+  overrides of one material name). Colours, sizes and other vectors must have their length and be finite; fractions and volumes
+  lie in 0–1. A mesh entry must start with the `.forgeskinmesh` magic; `ForgeSkinMesh.Read` checks the counts against the data
+  length before allocating, and a broken GLB is `bad-mesh` when packing or importing.
 - `.forgeskinmesh` is the attachment mesh format (see `ForgeSkinMesh`).
 - `SkinDocument.Parts` (`PartTransform`): part id (same ids as `Attachment.Part`), optional child path under it (as
   `Transform.Find` takes it), and absolute local values — `position`, `rotation` (Euler degrees), `scale`, `visible` — each
@@ -146,8 +149,15 @@ app moves its pre-rename Electron profile (`%APPDATA%/GTFO Skin Forge`) to `%APP
 Error codes: `game-not-found`, `game-running`, `bad-request`, `not-found`, `no-plugin` (no plugin build to install),
 `nothing-to-apply` (the pack has no material texture or parameter a game file can hold), `game-changed` (a patched file changed
 since it was written: game update or Steam file check), `stale-patch` (a game file still holds a patch written on an older game
-build), `bad-backup` (a backup is missing or its SHA-256 does not match), plus the format codes in §3.1. `gameDir` overrides the
-located game for `assets.*` (tests run on a copied folder, never on the real install).
+build), `bad-backup` (a backup is missing or its SHA-256 does not match), `file-in-use` (a file is locked by another program),
+`internal` (anything unexpected; logged with its stack trace), plus the format codes in §3.1. `bad-request` is only for a
+malformed request or a missing or mistyped param; a missing file is `not-found`. `gameDir` overrides the
+located game for `assets.*` (tests run on a copied folder, never on the real install); it is read under the same game-reader
+gate and never touches the located game's cache.
+
+Requests run in parallel. Methods that read, change and write a file (settings, `active.json`, projects, plugin files) run one
+at a time; so do the long writers (`pack.build`, `pack.exportMod`, `assets.apply/restore/export`). Every durable file is written
+to `<file>.tmp` and moved over the target; a stale temp is deleted first and a failed write leaves the target untouched.
 
 Plugin source for `plugin.install`: `plugin/` next to the backend exe in a packaged app; in a checkout the newest of the plugin
 project's Release/Debug output and the committed prebuilt copy in the repo's `plugin/` folder. Every Release build of the plugin
@@ -245,7 +255,10 @@ game is not running.
   and part layout need the plugin and come back as warnings, as does alpha dropped by a format without alpha.
 - Records: `<dataDir>/game-assets/<buildId>-<game dir hash>/` holds `originals/` (each file copied once before its first change,
   SHA-256 checked), `packs/` (a copy of every applied pack) and `state.json` (per file the original SHA-256, size and write time
-  and the last written SHA-256; per skin its targets and warnings). Never inside the game folder.
+  and the last written SHA-256; per skin its targets and warnings). Never inside the game folder. The record is saved after every
+  file, and a backup is deleted only once the saved record no longer names it, so an apply or restore that stops halfway is
+  continued by the next one; a skin being removed stays on record until all its files are rebuilt, and a failed re-apply puts
+  the skin's previous pack copy back.
 - Every apply or removal rebuilds the touched files from their originals with all applied skins in order (a later skin wins per
   channel), writes a temp file beside the target, swaps it in with the shared game reader closed, and puts the original write time
   back so the game's build id stays the same. Before writing, a recorded file must still match what was written (or the original,

@@ -56,9 +56,16 @@ public static class AssetPatch
         var old = state.Skins.FirstOrDefault(s => s.Id == doc.Id);
         var files = targets.Select(t => t.File).Concat(old?.Targets.Select(t => t.File) ?? []).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
 
+        // The copy an earlier apply of this skin stored is kept beside it until the rebuild succeeds, and put back if it fails.
         var copy = Path.Combine(stateDir, "packs", Preview.Safe(doc.Id) + SkinPack.Extension);
+        var previous = copy + ".previous";
         Directory.CreateDirectory(Path.GetDirectoryName(copy)!);
-        if (!Path.GetFullPath(packPath).Equals(copy, StringComparison.OrdinalIgnoreCase)) File.Copy(packPath, copy, true);
+        bool replace = !Path.GetFullPath(packPath).Equals(copy, StringComparison.OrdinalIgnoreCase);
+        if (replace)
+        {
+            if (File.Exists(copy)) File.Move(copy, previous, true);
+            File.Copy(packPath, copy, true);
+        }
         var skin = new AppliedSkin(doc.Id, doc.Name, doc.Version, Path.GetFileName(copy), DateTime.UtcNow, targets, warnings);
         if (old != null) state.Skins[state.Skins.IndexOf(old)] = skin;
         else state.Skins.Add(skin);
@@ -69,6 +76,11 @@ public static class AssetPatch
         }
         catch
         {
+            if (replace)
+            {
+                if (File.Exists(previous)) File.Move(previous, copy, true);
+                else File.Delete(copy);
+            }
             // Nothing backed up yet: drop the folder. Else the record keeps its files but not this skin; a file already
             // rebuilt with it loses it on the next rebuild, since every rebuild starts from the original.
             if (LoadState(stateDir) is not { } saved) Directory.Delete(stateDir, true);
@@ -80,6 +92,7 @@ public static class AssetPatch
             }
             throw;
         }
+        if (File.Exists(previous)) File.Delete(previous);
         return new { skin = doc.Id, buildId, files, materials = targets.Select(t => t.Material).Distinct().ToList(), warnings };
     }
 
@@ -97,14 +110,23 @@ public static class AssetPatch
         if (skinId != null)
         {
             var skin = state?.Skins.FirstOrDefault(s => s.Id == skinId) ?? throw new BackendException("not-found", $"Skin {skinId} is not applied to the game files");
-            state.Skins.Remove(skin);
             var files = skin.Targets.Select(t => t.File).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
-            restored.AddRange(Rebuild(dir, stateDir, state!, files, _ => [], -1));
-            if (Directory.Exists(stateDir)) File.Delete(Path.Combine(stateDir, "packs", skin.Pack));
+            // The skin stays on record until every one of its files is rebuilt without it, so a failed restore can be retried.
+            restored.AddRange(Rebuild(dir, stateDir, state!, files, _ => [], -1, without: skinId));
+            state!.Skins.Remove(skin);
+            if (state.Files.Count == 0 && state.Skins.Count == 0) Directory.Delete(stateDir, true);
+            else
+            {
+                SaveState(stateDir, state);
+                File.Delete(Path.Combine(stateDir, "packs", skin.Pack));
+            }
         }
         else if (state != null)
         {
+            // The record is saved after every file (its backup deleted only then), so a restore that stops halfway is
+            // continued by the next one.
             var data = Path.Combine(dir, "GTFO_Data");
+            state.Skins.Clear();
             foreach (var (file, rec) in state.Files.ToList())
             {
                 var target = Path.Combine(data, file);
@@ -116,9 +138,10 @@ public static class AssetPatch
                 }
                 PutOriginal(stateDir, data, file, rec);
                 state.Files.Remove(file);
+                SaveState(stateDir, state);
+                File.Delete(Path.Combine(stateDir, "originals", file));
                 restored.Add(file);
             }
-            state.Skins.Clear();
             if (state.Files.Count == 0) Directory.Delete(stateDir, true);
             else SaveState(stateDir, state);
         }
@@ -138,7 +161,7 @@ public static class AssetPatch
         var files = state?.Files.Select(kv =>
         {
             var target = Path.Combine(data, kv.Key);
-            var now = File.Exists(target) ? Sha(target) : null;
+            var now = File.Exists(target) ? FileHash.Sha256(target, cached: true) : null;
             var backup = Path.Combine(stateDir, "originals", kv.Key);
             return new
             {
@@ -146,7 +169,7 @@ public static class AssetPatch
                 // patched: holds what this tool wrote; original: the game put its own file back (Steam verify); changed: neither
                 // (a game update or another tool); missing: the file is gone.
                 state = now == null ? "missing" : now == kv.Value.PatchedSha ? "patched" : now == kv.Value.OriginalSha ? "original" : "changed",
-                backupOk = File.Exists(backup) && Sha(backup) == kv.Value.OriginalSha,
+                backupOk = File.Exists(backup) && FileHash.Sha256(backup, cached: true) == kv.Value.OriginalSha,
                 skins = state.Skins.Where(s => s.Targets.Any(t => t.File.Equals(kv.Key, StringComparison.OrdinalIgnoreCase))).Select(s => s.Id).ToList(),
             };
         }).ToList() ?? [];
@@ -200,14 +223,14 @@ public static class AssetPatch
                 Patch(source, data, group.Select(t => new Edit(t.PathId, Override(doc, t), pack, doc.Id)).ToList(), outFile, _ => warnings);
                 written.Add((group.Key, outFile, originalSha));
             }
-            var temp = outPath + ".tmp";
-            using (var zip = ZipFile.Open(temp, ZipArchiveMode.Create))
+            using var temp = new AtomicFile(outPath);
+            using (var zip = ZipFile.Open(temp.Temp, ZipArchiveMode.Create))
             {
                 foreach (var (file, path, _) in written) zip.CreateEntryFromFile(path, "GTFO_Data/" + file, CompressionLevel.Optimal);
                 using var readme = new StreamWriter(zip.CreateEntry("README.txt").Open(), new UTF8Encoding(true));
                 readme.Write(Readme(doc, dir, buildId, written.Select(w => (w.File, w.OriginalSha)).ToList(), warnings));
             }
-            File.Move(temp, outPath, true);
+            temp.Commit();
         }
         finally
         {
@@ -273,41 +296,46 @@ public static class AssetPatch
 
     // ---- applying ----
 
-    // Rewrites `files` from their originals with every applied skin that touches them; a file no skin touches any more gets
-    // its original back. Returns the files given back their original.
-    static List<string> Rebuild(string dir, string stateDir, State state, List<string> files, Func<string, List<string>> warningsOf, long requestId)
+    // Rewrites `files` from their originals with every applied skin that touches them (except `without`, a skin being
+    // removed); a file no skin touches any more gets its original back. Every file is checked before the first one is
+    // written, so a file the game changed leaves all of them alone. Returns the files given back their original.
+    static List<string> Rebuild(string dir, string stateDir, State state, List<string> files, Func<string, List<string>> warningsOf, long requestId, string? without = null)
     {
         var data = Path.Combine(dir, "GTFO_Data");
+        foreach (var file in files)
+        {
+            var target = Path.Combine(data, file);
+            if (!File.Exists(target)) throw new BackendException("not-found", $"{target} missing");
+            if (state.Files.TryGetValue(file, out var rec) && Sha(target) is var now && now != rec.PatchedSha && now != rec.OriginalSha)
+                throw new BackendException("game-changed", $"{file} changed since it was patched (game update or file check); run assets.status");
+        }
+        var skins = state.Skins.Where(s => s.Id != without).ToList();
         var packs = new Dictionary<string, SkinPack>();
         var restored = new List<string>();
         try
         {
-            foreach (var s in state.Skins) packs[s.Id] = SkinPack.Open(Path.Combine(stateDir, "packs", s.Pack));
+            foreach (var s in skins) packs[s.Id] = SkinPack.Open(Path.Combine(stateDir, "packs", s.Pack));
             int done = 0;
             foreach (var file in files)
             {
                 Program.Progress(requestId, done++, files.Count, file);
                 var target = Path.Combine(data, file);
-                if (!File.Exists(target)) throw new BackendException("not-found", $"{target} missing");
-                if (state.Files.TryGetValue(file, out var rec))
-                {
-                    var now = Sha(target);
-                    if (now != rec.PatchedSha && now != rec.OriginalSha)
-                        throw new BackendException("game-changed", $"{file} changed since it was patched (game update or file check); run assets.status");
-                }
-                else
+                if (!state.Files.TryGetValue(file, out var rec))
                 {
                     var sha = NotStale(dir, state.BuildId, file, target);
                     var backup = Path.Combine(stateDir, "originals", file);
                     Directory.CreateDirectory(Path.GetDirectoryName(backup)!);
-                    File.Copy(target, backup + ".tmp", true);
-                    if (Sha(backup + ".tmp") != sha) throw new BackendException("game-changed", $"{file} changed while it was backed up");
-                    File.Move(backup + ".tmp", backup, true);
+                    using (var copy = new AtomicFile(backup))
+                    {
+                        File.Copy(target, copy.Temp, true);
+                        if (Sha(copy.Temp) != sha) throw new BackendException("game-changed", $"{file} changed while it was backed up");
+                        copy.Commit();
+                    }
                     state.Files[file] = rec = new FileRecord(sha, new FileInfo(target).Length, File.GetLastWriteTimeUtc(target), null);
                     SaveState(stateDir, state);
                 }
 
-                var edits = state.Skins.SelectMany(s => s.Targets.Where(t => t.File.Equals(file, StringComparison.OrdinalIgnoreCase))
+                var edits = skins.SelectMany(s => s.Targets.Where(t => t.File.Equals(file, StringComparison.OrdinalIgnoreCase))
                     .Select(t => new Edit(t.PathId, Override(packs[s.Id].Manifest, t), packs[s.Id], s.Id))).ToList();
                 if (edits.Count == 0)
                 {
@@ -317,48 +345,34 @@ public static class AssetPatch
                 }
                 else
                 {
-                    var temp = target + ".forgeskin.tmp";
-                    try
-                    {
-                        Patch(Path.Combine(stateDir, "originals", file), data, edits, temp, warningsOf);
-                        var patched = Sha(temp);
-                        Replace(temp, target);
-                        File.SetLastWriteTimeUtc(target, rec.OriginalTime);
-                        state.Files[file] = rec with { PatchedSha = patched };
-                    }
-                    finally
-                    {
-                        File.Delete(temp);
-                    }
+                    using var temp = new AtomicFile(target);
+                    Patch(Path.Combine(stateDir, "originals", file), data, edits, temp.Temp, warningsOf);
+                    var patched = Sha(temp.Temp);
+                    temp.Commit(Replace);
+                    File.SetLastWriteTimeUtc(target, rec.OriginalTime);
+                    state.Files[file] = rec with { PatchedSha = patched };
                 }
                 SaveState(stateDir, state);
+                if (edits.Count == 0) File.Delete(Path.Combine(stateDir, "originals", file));
             }
         }
         finally
         {
             foreach (var p in packs.Values) p.Dispose();
         }
-        if (state.Files.Count == 0 && state.Skins.Count == 0) Directory.Delete(stateDir, true);
         return restored;
     }
 
+    // Puts the backed-up original over the game file; the caller deletes the backup once the record no longer names it.
     static void PutOriginal(string stateDir, string data, string file, FileRecord rec)
     {
         var backup = Path.Combine(stateDir, "originals", file);
         if (!File.Exists(backup) || Sha(backup) != rec.OriginalSha) throw new BackendException("bad-backup", $"The backup of {file} is missing or damaged");
         var target = Path.Combine(data, file);
-        var temp = target + ".forgeskin.tmp";
-        try
-        {
-            File.Copy(backup, temp, true);
-            Replace(temp, target);
-            File.SetLastWriteTimeUtc(target, rec.OriginalTime);
-        }
-        finally
-        {
-            File.Delete(temp);
-        }
-        File.Delete(backup);
+        using var temp = new AtomicFile(target);
+        File.Copy(backup, temp.Temp, true);
+        temp.Commit(Replace);
+        File.SetLastWriteTimeUtc(target, rec.OriginalTime);
     }
 
     // Moves a finished copy over a game file, with the shared reader closed.
@@ -594,12 +608,7 @@ public static class AssetPatch
         if (Game.Running) throw new BackendException("game-running", "Close GTFO first: it reads these files while it runs");
     }
 
-    static T Read<T>(string? gameDir, Func<GameAssets, T> read)
-    {
-        if (gameDir == null) return Methods.WithGame(read);
-        using var g = new GameAssets(Path.GetFullPath(gameDir));
-        return read(g);
-    }
+    static T Read<T>(string? gameDir, Func<GameAssets, T> read) => Methods.WithGame(read, gameDir: gameDir);
 
     static string Root => Path.Combine(Paths.Data, "game-assets");
 
@@ -618,9 +627,7 @@ public static class AssetPatch
     static void SaveState(string stateDir, State state)
     {
         Directory.CreateDirectory(stateDir);
-        var file = Path.Combine(stateDir, "state.json");
-        File.WriteAllText(file + ".tmp", JsonSerializer.Serialize(state, Program.Json));
-        File.Move(file + ".tmp", file, true);
+        AtomicFile.WriteText(Path.Combine(stateDir, "state.json"), JsonSerializer.Serialize(state, Program.Json));
     }
 
     // Records of this game dir made on another game build.
@@ -644,11 +651,7 @@ public static class AssetPatch
         return sha;
     }
 
-    static string Sha(string path)
-    {
-        using var s = File.OpenRead(path);
-        return Convert.ToHexString(SHA256.HashData(s));
-    }
+    static string Sha(string path) => FileHash.Sha256(path);
 
     static string Readme(SkinDocument doc, string dir, string buildId, List<(string File, string OriginalSha)> files, List<string> warnings)
     {

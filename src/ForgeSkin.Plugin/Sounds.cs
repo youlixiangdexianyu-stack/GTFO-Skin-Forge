@@ -31,14 +31,22 @@ static class SoundOut
         _source!.PlayOneShot(clip, Math.Clamp(volume, 0, 1));
     }
 
+    static AudioListener? _heard; // the listener the last search settled on: another active one, else ours
+    static float _nextSearch;
+
+    // The scene is searched only when that listener is gone or off, and, while ours is the one, at most every 10 s so
+    // another one appearing later takes over.
     static void EnsureListener()
     {
-        bool other = false;
+        if (_heard != null && _heard.isActiveAndEnabled && (_heard != _listener || Time.unscaledTime < _nextSearch)) return;
+        _nextSearch = Time.unscaledTime + 10f;
+        _heard = null;
         foreach (var o in Object.FindObjectsOfType(Il2CppType.Of<AudioListener>()))
-            if (o.TryCast<AudioListener>() is { } l && l.isActiveAndEnabled && (_listener == null || l.Pointer != _listener.Pointer)) other = true;
-        if (other) { if (_listener != null) _listener.enabled = false; return; }
+            if (o.TryCast<AudioListener>() is { } l && l.isActiveAndEnabled && (_listener == null || l.Pointer != _listener.Pointer)) _heard = l;
+        if (_heard != null) { if (_listener != null) _listener.enabled = false; return; }
         _listener ??= _root!.AddComponent(Il2CppType.Of<AudioListener>()).Cast<AudioListener>();
         _listener.enabled = true;
+        _heard = _listener;
     }
 
     public static AudioClip Decode(byte[] ogg, string name)

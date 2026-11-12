@@ -91,13 +91,22 @@ export function loadTexture(path: string, channel: TextureChannel | 'reticle'): 
   return p;
 }
 
+/** Key sets of the textures each user (one paint of the 3D view, one thumbnail render) still needs. */
+const held = new Set<Set<string>>();
+
+/** Keeps the textures whose keys are in `keys` while it is held; a live set, so keys added later are kept too. */
+export function holdTextures(keys: Set<string>) {
+  held.add(keys);
+}
+
 /**
- * Frees every cached texture whose key is not in `keep` (GPU copy and decoded pixels). Called once the textures in use
- * have been put on the materials, so nothing drawn still points at a freed one.
+ * Lets go of `sets` and frees every cached texture no held set needs (GPU copy and decoded pixels). The 3D view lets go
+ * of its earlier paints once the textures in use have been put on the materials, so nothing drawn points at a freed one.
  */
-export function releaseTextures(keep: Set<string>) {
+export function releaseTextures(...sets: Set<string>[]) {
+  sets.forEach((s) => held.delete(s));
   for (const [key, p] of cache) {
-    if (keep.has(key)) continue;
+    if ([...held].some((s) => s.has(key))) continue;
     cache.delete(key);
     void p.then(
       (t) => t.dispose(),

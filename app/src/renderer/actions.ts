@@ -50,9 +50,9 @@ function badVector(doc: SkinDocument): string | null {
   return null;
 }
 
-/** Things the user must fix before building, in plain words. */
-function preflight(): string | null {
-  const { doc, prefs } = st();
+/** Things the user must fix before building `doc` (by default the edited skin), in plain words. */
+function preflight(doc = st().doc): string | null {
+  const { prefs } = st();
   const pending = Object.keys(editorOf(doc).pending).length;
   if (pending) return t('actions.k1', { v0: pending });
   const item = currentItem();
@@ -93,7 +93,7 @@ async function build(out: string, skin?: { doc: SkinDocument; path: string }): P
 }
 
 /** Builds the current skin's pack at `out` after the usual checks; null (with a toast) when something must be fixed first.
- * Leaves `busy` set: the caller clears it when its own step is done. */
+ * Runs inside the caller's exclusive(), which clears `busy` when its own step is done. */
 export async function buildPack(out: string): Promise<string | null> {
   const problem = preflight();
   if (problem) {
@@ -101,6 +101,29 @@ export async function buildPack(out: string): Promise<string | null> {
     return null;
   }
   return build(out);
+}
+
+let building = false;
+let applyAgain = false;
+
+/** Runs one build or export at a time; undefined (with a note unless `quiet`) when another is still going. The one
+ * running owns `busy` and clears it when done; an automatic apply asked for meanwhile runs once after it. */
+export async function exclusive<T>(fn: () => Promise<T>, quiet = false): Promise<T | undefined> {
+  if (building) {
+    if (!quiet) st().toast('info', t('actions.building'));
+    return undefined;
+  }
+  building = true;
+  try {
+    return await fn();
+  } finally {
+    building = false;
+    useStore.setState({ busy: null });
+    if (applyAgain) {
+      applyAgain = false;
+      void applyToGame(true);
+    }
+  }
 }
 
 /** What stops 应用到游戏 for the chosen profile, in plain words; null when it can go ahead. */
@@ -142,6 +165,11 @@ export async function ensurePlugin(quiet = false): Promise<boolean> {
 /** Builds the skin and installs it into the test profile. `quiet` (automatic applies) skips silently when something
  * must be fixed first and reports only the game's warnings. */
 export async function applyToGame(quiet = false): Promise<void> {
+  if (building && quiet) return void (applyAgain = true);
+  await exclusive(() => apply(quiet), quiet);
+}
+
+async function apply(quiet: boolean): Promise<void> {
   const s = st();
   const problem = preflight();
   if (problem) return quiet ? undefined : s.toast('error', problem);
@@ -172,8 +200,6 @@ export async function applyToGame(quiet = false): Promise<void> {
     s.log(t('actions.k14', { v0: pack, v1: profile.path }));
   } catch (e) {
     s.fail(e, t('actions.k15'));
-  } finally {
-    useStore.setState({ busy: null });
   }
 }
 
@@ -214,14 +240,14 @@ export async function exportPack(): Promise<void> {
   if (problem) return s.toast('error', problem);
   const out = await window.forge.saveDialog(`${s.doc.name || s.weaponId}.forgeskin`, [{ name: t('actions.k16'), extensions: ['forgeskin'] }]);
   if (!out) return;
-  try {
-    const pack = await build(out);
-    s.toast('ok', t('actions.k17'), { label: t('actions.k18'), run: () => void window.forge.showInFolder(pack) });
-  } catch (e) {
-    s.fail(e, t('actions.k19'));
-  } finally {
-    useStore.setState({ busy: null });
-  }
+  await exclusive(async () => {
+    try {
+      const pack = await build(out);
+      s.toast('ok', t('actions.k17'), { label: t('actions.k18'), run: () => void window.forge.showInFolder(pack) });
+    } catch (e) {
+      s.fail(e, t('actions.k19'));
+    }
+  });
 }
 
 export async function exportObj(mode: 'separate' | 'merged'): Promise<void> {
@@ -271,29 +297,40 @@ export interface ModInfo {
 /** Builds the chosen skins of the current item and packs them as a Thunderstore skin mod zip. Returns false when it stopped. */
 export async function exportMod(info: ModInfo): Promise<boolean> {
   const s = st();
-  if (info.skins.includes(s.doc.id!)) {
-    const problem = preflight();
-    if (problem) return (s.toast('error', problem), false);
-  }
-  const out = await window.forge.saveDialog(`${info.name}-${info.version}.zip`, [{ name: 'Thunderstore', extensions: ['zip'] }]);
-  if (!out) return false;
+  // Every skin that goes in passes the same checks as the edited one; the first that does not is named.
+  let skins: { id: string; skin?: { doc: SkinDocument; path: string } }[];
   try {
-    const packs: string[] = [];
-    for (const id of info.skins) {
-      const entry = s.skins.find((k) => k.id === id)!;
-      const skin = id === s.doc.id ? undefined : { doc: await call('project.load', { path: entry.path }), path: entry.path };
-      packs.push(await build(`${s.dataDir}\\packs\\${id}.forgeskin`, skin));
-    }
-    useStore.setState({ busy: t('actions.k6') });
-    const { mod } = await call('pack.exportMod', { packs, out, name: info.name, version: info.version, description: info.description, icon: info.icon });
-    s.toast('ok', t('exportMod.done'), { label: t('actions.k18'), run: () => void window.forge.showInFolder(mod) });
-    return true;
+    skins = await Promise.all(
+      info.skins.map(async (id) => {
+        const entry = s.skins.find((k) => k.id === id)!;
+        return { id, skin: id === s.doc.id ? undefined : { doc: await call('project.load', { path: entry.path }), path: entry.path } };
+      }),
+    );
   } catch (e) {
     s.fail(e, t('exportMod.failed'));
     return false;
-  } finally {
-    useStore.setState({ busy: null });
   }
+  for (const { skin } of skins) {
+    const doc = skin?.doc ?? s.doc;
+    const problem = preflight(doc);
+    if (problem) return (s.toast('error', t('exportMod.skinProblem', { v0: doc.name ?? '', v1: problem })), false);
+  }
+  const out = await window.forge.saveDialog(`${info.name}-${info.version}.zip`, [{ name: 'Thunderstore', extensions: ['zip'] }]);
+  if (!out) return false;
+  const done = await exclusive(async () => {
+    try {
+      const packs: string[] = [];
+      for (const { id, skin } of skins) packs.push(await build(`${s.dataDir}\\packs\\${id}.forgeskin`, skin));
+      useStore.setState({ busy: t('actions.k6') });
+      const { mod } = await call('pack.exportMod', { packs, out, name: info.name, version: info.version, description: info.description, icon: info.icon });
+      s.toast('ok', t('exportMod.done'), { label: t('actions.k18'), run: () => void window.forge.showInFolder(mod) });
+      return true;
+    } catch (e) {
+      s.fail(e, t('exportMod.failed'));
+      return false;
+    }
+  });
+  return done ?? false;
 }
 
 /** Opens the Thunderstore skin mod export (ui/ExportModDialog). */

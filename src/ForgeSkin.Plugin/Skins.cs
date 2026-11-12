@@ -202,51 +202,78 @@ static class Skins
         if (events != _seen) { _seen = events; _due = now + 0.3f; return false; }
         if (_due < 0 || now < _due) return false;
         _due = -1;
-        try { Reload(); }
-        catch (IOException) when (++_busyRetries < 10) { _due = now + 0.5f; } // the backend is still writing
-        catch (Exception e) { _busyRetries = 0; ForgeSkinPlugin.Fail($"skins folder: {e.Message}"); }
-        return true;
+        try
+        {
+            Reload();
+            _busyRetries = 0;
+            return true;
+        }
+        // The backend is still writing a pack or active.json (a half-written file reads as bad JSON).
+        catch (Exception e) when (e is IOException or JsonException && ++_busyRetries < 10) { _due = now + 0.5f; }
+        catch (Exception e) { _busyRetries = 0; ForgeSkinPlugin.Fail($"skins folder: {e.Message}; the skins loaded before stay"); }
+        return false;
     }
 
+    // Builds the new state completely and only then replaces the old one; a failure leaves the old state as it was.
     static void Reload()
     {
         ForgeSkinPlugin.Info("reloading skins");
-        var files = Discover();
-        foreach (var gone in ByFile.Keys.Where(f => !files.Contains(f, StringComparer.OrdinalIgnoreCase)).ToList())
+        var byFile = new Dictionary<string, Skin>(StringComparer.OrdinalIgnoreCase);
+        var loaded = new List<Skin>();
+        var targets = new Dictionary<string, string>();
+        var globals = new List<string>();
+        try
         {
-            ByFile[gone].Destroy();
-            ByFile.Remove(gone);
-            ForgeSkinPlugin.Info($"removed {Path.GetFileName(gone)}");
-        }
-        foreach (var file in files)
-        {
-            var stamp = File.GetLastWriteTimeUtc(file);
-            if (ByFile.TryGetValue(file, out var old) && old.Stamp == stamp) continue;
-            if (Rejected.TryGetValue(file, out var bad) && bad == stamp) continue;
-            Skin skin;
-            try { skin = Skin.Load(file, stamp); }
-            catch (IOException) { throw; }
-            catch (Exception e)
+            foreach (var file in Discover())
             {
-                Rejected[file] = stamp;
-                var code = e is SkinFormatException f ? f.Code : e.GetType().Name;
-                ForgeSkinPlugin.Fail($"{Path.GetFileName(file)}: {code}: {e.Message}; skin not loaded");
-                continue;
+                var stamp = File.GetLastWriteTimeUtc(file);
+                ByFile.TryGetValue(file, out var old);
+                // A pack whose new version is rejected keeps its old one.
+                if (old != null && old.Stamp == stamp || Rejected.TryGetValue(file, out var bad) && bad == stamp)
+                {
+                    if (old != null) byFile[file] = old;
+                    continue;
+                }
+                try { byFile[file] = Skin.Load(file, stamp); }
+                catch (Exception e) when (e is not IOException)
+                {
+                    Rejected[file] = stamp;
+                    var code = e is SkinFormatException f ? f.Code : e.GetType().Name;
+                    ForgeSkinPlugin.Fail($"{Path.GetFileName(file)}: {code}: {e.Message}; skin not loaded");
+                    if (old != null) byFile[file] = old;
+                    continue;
+                }
+                loaded.Add(byFile[file]);
+                Rejected.Remove(file);
             }
-            old?.Destroy();
-            ByFile[file] = skin;
-            Rejected.Remove(file);
-            ForgeSkinPlugin.Info($"loaded {Path.GetFileName(file)}: id {skin.Doc.Id}, {skin.Doc.Materials.Count} materials, {skin.Doc.Attachments.Count} attachments, {skin.Doc.Sounds.Count} sounds");
+            ReadActive(targets, globals);
         }
-        _busyRetries = 0;
+        catch
+        {
+            foreach (var skin in loaded) skin.Destroy();
+            throw;
+        }
+
+        foreach (var (file, old) in ByFile)
+        {
+            if (byFile.TryGetValue(file, out var kept) && kept == old) continue;
+            old.Destroy();
+            if (kept == null) ForgeSkinPlugin.Info($"removed {Path.GetFileName(file)}");
+        }
+        ByFile.Clear();
+        foreach (var (file, skin) in byFile) ByFile[file] = skin;
+        foreach (var (file, skin) in byFile)
+            if (loaded.Contains(skin))
+                ForgeSkinPlugin.Info($"loaded {Path.GetFileName(file)}: id {skin.Doc.Id}, {skin.Doc.Materials.Count} materials, {skin.Doc.Attachments.Count} attachments, {skin.Doc.Sounds.Count} sounds");
 
         ById.Clear();
         foreach (var skin in ByFile.Values)
             if (!ById.TryAdd(skin.Doc.Id, skin)) ForgeSkinPlugin.Fail($"two packs share id {skin.Doc.Id}; one is ignored");
 
         Targets.Clear();
+        foreach (var (key, id) in targets) Targets[key] = id;
         Globals.Clear();
-        ReadActive();
+        Globals.AddRange(globals);
         var own = Path.GetFullPath(_dir) + Path.DirectorySeparatorChar;
         foreach (var (file, skin) in ByFile.OrderBy(kv => kv.Key, StringComparer.OrdinalIgnoreCase))
         {
@@ -281,17 +308,17 @@ static class Skins
         return files.ToArray();
     }
 
-    static void ReadActive()
+    static void ReadActive(Dictionary<string, string> targets, List<string> globals)
     {
         var active = Path.Combine(_dir, "active.json");
         if (!File.Exists(active)) return;
         using var json = JsonDocument.Parse(File.ReadAllText(active));
-        if (json.RootElement.TryGetProperty("targets", out var targets))
-            foreach (var entry in targets.EnumerateObject())
-                if (entry.Value.ValueKind == JsonValueKind.String) Targets[entry.Name] = entry.Value.GetString()!;
+        if (json.RootElement.TryGetProperty("targets", out var entries))
+            foreach (var entry in entries.EnumerateObject())
+                if (entry.Value.ValueKind == JsonValueKind.String) targets[entry.Name] = entry.Value.GetString()!;
                 else ForgeSkinPlugin.Fail($"active.json: bad target entry {entry.Name}");
         if (json.RootElement.TryGetProperty("global", out var global))
             foreach (var id in global.EnumerateArray())
-                if (id.ValueKind == JsonValueKind.String) Globals.Add(id.GetString()!);
+                if (id.ValueKind == JsonValueKind.String) globals.Add(id.GetString()!);
     }
 }

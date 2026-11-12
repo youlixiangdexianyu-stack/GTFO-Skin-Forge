@@ -28,12 +28,20 @@ public static class Projects
     {
         if (!File.Exists(path)) throw new BackendException("not-found", $"{path} not found");
         var dir = Path.GetDirectoryName(Path.GetFullPath(path))!;
-        var json = JsonNode.Parse(File.ReadAllText(path))?.AsObject() ?? throw new SkinFormatException("schema", $"{path} is empty");
+        // A damaged file is the file's fault (schema), not the backend's.
         SkinDocument doc;
-        if (json.ContainsKey("assignments")) doc = FromGtfoSkin(json, catalog);
-        else if (json.ContainsKey("layers") && json.ContainsKey("item_id")) doc = FromGtfDyn(json, catalog);
-        else if (json.ContainsKey("anchor_part_id")) doc = FromDly(json, catalog);
-        else doc = SkinJson.Read(json.ToJsonString());
+        try
+        {
+            var json = JsonNode.Parse(File.ReadAllText(path))?.AsObject() ?? throw new SkinFormatException("schema", $"{path} is empty");
+            if (json.ContainsKey("assignments")) doc = FromGtfoSkin(json, catalog);
+            else if (json.ContainsKey("layers") && json.ContainsKey("item_id")) doc = FromGtfDyn(json, catalog);
+            else if (json.ContainsKey("anchor_part_id")) doc = FromDly(json, catalog);
+            else doc = SkinJson.Read(json.ToJsonString());
+        }
+        catch (Exception e) when (e is System.Text.Json.JsonException or InvalidOperationException or FormatException)
+        {
+            throw new SkinFormatException("schema", $"{path}: {e.Message}");
+        }
         MapPaths(doc, p => Path.GetFullPath(Path.Combine(dir, p)));
         return doc;
     }
@@ -63,13 +71,11 @@ public static class Projects
         var copy = SkinJson.Read(SkinJson.Write(doc));
         MapPaths(copy, p => Path.IsPathRooted(p) && string.Equals(Path.GetPathRoot(p), Path.GetPathRoot(dir), StringComparison.OrdinalIgnoreCase)
             ? Path.GetRelativePath(dir, p).Replace('\\', '/') : p);
-        var temp = path + ".tmp";
-        File.WriteAllText(temp, SkinJson.Write(copy));
-        File.Move(temp, path, true);
+        AtomicFile.WriteText(path, SkinJson.Write(copy));
         return new { path };
     }
 
-    // Every file reference in a document (texture, layer source, decal image, font, mesh, atlas, sound). A texture slot
+    // Every file reference in a document (texture, layer source, decal image, font, mesh, part mesh, atlas, sound). A texture slot
     // without a file is dropped (the game texture stays).
     public static void MapPaths(SkinDocument doc, Func<string, string> map)
     {
@@ -96,6 +102,7 @@ public static class Projects
             if (a.Material != null) Dict(a.Material.Textures, map);
             if (a.Screen?.Font is { } font) a.Screen.Font = map(font);
         }
+        foreach (var t in doc.Parts.Where(t => t.Mesh != null)) t.Mesh = map(t.Mesh!);
         foreach (var s in doc.Sounds.Where(s => !string.IsNullOrEmpty(s.File))) s.File = map(s.File);
     }
 

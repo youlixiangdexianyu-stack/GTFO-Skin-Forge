@@ -63,11 +63,13 @@ sealed class Layer : ITriggered
     }
 }
 
-// Attachment Flash: emission ramps from its own colour to the peak and back over Seconds.
+// Attachment Flash: emission ramps from its own colour to the peak and back over Seconds. A surface that does not glow
+// (a screen with GlowInGame off) has emission switched off, which would ignore the colour: it emits while flashing.
 sealed class Flash : ITriggered
 {
     readonly Material[] _materials;
     readonly Color[] _rest;
+    readonly bool[] _emissive;
     readonly Color _peak;
     readonly float _seconds;
     float _start = -1;
@@ -76,19 +78,34 @@ sealed class Flash : ITriggered
     {
         _materials = materials;
         _rest = new Color[materials.Length];
-        for (int i = 0; i < materials.Length; i++) _rest[i] = materials[i].GetColor(SkinnedGear.EmissiveColor);
+        _emissive = new bool[materials.Length];
+        for (int i = 0; i < materials.Length; i++)
+        {
+            _rest[i] = materials[i].GetColor(SkinnedGear.EmissiveColor);
+            _emissive[i] = materials[i].IsKeywordEnabled(SkinnedGear.EmissiveKeyword);
+        }
         _peak = new Color(e.Color[0], e.Color[1], e.Color[2]) * (e.Intensity * SkinnedGear.EmissionUnit);
         _seconds = Math.Max(e.Seconds, 0.01f);
     }
 
-    public void Start(float time) => _start = time;
+    public void Start(float time)
+    {
+        if (_start < 0)
+            for (int i = 0; i < _materials.Length; i++)
+                if (!_emissive[i]) SkinnedGear.SetEmissive(_materials[i], true);
+        _start = time;
+    }
 
     public void Update(float time)
     {
         if (_start < 0) return;
         float t = (time - _start) / _seconds;
         float k = t >= 1 ? 0 : 1 - Math.Abs(2 * t - 1);
-        for (int i = 0; i < _materials.Length; i++) _materials[i].SetColor(SkinnedGear.EmissiveColor, Color.Lerp(_rest[i], _peak, k));
+        for (int i = 0; i < _materials.Length; i++)
+        {
+            _materials[i].SetColor(SkinnedGear.EmissiveColor, Color.Lerp(_rest[i], _peak, k));
+            if (t >= 1 && !_emissive[i]) SkinnedGear.SetEmissive(_materials[i], false);
+        }
         if (t >= 1) _start = -1;
     }
 }

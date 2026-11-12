@@ -75,24 +75,21 @@ function density(h: Intersection): number {
   return area3 > 0 ? Math.sqrt(areaUv / area3) : 0;
 }
 
-/** Brush samples as UV polylines (u, v, width); a miss or a jump across a UV seam starts a new stroke. */
-function strokesOf(samples: (Sample | null)[], width: number): number[][] {
-  const out: number[][] = [];
-  let cur: number[] = [];
-  let prev: Sample | null = null;
-  const flush = () => (cur.length && out.push(cur), (cur = []));
+/** Adds brush samples to `strokes`, UV polylines of (u, v, width), in place: they continue the last stroke when `prev` (its
+ * last sample) is given; a miss or a jump across a UV seam starts a new one. Returns the last sample added, else null. */
+function addSamples(strokes: number[][], prev: Sample | null, samples: (Sample | null)[], width: number): Sample | null {
   for (const s of samples) {
     if (!s) {
-      flush();
       prev = null;
       continue;
     }
-    if (prev && s.uv.distanceTo(prev.uv) > s.point.distanceTo(prev.point) * Math.max(s.density, prev.density) * 3 + 0.01) flush();
-    cur.push(s.uv.x, s.uv.y, width * s.density);
+    const seam = prev && s.uv.distanceTo(prev.uv) > s.point.distanceTo(prev.point) * Math.max(s.density, prev.density) * 3 + 0.01;
+    const p = [s.uv.x, s.uv.y, width * s.density];
+    if (prev && !seam) strokes[strokes.length - 1].push(...p);
+    else strokes.push(p);
     prev = s;
   }
-  flush();
-  return out;
+  return prev;
 }
 
 export function LiveryTool() {
@@ -118,7 +115,9 @@ export function LiveryTool() {
   useEffect(() => {
     const el = gl.domElement;
     const ray = new Raycaster();
-    let drag: { gesture: string; start: Vector2; last: Vector2; samples: (Sample | null)[]; before: number[][]; meshes: Object3D[] } | null = null;
+    // A brush gesture appends to the layer's strokes (one undo step): `base` strokes were there before it, `prev` is the
+    // last sample of its open stroke.
+    let drag: { gesture: string; start: Vector2; last: Vector2; meshes: Object3D[]; mask: boolean; base: number; prev: Sample | null } | null = null;
 
     const visibleMeshes = () => {
       const out: Object3D[] = [];
@@ -176,11 +175,19 @@ export function LiveryTool() {
       }, drag!.gesture);
     };
 
-    const apply = () => {
+    /** Adds samples to the gesture's strokes; `restart` first drops what the gesture drew (a line or circle redrawn). */
+    const apply = (samples: (Sample | null)[], restart = false) => {
       const s = selRef.current!;
-      const { mask, width } = useBrush.getState();
-      const strokes = [...drag!.before, ...strokesOf(drag!.samples, width)];
-      updateLivery(s.material, s.layer.id!, (l) => void (mask ? (l.mask = strokes) : (l.strokes = strokes)), drag!.gesture);
+      const d = drag!;
+      const width = useBrush.getState().width;
+      updateLivery(s.material, s.layer.id!, (l) => {
+        const list = (d.mask ? (l.mask ??= []) : (l.strokes ??= [])) as number[][];
+        if (restart) {
+          list.splice(d.base);
+          d.prev = null;
+        }
+        d.prev = addSamples(list, d.prev, samples, width);
+      }, d.gesture);
     };
 
     const down = (e: PointerEvent) => {
@@ -194,8 +201,8 @@ export function LiveryTool() {
       if (viewRefs.controls) viewRefs.controls.enabled = false;
       el.setPointerCapture(e.pointerId);
       const mask = useBrush.getState().mask;
-      drag = { gesture: newGesture(), start: p, last: p, samples: [sample(h)], before: ((mask ? s.layer.mask : s.layer.strokes) ?? []).filter((x): x is number[] => !!x), meshes };
-      if (painting()) apply();
+      drag = { gesture: newGesture(), start: p, last: p, meshes, mask, base: ((mask ? s.layer.mask : s.layer.strokes) ?? []).length, prev: null };
+      if (painting()) apply([sample(h)]);
       else placeDecal(h);
     };
     const move = (e: PointerEvent) => {
@@ -218,10 +225,9 @@ export function LiveryTool() {
         return;
       }
       const shape = useBrush.getState().shape;
-      if (shape === 'free') drag.samples.push(...along(drag.last, p, drag.meshes, false));
-      else drag.samples = shape === 'line' ? along(drag.start, p, drag.meshes) : circle(drag.start, p, drag.meshes);
+      if (shape === 'free') apply(along(drag.last, p, drag.meshes, false));
+      else apply(shape === 'line' ? along(drag.start, p, drag.meshes) : circle(drag.start, p, drag.meshes), true);
       drag.last = p;
-      apply();
     };
     const up = () => {
       if (!drag) return;

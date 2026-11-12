@@ -27,9 +27,7 @@ public static class Install
 
     static void WriteActive(string profile, JsonObject json)
     {
-        var path = ActiveFile(profile);
-        File.WriteAllText(path + ".tmp", json.ToJsonString(new JsonSerializerOptions { WriteIndented = true }));
-        File.Move(path + ".tmp", path, true);
+        AtomicFile.WriteText(ActiveFile(profile), json.ToJsonString(new JsonSerializerOptions { WriteIndented = true }));
     }
 
     static void SetActive(string profile, SkinDocument doc, bool active)
@@ -60,8 +58,11 @@ public static class Install
         var dir = Skins(profile);
         Directory.CreateDirectory(dir);
         var target = Path.Combine(dir, Preview.Safe(doc.Id) + SkinPack.Extension);
-        File.Copy(pack, target + ".tmp", true);
-        File.Move(target + ".tmp", target, true);
+        using (var file = new AtomicFile(target))
+        {
+            File.Copy(pack, file.Temp, true);
+            file.Commit();
+        }
         if (activate) SetActive(profile, doc, true);
         return new { installed = target, active = activate };
     }
@@ -127,8 +128,7 @@ public static class Install
         string source;
         try { source = PluginSource(); } catch (BackendException) { return false; }
         var dir = Game.PluginDir(profile);
-        return PluginFiles.All(f => File.Exists(Path.Combine(dir, f)) && Hash(Path.Combine(dir, f)) == Hash(Path.Combine(source, f)));
-        static string Hash(string file) { using var s = File.OpenRead(file); return Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(s)); }
+        return PluginFiles.All(f => File.Exists(Path.Combine(dir, f)) && FileHash.Sha256(Path.Combine(dir, f)) == FileHash.Sha256(Path.Combine(source, f)));
     }
 
     // Refuses while GTFO runs and holds the DLL.
@@ -206,7 +206,7 @@ public static class Install
             : GeneralLine.IsMatch(text) ? GeneralLine.Replace(text, "$0\n" + line, 1)
             : text + (text.Length > 0 && !text.EndsWith('\n') ? "\n" : "") + "[General]\n" + line + "\n";
         Directory.CreateDirectory(Path.GetDirectoryName(file)!);
-        File.WriteAllText(file, text);
+        AtomicFile.WriteText(file, text);
         return new { development = on, restartNeeded = Game.Running };
     }
 

@@ -141,7 +141,10 @@ public static class GlbReader
         var data = File.ReadAllBytes(path);
         if (data.Length < 20 || BitConverter.ToUInt32(data, 0) != 0x46546C67) throw new BackendException("bad-mesh", $"{path} is not a binary glTF (.glb)");
         int jsonLen = BitConverter.ToInt32(data, 12);
-        var json = JsonNode.Parse(Encoding.UTF8.GetString(data, 20, jsonLen))!;
+        if (jsonLen < 0 || 20L + jsonLen > data.Length) throw new BackendException("bad-mesh", $"{path}: JSON chunk reaches past the end of the file");
+        JsonNode json;
+        try { json = JsonNode.Parse(Encoding.UTF8.GetString(data, 20, jsonLen))!; }
+        catch (JsonException e) { throw new BackendException("bad-mesh", $"{path}: {e.Message}"); }
         int binStart = 20 + jsonLen + 8;
         if (json["extensionsRequired"] is JsonArray req && req.Count > 0)
             throw new BackendException("bad-mesh", $"{path} needs {string.Join(", ", req)}; export without compression");
@@ -155,12 +158,14 @@ public static class GlbReader
             bool norm = (bool?)acc["normalized"] ?? false;
             int size = type switch { 5126 or 5125 => 4, 5123 or 5122 => 2, _ => 1 };
             int stride = (int?)view["byteStride"] ?? size * comps;
-            int start = binStart + ((int?)view["byteOffset"] ?? 0) + ((int?)acc["byteOffset"] ?? 0);
+            long start = binStart + ((long?)view["byteOffset"] ?? 0) + ((long?)acc["byteOffset"] ?? 0);
+            if (count < 0 || stride < 0 || start < 0 || start + (count - 1L) * stride + comps * size > data.Length)
+                throw new BackendException("bad-mesh", $"{path}: accessor {accessor} reaches past the end of the file");
             var result = new float[count * comps];
             for (int i = 0; i < count; i++)
                 for (int c = 0; c < comps; c++)
                 {
-                    int at = start + i * stride + c * size;
+                    int at = (int)start + i * stride + c * size;
                     result[i * comps + c] = type switch
                     {
                         5126 => BitConverter.ToSingle(data, at),
@@ -209,6 +214,7 @@ public static class GlbReader
                     }
                     else hasUv = false;
                     var ind = prim["indices"] is { } ia ? Floats((int)ia, out _).Select(f => (int)f).ToArray() : Enumerable.Range(0, count).ToArray();
+                    if (ind.Any(i => i < 0 || i >= count)) throw new BackendException("bad-mesh", $"{path}: triangle index out of range");
                     bool mirrored = world.GetDeterminant() < 0;
                     for (int i = 0; i + 2 < ind.Length; i += 3)
                     {
@@ -220,8 +226,16 @@ public static class GlbReader
             foreach (var c in node["children"]?.AsArray() ?? []) Visit((int)c!, world);
         }
 
-        var scene = json["scenes"]![(int?)json["scene"] ?? 0]!;
-        foreach (var n in scene["nodes"]!.AsArray()) Visit((int)n!, Matrix4x4.Identity);
+        // A reference to a missing node, mesh, accessor or view, or a field of the wrong type, is a broken file, not a crash.
+        try
+        {
+            var scene = json["scenes"]![(int?)json["scene"] ?? 0]!;
+            foreach (var n in scene["nodes"]!.AsArray()) Visit((int)n!, Matrix4x4.Identity);
+        }
+        catch (Exception e) when (e is ArgumentOutOfRangeException or IndexOutOfRangeException or NullReferenceException or InvalidOperationException or FormatException)
+        {
+            throw new BackendException("bad-mesh", $"{path}: {e.Message}");
+        }
         if (pos.Count == 0 || idx.Count == 0) throw new BackendException("bad-mesh", $"{path} has no triangle meshes");
 
         // glTF -> Unity: negate Z, flip winding and V.

@@ -11,23 +11,6 @@ public static class PreviewCache
 
     static bool Done(GameAssets g, string itemId) => File.Exists(Path.Combine(Dir(g, itemId), "preview.json"));
 
-    // Reads only the cache folder, never waits for the game reader.
-    public static object Status()
-    {
-        var build = GameAssets.ReadBuildId(Game.Dir);
-        var dir = GameAssets.CacheDir(build);
-        var catalog = Path.Combine(dir, "catalog.json");
-        bool ready = File.Exists(catalog);
-        var preview = Path.Combine(dir, "preview");
-        return new
-        {
-            build,
-            catalogReady = ready,
-            previewsReady = Directory.Exists(preview) ? Directory.EnumerateFiles(preview, "preview.json", SearchOption.AllDirectories).Count() : 0,
-            previewsTotal = ready ? System.Text.Json.Nodes.JsonNode.Parse(File.ReadAllText(catalog))!.AsArray().Count : 0,
-        };
-    }
-
     public static void Ready(GameAssets g, List<CatalogItem> items)
     {
         foreach (var dir in Directory.EnumerateDirectories(Path.GetDirectoryName(g.Cache)!).Where(d => d != g.Cache))

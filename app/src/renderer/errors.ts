@@ -33,6 +33,8 @@ const MESSAGES: Record<string, string> = {
   get 'stale-patch'() { return t('errors.stalePatch'); },
   get 'bad-backup'() { return t('errors.badBackup'); },
   get 'no-livery-view'() { return t('errors.noLiveryView'); },
+  get 'duplicate-material'() { return t('errors.duplicateMaterial'); },
+  get 'file-in-use'() { return t('errors.fileInUse'); },
 };
 
 export function friendly(e: unknown, fallback = t('errors.k25')): string {

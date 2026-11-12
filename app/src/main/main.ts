@@ -1,6 +1,6 @@
 import { app, BrowserWindow, dialog, ipcMain, net, protocol, shell, type OpenDialogOptions } from 'electron';
-import { appendFileSync, cpSync, existsSync, mkdirSync, rmSync } from 'node:fs';
-import { mkdir, writeFile } from 'node:fs/promises';
+import { appendFileSync, cpSync, existsSync, mkdirSync, readdirSync, rmSync } from 'node:fs';
+import { mkdir, stat, writeFile } from 'node:fs/promises';
 import { dirname, isAbsolute, join, normalize, resolve, sep } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { Backend } from './backend';
@@ -109,14 +109,29 @@ function createWindow() {
   });
 }
 
-// The renderer may only write generated frame PNGs (project `.frames/`), converted sounds (project `sounds/*.ogg`) and
-// files inside the data dir.
+// The renderer may only write files inside the data dir (autosaved skins and their frames live there), and next to a skin
+// project saved elsewhere (a folder holding a .forgeskinproj) its generated frames (`.frames/`) and converted sounds
+// (`sounds/*.ogg`).
 function writable(path: string): boolean {
   if (!isAbsolute(path)) return false;
   const p = normalize(path);
+  if (p.startsWith(resolve(Backend.dataDir()) + sep)) return true;
   const dirs = p.split(sep);
-  return dirs.includes('.frames') || (dirs.at(-2) === 'sounds' && p.endsWith('.ogg')) || p.startsWith(resolve(Backend.dataDir()) + sep);
+  const frames = dirs.indexOf('.frames');
+  const project =
+    frames > 0 && /\.(png|json)$/i.test(p) ? dirs.slice(0, frames)
+    : dirs.at(-2) === 'sounds' && p.endsWith('.ogg') ? dirs.slice(0, -2)
+    : null;
+  try {
+    return !!project && readdirSync(project.join(sep)).some((f) => f.endsWith('.forgeskinproj'));
+  } catch {
+    return false;
+  }
 }
+
+// sf:// serves what the editor shows (textures, models, videos, sounds, fonts) wherever the user keeps them, and no
+// other kind of file.
+const SERVED = /\.(png|jpe?g|tga|tiff?|bmp|webp|gif|exr|mp4|webm|mov|m4v|wav|mp3|ogg|flac|m4a|aac|opus|ttf|otf|woff2?|glb|gltf|bin)$/i;
 
 function registerIpc() {
   // IPC turns a rejected plain object into "[object Object]", so backend errors travel as a value and preload rethrows them.
@@ -147,7 +162,12 @@ function registerIpc() {
   });
   ipcMain.on('app:log', (_e, kind: string, detail: string) => appLog(kind, detail));
   ipcMain.handle('files:exists', (_e, path: string) => existsSync(path));
-  ipcMain.handle('shell:open', (_e, path: string) => shell.openPath(path));
+  // A folder opens in Explorer; a file is only shown in its folder, never launched.
+  ipcMain.handle('shell:open', async (_e, path: string) => {
+    if (isAbsolute(path) && (await stat(path).catch(() => null))?.isDirectory()) return shell.openPath(path);
+    shell.showItemInFolder(path);
+    return '';
+  });
   ipcMain.handle('shell:show', (_e, path: string) => shell.showItemInFolder(path));
   ipcMain.on('win:minimize', () => win?.minimize());
   ipcMain.on('win:toggleMaximize', () => (win?.isMaximized() ? win.unmaximize() : win?.maximize()));
@@ -158,6 +178,7 @@ function registerIpc() {
 app.whenReady().then(() => {
   protocol.handle('sf', (req) => {
     const path = decodeURIComponent(new URL(req.url).pathname.slice(1));
+    if (!isAbsolute(path) || !SERVED.test(path)) return new Response(null, { status: 403 });
     return net.fetch(pathToFileURL(path).toString(), { headers: req.headers });
   });
   registerIpc();

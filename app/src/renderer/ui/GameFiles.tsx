@@ -3,7 +3,7 @@
 import { Alert, Button, Group, List, Loader, Modal, Stack, Text } from '@mantine/core';
 import { IconAlertTriangle } from '@tabler/icons-react';
 import { useEffect, useState } from 'react';
-import { buildPack } from '../actions';
+import { buildPack, exclusive } from '../actions';
 import { call, type AssetStatus } from '../protocol';
 import { useStore } from '../store';
 import { t } from '../i18n';
@@ -54,20 +54,19 @@ export function ReplaceModal({ opened, onClose }: { opened: boolean; onClose: ()
     if (!opened) return;
     setCheck(null);
     const s = useStore.getState();
-    void (async () => {
+    void exclusive(async () => {
       try {
         const pack = await buildPack(packPath());
-        if (!pack) return onClose();
+        if (!pack) return (onClose(), true);
         const r = await call('assets.export', { pack, out: `${s.dataDir}\\packs\\${s.weaponId}.check.zip` });
         const status = await call('assets.status', {});
         setCheck({ pack, warnings: r.warnings, running: status.running });
       } catch (e) {
         s.fail(e, t('gameFiles.applyFailed'));
         onClose();
-      } finally {
-        useStore.setState({ busy: null });
       }
-    })();
+      return true;
+    }).then((ran) => void (ran || onClose()));
   }, [opened]); // eslint-disable-line react-hooks/exhaustive-deps
   const write = async () => {
     if (!check) return;
@@ -213,15 +212,15 @@ export async function exportGameFiles(): Promise<void> {
   const s = useStore.getState();
   const out = await window.forge.saveDialog(`${s.doc.name || s.weaponId}.zip`, [{ name: t('gameFiles.zip'), extensions: ['zip'] }]);
   if (!out) return;
-  try {
-    const pack = await buildPack(packPath());
-    if (!pack) return;
-    const r = await call('assets.export', { pack, out });
-    for (const w of r.warnings) s.log(plainWarning(w));
-    s.toast('ok', t('gameFiles.exported'), { label: t('actions.k18'), run: () => void window.forge.showInFolder(r.zip) });
-  } catch (e) {
-    s.fail(e, t('gameFiles.exportFailed'));
-  } finally {
-    useStore.setState({ busy: null });
-  }
+  await exclusive(async () => {
+    try {
+      const pack = await buildPack(packPath());
+      if (!pack) return;
+      const r = await call('assets.export', { pack, out });
+      for (const w of r.warnings) s.log(plainWarning(w));
+      s.toast('ok', t('gameFiles.exported'), { label: t('actions.k18'), run: () => void window.forge.showInFolder(r.zip) });
+    } catch (e) {
+      s.fail(e, t('gameFiles.exportFailed'));
+    }
+  });
 }

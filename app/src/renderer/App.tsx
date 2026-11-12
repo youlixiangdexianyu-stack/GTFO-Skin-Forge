@@ -176,7 +176,8 @@ function Inspector() {
   return <SkinInspector />;
 }
 
-/** 自动应用: while the game runs, re-apply two seconds after the last change (not while something else is busy). */
+/** 自动应用: while the game runs, re-apply two seconds after the last change. Asked during a build, it runs once that build
+ * is done (applyToGame queues it); other busy steps end in an edit, which starts the wait again. */
 function useAutoApply() {
   const doc = useStore((s) => s.doc);
   const on = useStore((s) => s.prefs.autoApply && !!s.game?.running);
@@ -186,8 +187,7 @@ function useAutoApply() {
     if (opened.current !== doc.id) return void (opened.current = doc.id);
     if (!on) return;
     const id = setTimeout(() => {
-      const s = useStore.getState();
-      if (!s.busy && !s.previewLoading) void applyToGame(true);
+      if (!useStore.getState().previewLoading) void applyToGame(true);
     }, 2000);
     return () => clearTimeout(id);
   }, [doc, on]);

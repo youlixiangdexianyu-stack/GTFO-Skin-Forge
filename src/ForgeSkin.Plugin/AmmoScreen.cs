@@ -33,9 +33,10 @@ sealed class AmmoScreen
     readonly bool _gradient; // blend the low colour in as the clip approaches the threshold
     readonly float _gradientStart; // clip fraction where the blend begins
     readonly bool _hasLow;
-    readonly PlayerAmmoStorage? _storage;
-    readonly AmmoType _ammoType;
-    readonly int _clipSize;
+    readonly SkinnedGear _gear;
+    PlayerAmmoStorage? _storage; // looked up again while the local player has none yet
+    AmmoType _ammoType;
+    int _clipSize;
     int _value = int.MinValue;
     readonly string _label;
     public readonly List<Material> Surfaces = new(); // border and panel, for attachment Flash
@@ -46,6 +47,7 @@ sealed class AmmoScreen
     public AmmoScreen(SkinnedGear gear, Skin skin, Format.Screen s, Material template, GameObject root)
     {
         _source = s.Source;
+        _gear = gear;
         _label = gear.Label;
         _pad = s.PadZero;
         _template = template;
@@ -79,8 +81,9 @@ sealed class AmmoScreen
         for (int g = 0; g < 12; g++) _glyphs[g] = s.GlyphMeshes[g] is { } path ? skin.Mesh(path) : null;
         if (s.Source != ScreenSource.Kills) _storage = gear.Storage(out _ammoType, out _clipSize);
         // Automatic width: the digits of the largest value the source can show; kills have no maximum and grow up to 4.
+        // Without the storage yet (or in the menu preview, which shows no value) 3, which fits the game's ammo counts.
         _grow = s.Digits == 0 && s.Source == ScreenSource.Kills;
-        int width = s.Digits > 0 ? s.Digits : _grow ? 4 : _storage != null ? DigitCount(Max()) : 2;
+        int width = s.Digits > 0 ? s.Digits : _grow ? 4 : _storage != null ? DigitCount(Max()) : 3;
         _dw = dh * s.GlyphAspect;
         float fit = inner / (_dw * width);
         if (fit < 1) { _dw *= fit; dh *= fit; }
@@ -204,7 +207,7 @@ sealed class AmmoScreen
         if (_cells.Length == 0 || _source == ScreenSource.Static) return;
         int value;
         if (_source == ScreenSource.Kills) value = kills;
-        else if (_storage == null) return;
+        else if (_storage == null && (_storage = _gear.Storage(out _ammoType, out _clipSize)) == null) return;
         else
         {
             int reserve = _source == ScreenSource.AmmoClip ? 0 : _storage.GetBulletsInPack(_ammoType);

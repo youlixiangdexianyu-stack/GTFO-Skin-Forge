@@ -8,6 +8,7 @@ import {
   Group,
   MeshBasicMaterial,
   SRGBColorSpace,
+  type Material,
   type Mesh,
   type MeshStandardMaterial,
   type Object3D,
@@ -33,6 +34,7 @@ function ScreenMesh({ screen, selected, onPick }: { screen: Screen; selected: bo
     t.colorSpace = SRGBColorSpace;
     return t;
   }, [canvas]);
+  useEffect(() => () => texture.dispose(), [texture]);
   // Redrawn once the chosen font has loaded (canvas text does not wait for it).
   const [glyphs, setGlyphs] = useState(() => glyphCanvas(screen.font));
   useEffect(() => {
@@ -154,6 +156,7 @@ function MeshModel({ glb, attachment, onPick }: { glb: string; attachment: Attac
   useEffect(() => {
     const m = attachment.material;
     const c = m?.color ?? [1, 1, 1, 1];
+    const made: Material[] = [];
     scene.traverse((o) => {
       const mesh = o as Mesh;
       if (!mesh.isMesh) return;
@@ -162,7 +165,10 @@ function MeshModel({ glb, attachment, onPick }: { glb: string; attachment: Attac
       const next = m?.unlit ? new MeshBasicMaterial({ map: original.map, toneMapped: false }) : original.clone();
       next.color.setRGB(c[0], c[1], c[2]);
       mesh.material = next;
+      made.push(next);
     });
+    // The next look (or leaving) replaces these copies; the loaded originals stay with the glTF.
+    return () => made.forEach((x) => x.dispose());
   }, [scene, attachment.material]);
   return <primitive object={scene} onClick={onPick} />;
 }

@@ -54,6 +54,19 @@ export class Backend {
     this.onLog(`starting backend: ${file} ${args.join(' ')}`);
     const child = spawn(file, args, { windowsHide: true, cwd });
     this.child = child;
+    // A half line from the previous process is not the start of this one's.
+    this.stdoutBuf = this.stderrBuf = '';
+    // Once per process, whether it exits or never starts: every call still waiting fails, so the UI shows the backend
+    // down instead of waiting forever.
+    let ended = false;
+    const end = (code: number | null) => {
+      if (ended) return;
+      ended = true;
+      if (this.child === child) this.child = null;
+      for (const p of this.pending.values()) p.reject({ code: 'backend-exited', message: 'backend exited' });
+      this.pending.clear();
+      this.onExit(code);
+    };
     child.stdout.setEncoding('utf8').on('data', (d: string) => {
       this.stdoutBuf += d;
       for (let i; (i = this.stdoutBuf.indexOf('\n')) >= 0; ) {
@@ -69,13 +82,14 @@ export class Backend {
         this.stderrBuf = this.stderrBuf.slice(i + 1);
       }
     });
-    child.on('error', (e) => this.onLog(`backend failed to start: ${e.message}`));
-    child.on('exit', (code) => {
-      this.child = null;
-      for (const p of this.pending.values()) p.reject({ code: 'backend-exited', message: 'backend exited' });
-      this.pending.clear();
-      this.onExit(code);
+    child.on('error', (e) => {
+      this.onLog(`backend failed: ${e.message}`);
+      // A process that never started sends no 'exit'.
+      if (child.pid === undefined) end(null);
     });
+    // Writing to a process that just died fails here; its 'exit' rejects the call.
+    child.stdin.on('error', (e) => this.onLog(`backend stdin: ${e.message}`));
+    child.on('exit', end);
   }
 
   private handleLine(line: string): void {

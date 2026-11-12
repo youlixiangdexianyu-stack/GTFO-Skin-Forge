@@ -1,4 +1,5 @@
 using Gear;
+using HarmonyLib;
 using Il2CppInterop.Runtime.InteropTypes.Arrays;
 using Player;
 using ForgeSkin.Format;
@@ -57,6 +58,8 @@ sealed class SkinnedGear
     int _lastClip = -1, _lastReserve = -1; // edges for Empty and AmmoPickup; -1 until the first poll
     int _unequipFrame = -1; // a base and an override unwield in the same frame are one Unequip
     Transform? _camera;
+    FirstPersonItemHolder? _hands; // the 1P item's, kept for the AimEnd poll
+    static readonly IntPtr HandsWielded = Native.FieldInfo<FirstPersonItemHolder>(nameof(FirstPersonItemHolder.WieldedItem));
     PlayerAmmoStorage? _storage;
     AmmoType _ammoType;
     int _clipSize;
@@ -83,7 +86,7 @@ sealed class SkinnedGear
             var item = holder.GetComponentInParent<ItemEquippable>();
             if (Forget(holder.Pointer)) Reported.Remove(holder.Pointer);
             // With an item, the readback was taken when its spawn-complete step began (BeforeItemSetup).
-            if (item == null) Readback.Write(holder, GearId(holder));
+            if (item == null && Readback.Directory != null) Readback.Write(holder, GearId(holder));
             if (item != null) Consider(holder, item);
             // A menu-mode holder (lobby loadout and gear pages) only ever shows this machine's own gear.
             else if (holder.MenuMode) { Note(holder, $"{holder.GearIDRange?.PublicGearName} [menu]: considered"); Track(holder, null); }
@@ -124,7 +127,8 @@ sealed class SkinnedGear
             if (p.Holder.Pointer == pointer) return;
         foreach (var g in Live)
             if (g._holderPointer == pointer) return;
-        Note(holder, $"{item.PublicName} [{(item.m_isFirstPerson ? "1P" : "3P")}]: considered, gear {GearId(holder)}");
+        // The gear id is looked up when the skin is applied (and logged with it), not here on the game's spawn path.
+        Note(holder, $"{item.PublicName} [{(item.m_isFirstPerson ? "1P" : "3P")}]: considered");
         Pending.Add((holder, item, Time.unscaledTime));
     }
 
@@ -159,6 +163,19 @@ sealed class SkinnedGear
         }
     }
 
+    static float _levelStart = -1; // unscaled time the current level reached InLevel; -1 outside a level
+
+    // GameStateHook: a new level starts generating (everything of the last one is gone, and
+    // pointers may be reused) or the level is entered.
+    public static void StateChanged(eGameStateName state)
+    {
+        _levelStart = state == eGameStateName.InLevel ? Time.unscaledTime : -1;
+        if (state != eGameStateName.Generating) return;
+        _wielded = IntPtr.Zero;
+        _inventory = null;
+        Reported.Clear();
+    }
+
     // A first-person item only exists for the local player. A third-person one waits for its owner, which can be set
     // long after the parts spawn (gear is built while the level generates); looked at a few times a second.
     static void ResolvePending(float now)
@@ -173,8 +190,9 @@ sealed class SkinnedGear
                 var player = item.Owner?.Owner;
                 if (player == null)
                 {
-                    // Icon renders and lobby previews are built as third-person items that never get an owner.
-                    if (now - since < 5f) continue;
+                    // Icon renders and lobby previews are built as third-person items that never get an owner. Gear built
+                    // while the level loads waits until 5 s into the level (at most two minutes outside one).
+                    if (_levelStart < 0 ? now - since < 120f : now - Math.Max(since, _levelStart) < 5f) continue;
                     Pending.RemoveAt(i);
                     Reported.Remove(holder.Pointer);
                     Note(holder, $"{item.PublicName} [3P]: skipped, no owner (icon/preview)");
@@ -209,13 +227,18 @@ sealed class SkinnedGear
     // Items without a gear holder have no spawn point of their own: the local player's wielded item is compared each
     // frame (one pointer), so taking one out tracks it and is its Equip, and putting it away (dropping or placing a
     // carry item) is its Unequip. The same first-person object can later hold another item; that is a new target.
+    static PlayerInventoryBase? _inventory; // the local player's, kept while it lives
+    static readonly IntPtr WieldedGetter = Native.Method(AccessTools.PropertyGetter(typeof(PlayerInventoryBase), nameof(PlayerInventoryBase.WieldedItem)));
+
     static void PollWielded(float time)
     {
-        var item = PlayerManager.GetLocalPlayerAgent()?.Inventory?.WieldedItem;
-        var pointer = item?.Pointer ?? IntPtr.Zero;
+        if (_inventory == null) _inventory = PlayerManager.GetLocalPlayerAgent()?.Inventory;
+        // The pointer only: the property would allocate a wrapper every frame.
+        var pointer = _inventory == null ? IntPtr.Zero : Native.Call(_inventory, WieldedGetter);
         if (pointer == _wielded) return;
         try
         {
+            var item = pointer == IntPtr.Zero ? null : new ItemEquippable(pointer);
             var previous = _wielded;
             _wielded = pointer;
             foreach (var gear in Live)
@@ -340,7 +363,6 @@ sealed class SkinnedGear
                 ForgeSkinPlugin.Info($"{_label}: pose {p.Part}/{p.Path ?? "."} written, now {pose.Describe()}");
                 if (p.Visible == false) hidden++;
             }
-        if (_on[(int)Trigger.AmmoPickup].Count > 0) Storage(out _, out _); // the reserve is polled per frame
         ForgeSkinPlugin.Info($"{_label}: {key}, skin {weapon?.Doc.Id ?? "-"}, {_swaps.Count} renderers, " +
                              $"{attachments} attachments, {_screens.Count} screens, {sounds} sounds, {_layerCount} layers, {_poses.Count} part poses ({hidden} hidden)");
         foreach (var screen in _screens) ForgeSkinPlugin.Info($"{_label}: screen after creation: {screen.Describe()}");
@@ -349,15 +371,30 @@ sealed class SkinnedGear
 
     void Revert()
     {
-        foreach (var pose in _poses) pose.Revert();
+        // Last first: of two entries on one node, the first one saw the vanilla pose.
+        for (int i = _poses.Count - 1; i >= 0; i--) _poses[i].Revert();
         _poses.Clear();
         foreach (var (renderer, original, mine) in _swaps)
         {
             if (renderer == null || original == null) continue;
             var now = renderer.sharedMaterials;
             for (int i = 0; i < original.Length; i++)
-                if (mine[i] != original[i])
-                    ForgeSkinPlugin.Info($"{_label}: revert {renderer.name}[{i}]: showing {Describe(i < now.Length ? now[i] : null)}, restoring {Describe(original[i])}");
+            {
+                // A slot we did not take keeps what the game shows on it now (its own first-person copy).
+                if (mine[i] == original[i])
+                {
+                    if (i < now.Length) original[i] = now[i];
+                    continue;
+                }
+                ForgeSkinPlugin.Info($"{_label}: revert {renderer.name}[{i}]: showing {Describe(i < now.Length ? now[i] : null)}, restoring {Describe(original[i])}");
+                // The game's first-person switch since went to our material (TakeBack), so the original lacks its keyword:
+                // the renderer gets what the game would have given it, a copy of the original with the keyword.
+                if (_fps is bool fps && original[i] != null && original[i].IsKeywordEnabled(FpsKeyword) != fps)
+                {
+                    original[i] = new Material(original[i]) { name = original[i].name };
+                    Fps(original[i], fps);
+                }
+            }
             renderer.sharedMaterials = original;
         }
         foreach (var o in _created)
@@ -527,9 +564,11 @@ sealed class SkinnedGear
     public static void SetEmissive(Material m, bool on)
     {
         if (m.HasProperty(EnableEmissive)) m.SetFloat(EnableEmissive, on ? 1f : 0f);
-        if (on) m.EnableKeyword("ENABLE_EMISSIVE");
-        else m.DisableKeyword("ENABLE_EMISSIVE");
+        if (on) m.EnableKeyword(EmissiveKeyword);
+        else m.DisableKeyword(EmissiveKeyword);
     }
+
+    public const string EmissiveKeyword = "ENABLE_EMISSIVE";
 
     public static void SetEmission(Material m, Color color)
     {
@@ -550,6 +589,8 @@ sealed class SkinnedGear
     {
         // Assets only referenced from here must survive the game's Resources.UnloadUnusedAssets.
         if (typeof(T) != typeof(GameObject)) o.hideFlags = HideFlags.DontUnloadUnusedAsset;
+        // A material made after the game's first-person switch starts with the projection the gear is drawn with now.
+        if (_fps is bool fps && o is Material m) Fps(m, fps);
         _created.Add(o);
         return o;
     }
@@ -709,9 +750,15 @@ sealed class SkinnedGear
             foreach (var gear in Live)
             {
                 if (gear._root == null || !(gear._root.transform.IsChildOf(t) || t.IsChildOf(gear._root.transform))) continue;
-                foreach (var (root, _, _) in gear._roots)
-                    if (root != null) PlayerBackpackManager.SetFPSRendering(root, enable);
+                gear._fps = enable;
                 gear.TakeBack(t, enable);
+                // Attachments under `go` were just switched with it; the others get the game's switch here.
+                foreach (var (root, _, _) in gear._roots)
+                    if (root != null && !root.transform.IsChildOf(t))
+                    {
+                        PlayerBackpackManager.SetFPSRendering(root, enable);
+                        gear.TakeBack(root.transform, enable);
+                    }
             }
         }
         catch (Exception e) { ForgeSkinPlugin.Fail($"first-person rendering sync: {e.Message}"); }
@@ -722,7 +769,11 @@ sealed class SkinnedGear
     // material (MaterialRef.MakeUnique 0x14FA420: Instantiate, "_unique_<n>", renderer.sharedMaterial = copy) and sets
     // ENABLE_FPS_RENDERING on the copies only. On a renderer we skinned or created that copy is a frozen copy of our look,
     // which no longer follows our animated layers or screen colours and which nobody destroys. Ours goes back with the
-    // keyword the game just set.
+    // keyword the game just set, and so does every material of ours under `go` the game skipped (disabled renderers:
+    // a Show attachment that is hidden right now).
+    // The copy is destroyed: in the interop assemblies the only fields holding a MaterialRef are character bodies'
+    // (CharacterMaterialHandler and its MaterialGroups) and MaterialGroup's static temp, which is overwritten on its next
+    // use; and the next switch copies whatever the renderer shows then, never the old copy.
     void TakeBack(Transform go, bool enable)
     {
         foreach (var (renderer, original, mine) in _swaps)
@@ -730,12 +781,13 @@ sealed class SkinnedGear
             if (renderer == null || !renderer.transform.IsChildOf(go)) continue;
             var now = renderer.sharedMaterials;
             bool changed = false;
-            for (int i = 0; i < mine.Length && i < now.Length; i++)
+            for (int i = 0; i < mine.Length; i++)
             {
-                if (original != null && mine[i] == original[i] || now[i] == mine[i]) continue;
+                if (original != null && mine[i] == original[i]) continue;
+                Fps(mine[i], enable);
+                if (i >= now.Length || now[i] == mine[i]) continue;
                 ForgeSkinPlugin.Info($"{_label}: fps rendering {enable}: {renderer.name}[{i}] was given {Describe(now[i])}, ours {Describe(mine[i])} put back");
                 if (now[i] != null && now[i].name.StartsWith(mine[i].name, StringComparison.Ordinal)) Object.Destroy(now[i]);
-                if (enable) mine[i].EnableKeyword(FpsKeyword); else mine[i].DisableKeyword(FpsKeyword);
                 changed = true;
             }
             if (changed) renderer.sharedMaterials = mine;
@@ -743,6 +795,13 @@ sealed class SkinnedGear
     }
 
     const string FpsKeyword = "ENABLE_FPS_RENDERING";
+    bool? _fps; // the last first-person switch the game made on this gear; null before the first
+
+    static void Fps(Material m, bool on)
+    {
+        if (on) m.EnableKeyword(FpsKeyword);
+        else m.DisableKeyword(FpsKeyword);
+    }
 
     void SyncLayers()
     {
@@ -926,13 +985,13 @@ sealed class SkinnedGear
         return filter;
     }
 
-    // Null for the menu preview, which has no ammo.
+    // Null for the menu preview, which has no ammo, and while the local player has no backpack yet (callers look again later).
     public PlayerAmmoStorage? Storage(out AmmoType type, out int clipSize)
     {
         type = default;
         clipSize = 0;
         if (_item == null) return null;
-        _storage ??= PlayerBackpackManager.LocalBackpack?.AmmoStorage ?? throw new InvalidOperationException("local player has no ammo storage");
+        _storage ??= PlayerBackpackManager.LocalBackpack?.AmmoStorage;
         _ammoType = _item.AmmoType;
         _clipSize = _item.ClipSize;
         type = _ammoType;
@@ -965,16 +1024,16 @@ sealed class SkinnedGear
                 _below[i] = below;
             }
         }
-        if (_storage != null && _on[(int)Trigger.AmmoPickup].Count > 0)
+        if (_on[(int)Trigger.AmmoPickup].Count > 0 && (_storage ?? Storage(out _, out _)) is { } storage)
         {
-            int reserve = _storage.GetBulletsInPack(_ammoType);
+            int reserve = storage.GetBulletsInPack(_ammoType);
             if (_lastReserve >= 0 && reserve > _lastReserve) Raise(Trigger.AmmoPickup, _on[(int)Trigger.AmmoPickup], time);
             _lastReserve = reserve;
         }
         if (_item != null && _item.m_isFirstPerson && _on[(int)Trigger.AimEnd].Count > 0)
         {
-            var hands = _item.FPItemHolder;
-            bool aiming = hands != null && hands.ItemAimTrigger && hands.WieldedItem != null && hands.WieldedItem.Pointer == _itemPointer;
+            if (_hands == null) _hands = _item.FPItemHolder;
+            bool aiming = _hands != null && _hands.ItemAimTrigger && Native.Field(_hands, HandsWielded) == _itemPointer;
             if (_aiming && !aiming) Raise(Trigger.AimEnd, _on[(int)Trigger.AimEnd], time);
             _aiming = aiming;
         }

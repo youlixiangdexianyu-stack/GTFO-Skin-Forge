@@ -13,21 +13,39 @@ const collator = new Intl.Collator(undefined, { numeric: true, sensitivity: 'bas
 
 export const naturalSort = (paths: string[]) => [...paths].sort(collator.compare);
 
+// The images used last, most recent last; a file the app writes again (writePng) is dropped and loads fresh under a new
+// URL, which the page's own image cache has not seen.
 const images = new Map<string, Promise<HTMLImageElement>>();
+const MAX_IMAGES = 32;
+let generation = 0;
 export function loadImage(path: string): Promise<HTMLImageElement> {
   let p = images.get(path);
-  if (!p) {
+  if (p) images.delete(path);
+  else
     p = new Promise((resolve, reject) => {
       const img = new Image();
       img.crossOrigin = 'anonymous';
       img.onload = () => resolve(img);
       // A failure is not kept: the file may be written again (preview cache rebuilt) and the next view retries.
       img.onerror = () => (images.delete(path), reject(new Error(`cannot load ${path}`)));
-      img.src = fileUrl(path);
+      img.src = `${fileUrl(path)}?v=${generation}`;
     });
-    images.set(path, p);
-  }
+  images.set(path, p);
+  if (images.size > MAX_IMAGES) images.delete(images.keys().next().value!);
   return p;
+}
+
+function toPng(c: HTMLCanvasElement): Promise<Uint8Array> {
+  return new Promise((resolve, reject) =>
+    c.toBlob(async (b) => (b ? resolve(new Uint8Array(await b.arrayBuffer())) : reject(new Error('png'))), 'image/png'),
+  );
+}
+
+/** Writes a canvas as a PNG file; a later loadImage of the path reads the new pixels. */
+export async function writePng(path: string, c: HTMLCanvasElement): Promise<void> {
+  await window.forge.writeFile(path, await toPng(c));
+  images.delete(path);
+  generation++;
 }
 
 export const isGif = (path: string) => /\.gif$/i.test(path);
@@ -169,12 +187,6 @@ export function drawLayer(ctx: CanvasRenderingContext2D, src: CanvasImageSource,
   ctx.restore();
 }
 
-function toPng(c: HTMLCanvasElement): Promise<Uint8Array> {
-  return new Promise((resolve, reject) =>
-    c.toBlob(async (b) => (b ? resolve(new Uint8Array(await b.arrayBuffer())) : reject(new Error('png'))), 'image/png'),
-  );
-}
-
 async function videoFrames(path: string, fps: number, onFrame: (v: HTMLVideoElement, i: number) => Promise<void>) {
   const v = document.createElement('video');
   v.muted = true;
@@ -231,7 +243,7 @@ export async function bakeLayers(
         ctx.drawImage(base, rect.x, rect.y, rect.w, rect.h, 0, 0, rect.w, rect.h);
         ctx.translate(-rect.x, -rect.y);
         drawLayer(ctx, src, l, W, H);
-        await window.forge.writeFile(`${dir}\\${String(i).padStart(4, '0')}.png`, await toPng(canvas));
+        await writePng(`${dir}\\${String(i).padStart(4, '0')}.png`, canvas);
         written++;
       };
       const before = written;
@@ -308,8 +320,8 @@ export async function bakeGlyphs(doc: SkinDocument, projectPath: string): Promis
     if (!a?.screen) continue;
     await loadFont(a.screen.font);
     // Twice the preview resolution: the backend traces the outlines, and finer pixels give smoother strokes.
-    if (a.screen.source === 'static') await window.forge.writeFile(`${dir}\\${a.id}-text.png`, await toPng(screenTextCanvas(a.screen.font, a.screen.staticText ?? '', 192)));
-    else await window.forge.writeFile(`${dir}\\${a.id}-glyphs.png`, await toPng(glyphCanvas(a.screen.font, 128, 192)));
+    if (a.screen.source === 'static') await writePng(`${dir}\\${a.id}-text.png`, screenTextCanvas(a.screen.font, a.screen.staticText ?? '', 192));
+    else await writePng(`${dir}\\${a.id}-glyphs.png`, glyphCanvas(a.screen.font, 128, 192));
   }
 }
 

@@ -20,6 +20,7 @@ import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { call, fileUrl, type SkinDocument, type WeaponPreview } from '../protocol';
 import { useStore } from '../store';
 import { unityDirToThree } from '../space';
+import { holdTextures, releaseTextures } from './textures';
 import { editableMaterials, paintMaterial, restoreUnityNames, roomReflection } from './weaponScene';
 
 export const THUMB_EVENT = 'sf:thumbs';
@@ -53,42 +54,43 @@ async function render(renderer: WebGLRenderer, env: Texture, preview: WeaponPrev
   });
   const mats = new Map<string, MeshStandardMaterial>();
   editableMaterials(gltf.scene, mats);
+  // The textures stay held until drawn, and are let go of after (the 3D view keeps those it shows itself).
   const keep = new Set<string>();
-  await Promise.allSettled(
-    [...mats].flatMap(([name, mat]) =>
-      paintMaterial(
-        mat,
-        name,
-        doc,
-        preview,
-        keep,
-        () => false,
-        () => undefined,
+  holdTextures(keep);
+  try {
+    await Promise.allSettled(
+      [...mats].flatMap(([name, mat]) =>
+        paintMaterial(
+          mat,
+          name,
+          doc,
+          preview,
+          keep,
+          () => false,
+          () => undefined,
+        ),
       ),
-    ),
-  );
-  gltf.scene.updateMatrixWorld(true);
-  const box = new Box3();
-  gltf.scene.traverse((o) => o.visible && (o as Mesh).isMesh && box.expandByObject(o));
-  if (box.isEmpty()) return null;
-  const center = box.getCenter(new Vector3());
-  const size = box.getSize(new Vector3());
-  const radius = size.length() / 2;
-  // Side view from the weapon's right, slightly above: reads best at list size.
-  const camera = new PerspectiveCamera(30, 2, radius / 100, radius * 20);
-  camera.position.copy(center).addScaledVector(unityDirToThree([1, 0.25, 0.15]).normalize(), radius / Math.tan((15 * Math.PI) / 180) / 1.6);
-  // Upright items (melee weapons) are turned to lie along the wide image, muzzle or head forward.
-  if (size.y > Math.max(size.x, size.z)) camera.up.set(0, 0, -1);
-  camera.lookAt(center);
-  renderer.render(scene, camera);
-  const url = renderer.domElement.toDataURL('image/webp', 0.85);
-  gltf.scene.traverse((o) => {
-    const mesh = o as Mesh;
-    if (!mesh.isMesh) return;
-    mesh.geometry.dispose();
-  });
-  mats.forEach((m) => m.dispose());
-  return url;
+    );
+    gltf.scene.updateMatrixWorld(true);
+    const box = new Box3();
+    gltf.scene.traverse((o) => o.visible && (o as Mesh).isMesh && box.expandByObject(o));
+    if (box.isEmpty()) return null;
+    const center = box.getCenter(new Vector3());
+    const size = box.getSize(new Vector3());
+    const radius = size.length() / 2;
+    // Side view from the weapon's right, slightly above: reads best at list size.
+    const camera = new PerspectiveCamera(30, 2, radius / 100, radius * 20);
+    camera.position.copy(center).addScaledVector(unityDirToThree([1, 0.25, 0.15]).normalize(), radius / Math.tan((15 * Math.PI) / 180) / 1.6);
+    // Upright items (melee weapons) are turned to lie along the wide image, muzzle or head forward.
+    if (size.y > Math.max(size.x, size.z)) camera.up.set(0, 0, -1);
+    camera.lookAt(center);
+    renderer.render(scene, camera);
+    return renderer.domElement.toDataURL('image/webp', 0.85);
+  } finally {
+    gltf.scene.traverse((o) => (o as Mesh).geometry?.dispose());
+    mats.forEach((m) => m.dispose());
+    releaseTextures(keep);
+  }
 }
 
 let shared: { renderer: WebGLRenderer; env: Texture } | null = null;

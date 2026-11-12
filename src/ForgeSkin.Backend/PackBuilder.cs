@@ -33,10 +33,10 @@ public static class PackBuilder
 
         if (!outPath.EndsWith(SkinPack.Extension, StringComparison.OrdinalIgnoreCase)) outPath = Path.Combine(outPath, Preview.Safe(doc.Id) + SkinPack.Extension);
         Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(outPath))!);
-        var temp = outPath + ".tmp";
+        using var temp = new AtomicFile(outPath);
         int total = doc.Materials.Sum(m => m.Textures.Count + m.Layers.Count) + doc.Attachments.Count, done = 0;
 
-        using (var zip = ZipFile.Open(temp, ZipArchiveMode.Create))
+        using (var zip = ZipFile.Open(temp.Temp, ZipArchiveMode.Create))
         {
             void Png(string name, SKBitmap bmp)
             {
@@ -48,6 +48,16 @@ public static class PackBuilder
             {
                 if (!File.Exists(file)) throw new SkinFormatException("missing-file", $"{file} missing");
                 zip.CreateEntryFromFile(file, name, CompressionLevel.Optimal);
+            }
+            // A .forgeskinmesh is copied; a GLB is converted.
+            void Mesh(string name, string file)
+            {
+                if (file.EndsWith(".forgeskinmesh", StringComparison.OrdinalIgnoreCase)) Copy(name, file);
+                else
+                {
+                    using var s = zip.CreateEntry(name).Open();
+                    s.Write(MeshImport.ToForgeSkinMesh(GlbReader.Read(file)).Write());
+                }
             }
 
             foreach (var m in doc.Materials)
@@ -80,6 +90,8 @@ public static class PackBuilder
                     int x = (int)Math.Round(rect.X * sx), y = (int)Math.Round(rect.Y * sy);
                     int w = Math.Max(1, (int)Math.Round(rect.W * sx)), h = Math.Max(1, (int)Math.Round(rect.H * sy));
                     w = Math.Min(w, target.W - x); h = Math.Min(h, target.H - y);
+                    if (w <= 0 || h <= 0)
+                        throw new SkinFormatException("bad-atlas", $"{m.Material}/{layer.Name}: layer rect lies outside the {target.W}x{target.H} texture");
                     int columns = Math.Max(1, Math.Min(frames.Count, 4096 / w));
                     int rows = (frames.Count + columns - 1) / columns;
                     if (rows * h > 4096) warnings.Add($"{layer.Name}: atlas is {columns * w}x{rows * h}, larger than 4096");
@@ -105,14 +117,8 @@ public static class PackBuilder
 
             foreach (var t in doc.Parts.Where(t => t.Mesh != null))
             {
-                var src = Abs(t.Mesh!);
                 var name = $"meshes/part_{Preview.Safe(t.Part + "_" + (t.Path ?? ""))}.forgeskinmesh";
-                if (src.EndsWith(".forgeskinmesh", StringComparison.OrdinalIgnoreCase)) Copy(name, src);
-                else
-                {
-                    using var s = zip.CreateEntry(name).Open();
-                    s.Write(MeshImport.ToForgeSkinMesh(GlbReader.Read(src)).Write());
-                }
+                Mesh(name, Abs(t.Mesh!));
                 t.Mesh = name;
             }
 
@@ -121,14 +127,8 @@ public static class PackBuilder
                 Program.Progress(requestId, done++, total, a.Name);
                 if (a.Mesh != null)
                 {
-                    var src = Abs(a.Mesh);
                     var name = $"meshes/{Preview.Safe(a.Id)}.forgeskinmesh";
-                    if (src.EndsWith(".forgeskinmesh", StringComparison.OrdinalIgnoreCase)) Copy(name, src);
-                    else
-                    {
-                        using var s = zip.CreateEntry(name).Open();
-                        s.Write(MeshImport.ToForgeSkinMesh(GlbReader.Read(src)).Write());
-                    }
+                    Mesh(name, Abs(a.Mesh));
                     a.Mesh = name;
                 }
                 if (a.Material != null)
@@ -186,16 +186,8 @@ public static class PackBuilder
                 s.Write(SkinJson.Write(doc));
         }
 
-        try
-        {
-            using (SkinPack.Open(temp)) { }
-        }
-        catch
-        {
-            File.Delete(temp);
-            throw;
-        }
-        File.Move(temp, outPath, true);
+        using (SkinPack.Open(temp.Temp)) { }
+        temp.Commit();
         Program.Progress(requestId, total, total, "done");
         return new { pack = Path.GetFullPath(outPath), warnings };
     }

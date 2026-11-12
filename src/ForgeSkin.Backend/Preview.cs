@@ -167,7 +167,7 @@ public static class Preview
         var order = Assembly.Slots.Select(s => s.Id).Concat(["ammo_speedloader", "ammo_bullet", "ammo_shell"]).ToList();
         var result = new PreviewResult(glbPath, parts.Keys.Union(transforms.Keys).OrderBy(p => order.IndexOf(p) is var i && i < 0 ? 99 : i)
             .Select(p => new PreviewPart(p, parts.GetValueOrDefault(p) ?? new(), transforms.GetValueOrDefault(p) ?? new(), ammo.GetValueOrDefault(p))).ToList(), textures, parameters);
-        File.WriteAllText(cached, JsonSerializer.Serialize(result, Program.Json));
+        AtomicFile.WriteText(cached, JsonSerializer.Serialize(result, Program.Json));
         return result;
     }
 
@@ -231,8 +231,13 @@ public static class Images
         return bmp;
     }
 
-    public static SKBitmap Load(string path) =>
-        SKBitmap.Decode(path) is { } b ? b.Copy(SKColorType.Rgba8888) ?? b : throw new SkinFormatException("bad-image", $"{path} is not a readable image");
+    public static SKBitmap Load(string path)
+    {
+        var decoded = SKBitmap.Decode(path) ?? throw new SkinFormatException("bad-image", $"{path} is not a readable image");
+        if (decoded.Copy(SKColorType.Rgba8888) is not { } copy) return decoded;
+        decoded.Dispose();
+        return copy;
+    }
 
     public static (int Width, int Height) Size(string path)
     {

@@ -26,13 +26,34 @@ static class Native
     public static bool Hookable(MethodBase? method)
     {
         if (method == null) return false;
-        var info = (IntPtr)Il2CppInterop.Common.Il2CppInteropUtils.GetIl2CppMethodInfoPointerFieldForGeneratedMethod(method)!.GetValue(null)!;
+        var info = Method(method);
         var entry = info == IntPtr.Zero ? IntPtr.Zero : Marshal.ReadIntPtr(info);
         var first = entry == IntPtr.Zero ? (byte)0xC3 : Marshal.ReadByte(entry);
         if (first is not (0xC3 or 0xC2 or 0xE9 or 0xEB or 0xCC)) return true;
         ForgeSkinPlugin.Info($"skipped {method.DeclaringType?.Name}.{method.Name}: no native body of its own to hook");
         return false;
     }
+
+    // The IL2CPP MethodInfo of a generated interop method.
+    public static IntPtr Method(MethodBase method) =>
+        (IntPtr)Il2CppInterop.Common.Il2CppInteropUtils.GetIl2CppMethodInfoPointerFieldForGeneratedMethod(method)!.GetValue(null)!;
+
+    // Per-frame reads without the managed wrapper a generated getter allocates for the object it returns: the object's
+    // pointer from a parameterless (virtual) getter, or from a reference field.
+    public static unsafe IntPtr Call(Il2CppObjectBase o, IntPtr method)
+    {
+        var self = o.Pointer;
+        var exception = IntPtr.Zero;
+        var result = IL2CPP.il2cpp_runtime_invoke(IL2CPP.il2cpp_object_get_virtual_method(self, method), self, null, ref exception);
+        Il2CppException.RaiseExceptionIfNecessary(exception);
+        return result;
+    }
+
+    public static IntPtr FieldInfo<T>(string name) where T : Il2CppObjectBase =>
+        IL2CPP.GetIl2CppField(Il2CppClassPointerStore<T>.NativeClassPtr, name) is var f && f != IntPtr.Zero ? f
+            : throw new MissingFieldException(typeof(T).Name, name);
+
+    public static IntPtr Field(Il2CppObjectBase o, IntPtr field) => Marshal.ReadIntPtr(o.Pointer + (int)IL2CPP.il2cpp_field_get_offset(field));
 }
 
 // dump.cs 614836: runs once every part of a gear is spawned and its GearMaterialFeeder is set up.
@@ -199,6 +220,13 @@ static class OverriddenGearSpawnCompleteHook
 static class ItemLayerHook
 {
     static void Postfix(ItemEquippable __instance) => SkinnedGear.LayerSet(__instance.Pointer);
+}
+
+// The game state changes (a level starts generating, the level is entered).
+[HarmonyPatch(typeof(GameStateManager), nameof(GameStateManager.DoChangeState))]
+static class GameStateHook
+{
+    static void Postfix(GameStateManager __instance, eGameStateName nextState) { if (Native.Is<GameStateManager>(__instance)) SkinnedGear.StateChanged(nextState); }
 }
 
 // dump.cs 658791: the game switches a held object's materials to (or from) the first-person projection.

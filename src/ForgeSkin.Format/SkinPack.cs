@@ -100,7 +100,7 @@ public sealed class SkinPack : IDisposable
         if (doc.Target.Weapon != null && (doc.Target.GearId == null) == (doc.Target.ItemId == null))
             throw new SkinFormatException("no-gear", $"Weapon {doc.Target.Weapon} needs exactly one of a gear id and an item id");
 
-        void File(string? path, string where, bool image = false, bool audio = false)
+        void File(string? path, string where, bool image = false, bool audio = false, bool mesh = false)
         {
             if (path == null) return;
             if (path.Contains("..") || Path.IsPathRooted(path))
@@ -110,23 +110,35 @@ public sealed class SkinPack : IDisposable
                 throw new SkinFormatException("bad-image", $"{where}: {path} is not a PNG or JPEG");
             if (audio && !IsOgg(bytes))
                 throw new SkinFormatException("bad-audio", $"{where}: {path} is not an Ogg Vorbis file");
+            if (mesh && !ForgeSkinMesh.IsMesh(bytes))
+                throw new SkinFormatException("bad-mesh", $"{where}: {path} is not a .forgeskinmesh");
         }
         static void Vec(float[]? v, int n, string where)
         {
             if (v != null && (v.Length != n || v.Any(x => float.IsNaN(x) || float.IsInfinity(x))))
                 throw new SkinFormatException("bad-vector", $"{where}: expected {n} finite numbers");
         }
+        static void Params(MaterialParams p, string where)
+        {
+            Vec(p.EmissiveColor, 3, where);
+            Vec(p.Tint, 4, where);
+        }
+        static bool Fraction(float f) => f is >= 0 and <= 1;
 
+        var names = new HashSet<string>();
         foreach (var m in doc.Materials)
         {
             if (string.IsNullOrWhiteSpace(m.Material)) throw new SkinFormatException("no-material", "Material override without a material name");
+            // The plugin matches renderers by material name, so two overrides of one material would silently shadow each other.
+            if (!names.Add(m.Material)) throw new SkinFormatException("duplicate-material", $"{m.Material}: more than one override");
             foreach (var t in m.Textures.Values) File(t, m.Material, true);
-            Vec(m.Params.EmissiveColor, 3, m.Material);
-            Vec(m.Params.Tint, 4, m.Material);
+            Params(m.Params, m.Material);
             foreach (var l in m.Layers)
             {
                 if (l.Play == PlayMode.LoopFor && !(l.PlaySeconds > 0))
                     throw new SkinFormatException("bad-trigger", $"{m.Material}/{l.Id}: loopFor needs playSeconds > 0");
+                if (!Fraction(l.LowAmmoFraction))
+                    throw new SkinFormatException("bad-trigger", $"{m.Material}/{l.Id}: lowAmmoFraction 0 to 1");
                 if (l.Atlas == null) throw new SkinFormatException("no-atlas", $"{m.Material}/{l.Id}: layer not baked");
                 File(l.Atlas.Path, $"{m.Material}/{l.Id}", true);
                 var a = l.Atlas;
@@ -142,12 +154,12 @@ public sealed class SkinPack : IDisposable
             Vec(t.Position, 3, where);
             Vec(t.Rotation, 3, where);
             Vec(t.Scale, 3, where);
-            File(t.Mesh, where);
+            File(t.Mesh, where, mesh: true);
         }
         foreach (var s in doc.Sounds)
         {
-            if (s.Trigger == Trigger.Always || !(s.Volume >= 0))
-                throw new SkinFormatException("bad-trigger", $"{s.Id}: a sound needs an event trigger and a volume >= 0");
+            if (s.Trigger == Trigger.Always || !Fraction(s.Volume) || !Fraction(s.LowAmmoFraction))
+                throw new SkinFormatException("bad-trigger", $"{s.Id}: a sound needs an event trigger, a volume 0 to 1 and a lowAmmoFraction 0 to 1");
             File(s.File, s.Id, audio: true);
         }
         foreach (var a in doc.Attachments)
@@ -157,27 +169,37 @@ public sealed class SkinPack : IDisposable
             Vec(a.Position ?? Array.Empty<float>(), 3, a.Id);
             Vec(a.Rotation ?? Array.Empty<float>(), 3, a.Id);
             Vec(a.Scale ?? Array.Empty<float>(), 3, a.Id);
-            File(a.Mesh, a.Id);
+            File(a.Mesh, a.Id, mesh: true);
             foreach (var e in a.Effects)
             {
                 if (e.Trigger == Trigger.Always || !(e.Seconds > 0))
                     throw new SkinFormatException("bad-trigger", $"{a.Id}: an effect needs an event trigger and seconds > 0");
                 Vec(e.Color ?? Array.Empty<float>(), 3, a.Id);
             }
-            if (a.Material != null) foreach (var t in a.Material.Textures.Values) File(t, a.Id, true);
+            if (a.Material != null)
+            {
+                foreach (var t in a.Material.Textures.Values) File(t, a.Id, true);
+                Vec(a.Material.Color, 4, a.Id);
+                Params(a.Material.Params, a.Id);
+            }
             if (a.Screen != null)
             {
                 if (a.Screen.Digits is < 0 or > 6) throw new SkinFormatException("bad-screen", $"{a.Id}: digits 0 (automatic) to 6");
-                if (a.Screen.LowAmmoGradientStart is < 0 or > 1) throw new SkinFormatException("bad-screen", $"{a.Id}: low-ammo gradient start 0 to 1");
+                if (!Fraction(a.Screen.LowAmmoGradientStart) || !Fraction(a.Screen.LowAmmoFraction))
+                    throw new SkinFormatException("bad-screen", $"{a.Id}: low-ammo fraction and gradient start 0 to 1");
+                Vec(a.Screen.Size, 2, a.Id);
+                Vec(a.Screen.PanelColor, 4, a.Id);
+                Vec(a.Screen.BorderColor, 4, a.Id);
+                Vec(a.Screen.TextColor, 4, a.Id);
                 Vec(a.Screen.LowAmmoColor, 4, a.Id);
                 if (a.Screen.Source != ScreenSource.Static && a.Screen.GlyphMeshes == null)
                     throw new SkinFormatException("no-glyphs", $"{a.Id}: glyph meshes not baked");
                 if (a.Screen.GlyphMeshes is { } glyphs)
                 {
                     if (glyphs.Length != 12 || !(a.Screen.GlyphAspect > 0)) throw new SkinFormatException("no-glyphs", $"{a.Id}: needs 12 glyph meshes and their aspect");
-                    foreach (var g in glyphs) File(g, a.Id);
+                    foreach (var g in glyphs) File(g, a.Id, mesh: true);
                 }
-                File(a.Screen.TextMesh, a.Id);
+                File(a.Screen.TextMesh, a.Id, mesh: true);
             }
         }
     }
@@ -195,13 +217,19 @@ public sealed class ForgeSkinMesh
     public float[]? Tangents;
     public uint[] Indices = Array.Empty<uint>();
 
+    public static bool IsMesh(byte[] head) => head.Length >= 4 && BitConverter.ToUInt32(head, 0) == Magic;
+
     public static ForgeSkinMesh Read(byte[] data)
     {
+        if (data.Length < 16 || !IsMesh(data)) throw new SkinFormatException("bad-mesh", "Not a .forgeskinmesh");
         using var r = new BinaryReader(new MemoryStream(data));
-        if (r.ReadUInt32() != Magic) throw new SkinFormatException("bad-mesh", "Not an forgeskinmesh");
+        r.ReadUInt32();
         int vc = r.ReadInt32(), ic = r.ReadInt32();
         uint flags = r.ReadUInt32();
         if (vc <= 0 || ic <= 0 || ic % 3 != 0) throw new SkinFormatException("bad-mesh", "Bad vertex or index count");
+        // The counts must fit the data before anything is allocated from them.
+        long floats = 3 + ((flags & 1) != 0 ? 3 : 0) + ((flags & 2) != 0 ? 2 : 0) + ((flags & 4) != 0 ? 4 : 0);
+        if (16 + (floats * vc + ic) * 4L > data.Length) throw new SkinFormatException("bad-mesh", "Vertex or index count larger than the data");
         float[] F(int n) { var a = new float[n]; for (int i = 0; i < n; i++) a[i] = r.ReadSingle(); return a; }
         var m = new ForgeSkinMesh { Positions = F(vc * 3) };
         if ((flags & 1) != 0) m.Normals = F(vc * 3);

@@ -37,29 +37,37 @@ public static class Catalog
     static readonly JsonObject Naming = JsonNode.Parse(typeof(Catalog).Assembly.GetManifestResourceStream("naming.json")!)!.AsObject();
     static List<CatalogItem>? _items;
     static string? _build;
+    static bool _warmed;
 
     sealed record Cached(CatalogItem Item, Recipe Source);
 
     // Built once per game build and kept in that build's cache folder; later launches read only that file.
+    // Only the located game's reader warms the preview cache (which drops other builds' caches); an assets.* gameDir
+    // override reads its catalog and touches no cache folder of the located game.
     public static List<CatalogItem> Get(GameAssets g)
     {
-        if (_items != null && _build == g.BuildId) return _items;
-        var file = Path.Combine(g.Cache, "catalog-2.json");
-        List<CatalogItem> items;
-        try
+        if (_items == null || _build != g.BuildId)
         {
-            items = JsonSerializer.Deserialize<List<Cached>>(File.ReadAllText(file), Program.Json)!.Select(c => c.Item with { Source = c.Source }).ToList();
+            var file = Path.Combine(g.Cache, "catalog-2.json");
+            List<CatalogItem> items;
+            try
+            {
+                items = JsonSerializer.Deserialize<List<Cached>>(File.ReadAllText(file), Program.Json)!.Select(c => c.Item with { Source = c.Source }).ToList();
+            }
+            catch (Exception e) when (e is IOException or JsonException)
+            {
+                items = Load(g);
+                Directory.CreateDirectory(g.Cache);
+                AtomicFile.WriteText(file, JsonSerializer.Serialize(items.Select(i => new Cached(i, i.Source)), Program.Json));
+            }
+            (_items, _build, _warmed) = (items, g.BuildId, false);
         }
-        catch (Exception e) when (e is IOException or JsonException)
+        if (!_warmed && Path.GetDirectoryName(g.DataDir)!.Equals(Path.TrimEndingDirectorySeparator(Game.Locate().GameDir ?? ""), StringComparison.OrdinalIgnoreCase))
         {
-            items = Load(g);
-            Directory.CreateDirectory(g.Cache);
-            File.WriteAllText(file + ".tmp", JsonSerializer.Serialize(items.Select(i => new Cached(i, i.Source)), Program.Json));
-            File.Move(file + ".tmp", file, true);
+            _warmed = true;
+            PreviewCache.Ready(g, _items);
         }
-        (_items, _build) = (items, g.BuildId);
-        PreviewCache.Ready(g, items);
-        return items;
+        return _items;
     }
 
     public static Node Build(GameAssets g, Recipe r)

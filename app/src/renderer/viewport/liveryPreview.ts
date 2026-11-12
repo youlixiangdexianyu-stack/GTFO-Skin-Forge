@@ -30,6 +30,10 @@ export class LiveryPreview {
   private finish: MaterialOverride['finish'] = null;
   /** Decal renders by layer id, reused while the decal and the part layout stay the same. */
   private decals = new Map<string, { key: string; canvas: HTMLCanvasElement }>();
+  /** What the last redraw was asked for; an edit elsewhere in the document leaves the same objects (immer). */
+  private inputs: unknown[] = [];
+  /** Counts the redraws of `albedo`, for what draws over it. */
+  version = 0;
 
   constructor(private material: string) {}
 
@@ -42,6 +46,9 @@ export class LiveryPreview {
   }
 
   update(m: MaterialOverride, base: string | null, layout: string) {
+    const inputs = [m.livery, m.finish, m.part, base, layout];
+    if (inputs.every((x, i) => x === this.inputs[i])) return;
+    this.inputs = inputs;
     this.finish = m.finish ?? null;
     this.next = { m, base, key: layout };
     if (!this.running) void this.run();
@@ -62,8 +69,10 @@ export class LiveryPreview {
           this.msTex.needsUpdate = true;
         }
         this.albedoTex.needsUpdate = true;
+        this.version++;
       } catch {
         // The 3D view is not ready yet (no renderer or model): the next document change draws it.
+        this.inputs = [];
       }
     }
     this.running = false;

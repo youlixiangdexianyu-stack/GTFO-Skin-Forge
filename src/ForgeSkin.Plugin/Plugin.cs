@@ -36,7 +36,7 @@ public sealed class ForgeSkinPlugin : BasePlugin
         {
             _own = new StreamWriter(Path.Combine(Path.GetDirectoryName(typeof(ForgeSkinPlugin).Assembly.Location)!, "forgeskin.log"), false) { AutoFlush = true };
         }
-        catch (IOException) { }
+        catch (Exception) { } // no own log (read-only folder, another game instance holding it): BepInEx's still works
         if (!Config.Bind("General", "Enabled", true, "Apply the installed skins to the local player's gear.").Value)
         {
             Info("disabled in ForgeSkin.cfg");
@@ -49,7 +49,11 @@ public sealed class ForgeSkinPlugin : BasePlugin
             "Development mode: reload the skins whenever the skins folder changes, so 应用到游戏 shows up in a running game. Off: skins load once when the game starts.").Value;
         Skins.Watch(skins, Paths.PluginPath, dev);
         var harmony = new Harmony(Guid);
-        harmony.PatchAll(typeof(ForgeSkinPlugin).Assembly);
+        // One hook class at a time: a target a game update renamed (the compiler-generated reload callback) loses that
+        // event only, not the plugin.
+        foreach (var type in AccessTools.GetTypesFromAssembly(typeof(ForgeSkinPlugin).Assembly))
+            try { harmony.CreateClassProcessor(type).Patch(); }
+            catch (Exception e) { Fail($"hook {type.Name} not installed: {(e.InnerException ?? e).Message}"); }
         foreach (var method in harmony.GetPatchedMethods()) Info($"hooked {method.DeclaringType?.Name}.{method.Name}");
         AddComponent<Runner>();
         Info($"loaded, skins folder {skins}, hot reload {(dev ? "on" : "off")}");

@@ -2,7 +2,7 @@
 // implementation serves the live 3D preview and the pack: `composeLivery` draws into the canvases it is given, at preview
 // size or at the base texture's own size; `bakeLivery` writes the result as ordinary textures before pack.build, so the
 // pack and game-file replacement carry plain Albedo / MetallicSmoothness / Emissive images and no livery data.
-import { baseTexturePath, loadImage } from './frames';
+import { baseTexturePath, loadImage, writePng } from './frames';
 import { dirName, type BlendMode, type Finish, type LiveryKind, type LiveryLayer, type MaterialOverride, type MaterialParams, type SkinDocument, type WeaponPreview } from './protocol';
 import { ensureMaterial, materialOf, uid, useStore } from './store';
 import { t } from './i18n';
@@ -133,7 +133,8 @@ function finishPixels(finish: Finish, w: number, h: number) {
       ms.data[i] = ms.data[i + 1] = ms.data[i + 2] = Math.round(Math.min(1, Math.max(0, metal)) * 255);
       ms.data[i + 3] = Math.round(Math.min(1, Math.max(0, smooth)) * 255);
     }
-  if (finishCache.size > 8) finishCache.clear();
+  // A bake-size finish is tens of MB: keep only the last few (the preview's and the one being baked).
+  if (finishCache.size >= 3) finishCache.delete(finishCache.keys().next().value!);
   const out = { ms, look };
   finishCache.set(key, out);
   return out;
@@ -189,10 +190,6 @@ export async function composeLivery(m: MaterialOverride, base: CanvasImageSource
   ctx.globalCompositeOperation = 'source-over';
 }
 
-function toPng(c: HTMLCanvasElement): Promise<Uint8Array> {
-  return new Promise((resolve, reject) => c.toBlob(async (b) => (b ? resolve(new Uint8Array(await b.arrayBuffer())) : reject(new Error('png'))), 'image/png'));
-}
-
 /**
  * Bakes every livery of `doc` (the packed copy) into its textures at the base albedo's size and drops the livery data:
  * Albedo, plus MetallicSmoothness for a finish and Emissive (the paint itself) for glow. Runs before the dynamic layers
@@ -219,10 +216,10 @@ export async function bakeLivery(
       const safe = (m.material ?? '').replace(/[^\w.-]/g, '_');
       m.textures ??= {};
       m.textures.albedo = `${dir}\\${safe}_albedo.png`;
-      await window.forge.writeFile(m.textures.albedo, await toPng(albedo));
+      await writePng(m.textures.albedo, albedo);
       if (ms) {
         m.textures.metallicSmoothness = `${dir}\\${safe}_ms.png`;
-        await window.forge.writeFile(m.textures.metallicSmoothness, await toPng(ms));
+        await writePng(m.textures.metallicSmoothness, ms);
       }
       if (m.finish === 'glow') m.textures.emissive = m.textures.albedo;
       const own = Object.fromEntries(Object.entries(m.params ?? {}).filter(([, v]) => v != null));

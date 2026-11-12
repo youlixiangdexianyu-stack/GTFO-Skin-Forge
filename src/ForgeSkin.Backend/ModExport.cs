@@ -23,8 +23,8 @@ public static class ModExport
         if (packs.Length == 0) throw new BackendException("bad-request", "No skin packs to export");
         var docs = packs.Select(p => { using var pack = SkinPack.Open(p); return pack.Manifest; }).ToList();
 
-        var temp = output + ".tmp";
-        using (var zip = ZipFile.Open(temp, ZipArchiveMode.Create))
+        using var temp = new AtomicFile(output);
+        using (var zip = ZipFile.Open(temp.Temp, ZipArchiveMode.Create))
         {
             Text(zip, "manifest.json", JsonSerializer.Serialize(new
             {
@@ -37,7 +37,7 @@ public static class ModExport
             Text(zip, "README.md", $"# {name.Replace('_', ' ')}\n\n{description}\n\nSkins for GTFO, applied by ForgeSkin (installed automatically as a dependency).\n\n"
                 + string.Join("\n", docs.Select(d => $"- {d.Name}")) + "\n");
         }
-        File.Move(temp, output, true);
+        temp.Commit();
         return new { mod = output };
     }
 

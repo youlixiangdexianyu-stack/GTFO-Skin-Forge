@@ -491,6 +491,8 @@
   "exportMod.export": "导出…",
   "exportMod.done": "Thunderstore 皮肤模组已导出",
   "exportMod.failed": "导出皮肤模组失败",
+  "exportMod.skinProblem": "皮肤「{{v0}}」：{{v1}}",
+  "actions.building": "上一次构建还没完成，等它结束再试。",
   "errors.nothingToApply": "这个皮肤里没有能写进游戏文件的东西：只有贴图和材质参数（金属度、光滑度、发光、颜色）能写进去。",
   "errors.gameChanged": "游戏文件在这期间变了（游戏更新或 Steam 校验过）。先在“还原游戏原版资源”里看一下状态，再试一次。",
   "errors.stalePatch": "游戏文件里还留着旧版本游戏时写进去的皮肤。先在 Steam 里“验证游戏文件完整性”，再试一次。",
@@ -638,5 +640,7 @@
   "livery.bar.fill": "打开“画遮罩”可以擦掉不想上漆的地方",
   "livery.baking": "正在烘焙涂装：{{v0}}",
   "livery.badImage": "这张图片打不开，换一张 PNG 或 JPG 试试。",
-  "errors.noLiveryView": "涂装要在 3D 视图里烘焙：等武器模型显示出来再试一次。"
+  "errors.noLiveryView": "涂装要在 3D 视图里烘焙：等武器模型显示出来再试一次。",
+  "errors.duplicateMaterial": "有两项设置改的是同一个材质：只保留其中一项再试一次。",
+  "errors.fileInUse": "文件被别的程序占用：关掉那个程序再试一次。"
 }

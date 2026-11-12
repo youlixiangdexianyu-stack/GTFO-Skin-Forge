@@ -1,7 +1,7 @@
 // Multi-step user actions: apply to game, export pack, export OBJ.
-import { bakeGlyphs, bakeLayers } from './frames';
+import { bakeGlyphs, bakeLayers, baseTexturePath, loadImage, writePng } from './frames';
 import { bakeLivery, hasLivery } from './livery';
-import { decalRenderer } from './viewport/liveryGpu';
+import { drawUvWireframe, meshesOf, uvRenderer } from './viewport/liveryGpu';
 import { call, type Profile, type SkinDocument } from './protocol';
 import { autosavePath, currentItem, editorOf, useStore, type Selection } from './store';
 import { localName, partLabel, t } from './i18n';
@@ -148,7 +148,7 @@ async function build(out: string, skin?: { doc: SkinDocument; path: string }): P
   useStore.setState({ busy: t('actions.k5') });
   // The livery first: it becomes the base the dynamic layers play over. Its animated decals' frames are written already,
   // so their layers join the material only after its own layers are baked.
-  const animated = await bakeLivery(doc, s.preview, projectPath, (m) => decalRenderer(m.material ?? '', m.part), (t) => useStore.setState({ busy: t }));
+  const animated = await bakeLivery(doc, s.preview, projectPath, (m) => uvRenderer(m.material ?? '', m.part), (t) => useStore.setState({ busy: t }));
   await bakeLayers(doc, s.preview, projectPath, (t) => useStore.setState({ busy: t }));
   for (const { m, layers } of animated) m.layers = [...layers, ...(m.layers ?? [])];
   await bakeGlyphs(doc, projectPath);
@@ -346,6 +346,49 @@ export async function exportObj(mode: 'separate' | 'merged'): Promise<void> {
   } finally {
     useStore.setState({ busy: null });
   }
+}
+
+/**
+ * Per material of the open item, its UV wireframe at the base albedo's size, alone (transparent) and over the albedo, as
+ * `<material>_uv.png` and `<material>_uv_albedo.png` in a chosen folder: a guide for painting textures in an image editor.
+ */
+export async function exportUvTemplates(): Promise<void> {
+  const s = st();
+  const item = currentItem();
+  if (!item || !s.preview) return s.toast('info', t('actions.k2'));
+  const [outDir] = await window.forge.openDialog('folder', undefined, 'uv');
+  if (!outDir) return;
+  const materials = [...new Set(item.parts.flatMap((p) => p.materials))].filter((m) => meshesOf(m).length);
+  await exclusive(async () => {
+    try {
+      for (const [i, material] of materials.entries()) {
+        useStore.setState({ busy: t('actions.uvExporting', { v0: material, v1: i + 1, v2: materials.length }) });
+        const path = baseTexturePath(s.doc, s.preview, material, 'albedo');
+        const base = path ? await loadImage(path).catch(() => null) : null;
+        const [w, h] = base ? [base.naturalWidth, base.naturalHeight] : [2048, 2048];
+        const c = Object.assign(document.createElement('canvas'), { width: w, height: h });
+        const ctx = c.getContext('2d')!;
+        ctx.lineWidth = Math.max(1, Math.round(Math.max(w, h) / 1024));
+        ctx.lineJoin = 'round';
+        ctx.strokeStyle = '#00e5ff';
+        drawUvWireframe(material, ctx, w, h);
+        const safe = material.replace(/[^\w.-]/g, '_');
+        await writePng(`${outDir}\\${safe}_uv.png`, c);
+        if (base) {
+          const over = Object.assign(document.createElement('canvas'), { width: w, height: h });
+          const o = over.getContext('2d')!;
+          o.drawImage(base, 0, 0, w, h);
+          o.drawImage(c, 0, 0);
+          await writePng(`${outDir}\\${safe}_uv_albedo.png`, over);
+        }
+      }
+      s.toast('ok', t('actions.uvDone', { v0: materials.length }), { label: t('actions.k22'), run: () => void window.forge.openPath(outDir) });
+    } catch (e) {
+      s.fail(e, t('actions.uvFailed'));
+    } finally {
+      useStore.setState({ busy: null });
+    }
+  });
 }
 
 export async function importMesh(): Promise<void> {

@@ -1,10 +1,10 @@
 // Live livery of one material in the 3D view: the same composeLivery the pack bakes with, at preview size, redrawn when
 // the document changes (the newest change wins; changes while a redraw runs are folded into the next one).
 import { CanvasTexture, LinearSRGBColorSpace, SRGBColorSpace, type Texture } from 'three';
-import { cachedDecal, composeLivery, type FrameOf } from '../livery';
+import { cachedUv, composeLivery, writesMs, type FrameOf } from '../livery';
 import { loadImage } from '../frames';
 import type { LiveryLayer, MaterialOverride, TextureChannel } from '../protocol';
-import { decalRenderer } from './liveryGpu';
+import { uvRenderer } from './liveryGpu';
 import { playTime } from './refs';
 import { repackMetallicSmoothness } from './textures';
 
@@ -32,13 +32,14 @@ export class LiveryPreview {
   private msShown = canvas();
   private albedoTex = texture(this.albedo, true);
   private msTex = texture(this.msShown, false);
-  private next: { m: MaterialOverride; base: string | null; key: string } | null = null;
+  private next: { m: MaterialOverride; base: string | null; baseMs: string | null; key: string } | null = null;
   /** The last redraw asked for, drawn again when an animated decal moves to another frame. */
   private last: LiveryPreview['next'] = null;
   private running = false;
   private finish: MaterialOverride['finish'] = null;
+  private writesMs = false;
   /** Decal renders by layer id, reused while the decal, its frame and the part layout stay the same. */
-  private decals = new Map<string, { key: string; image: CanvasImageSource; canvas: HTMLCanvasElement }>();
+  private decals = new Map<string, { key: string; image: CanvasImageSource | null; canvas: HTMLCanvasElement }>();
   /** Animated decals of the last redraw: their frame count, rate and the frame drawn. */
   private playing = new Map<string, { l: LiveryLayer; count: number; fps: number; shown: number }>();
   private start = performance.now();
@@ -52,17 +53,18 @@ export class LiveryPreview {
   /** What the livery paints for a channel; null leaves the channel to the material. */
   texture(ch: TextureChannel): Texture | null {
     if (ch === 'albedo') return this.albedoTex;
-    if (ch === 'metallicSmoothness') return this.finish ? this.msTex : null;
+    if (ch === 'metallicSmoothness') return this.writesMs ? this.msTex : null;
     if (ch === 'emissive') return this.finish === 'glow' ? this.albedoTex : null;
     return null;
   }
 
-  update(m: MaterialOverride, base: string | null, layout: string) {
-    const inputs = [m.livery, m.finish, m.part, base, layout];
+  update(m: MaterialOverride, base: string | null, baseMs: string | null, layout: string) {
+    const inputs = [m.livery, m.finish, m.part, base, baseMs, layout];
     if (inputs.every((x, i) => x === this.inputs[i])) return;
     this.inputs = inputs;
     this.finish = m.finish ?? null;
-    this.next = this.last = { m, base, key: layout };
+    this.writesMs = writesMs(m);
+    this.next = this.last = { m, base, baseMs, key: layout };
     if (!this.running) void this.run();
   }
 
@@ -86,13 +88,15 @@ export class LiveryPreview {
   private async run() {
     this.running = true;
     while (this.next) {
-      const { m, base, key } = this.next;
+      const { m, base, baseMs, key } = this.next;
       this.next = null;
       this.playing.clear();
       try {
         const img = base ? await loadImage(base).catch(() => null) : null;
-        await composeLivery(m, img, this.albedo, m.finish ? this.ms : null, cachedDecal(decalRenderer(this.material, m.part), this.decals, key), this.frameOf);
-        if (m.finish) {
+        const ms = writesMs(m);
+        const msImg = ms && baseMs ? await loadImage(baseMs).catch(() => null) : null;
+        await composeLivery(m, img, this.albedo, ms ? this.ms : null, cachedUv(uvRenderer(this.material, m.part), this.decals, key), this.frameOf, msImg);
+        if (ms) {
           const px = this.ms.getContext('2d', { willReadFrequently: true })!.getImageData(0, 0, SIZE, SIZE);
           this.msShown.getContext('2d', { willReadFrequently: true })!.putImageData(px, 0, 0);
           repackMetallicSmoothness(this.msShown);

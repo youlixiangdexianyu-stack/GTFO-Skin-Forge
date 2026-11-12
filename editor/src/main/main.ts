@@ -1,5 +1,5 @@
 import { app, autoUpdater, BrowserWindow, dialog, ipcMain, net, protocol, shell, type OpenDialogOptions } from 'electron';
-import { appendFileSync, cpSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { appendFileSync, cpSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, watch, writeFileSync, type FSWatcher } from 'node:fs';
 import { mkdir, stat, writeFile } from 'node:fs/promises';
 import { basename, dirname, isAbsolute, join, normalize, resolve, sep } from 'node:path';
 import { pathToFileURL } from 'node:url';
@@ -172,6 +172,7 @@ function registerIpc() {
   });
   ipcMain.on('app:log', (_e, kind: string, detail: string) => appLog(kind, detail));
   ipcMain.handle('files:exists', (_e, path: string) => existsSync(path));
+  ipcMain.handle('files:watch', (_e, paths: string[]) => watchFiles(paths));
   // A folder opens in Explorer; a file is only shown in its folder, never launched.
   ipcMain.handle('shell:open', async (_e, path: string) => {
     if (isAbsolute(path) && (await stat(path).catch(() => null))?.isDirectory()) return shell.openPath(path);
@@ -270,6 +271,48 @@ function remember(key: string, dir: string) {
     writeFileSync(dialogsFile(), JSON.stringify(dialogDirs, null, 2));
   } catch (e) {
     appLog('dialogs', e);
+  }
+}
+
+// The files the open skin uses, watched through their folders (an editor saving a file often replaces it, which a watch on
+// the file itself loses). A changed file is reported once its writes have been quiet for 400 ms.
+const watched = new Map<string, { watcher: FSWatcher; names: Set<string> }>();
+const changed = new Set<string>();
+let changedTimer: NodeJS.Timeout | undefined;
+function watchFiles(paths: string[]) {
+  const want = new Map<string, Set<string>>();
+  for (const p of paths) {
+    const dir = dirname(p);
+    if (!want.has(dir)) want.set(dir, new Set());
+    want.get(dir)!.add(basename(p).toLowerCase());
+  }
+  for (const [dir, w] of watched)
+    if (!want.has(dir)) {
+      w.watcher.close();
+      watched.delete(dir);
+    }
+  for (const [dir, names] of want) {
+    const w = watched.get(dir);
+    if (w) {
+      w.names = names;
+      continue;
+    }
+    try {
+      const entry = { names, watcher: watch(dir) };
+      entry.watcher.on('change', (_type, name) => {
+        if (!name || !entry.names.has(String(name).toLowerCase())) return;
+        changed.add(join(dir, String(name)));
+        clearTimeout(changedTimer);
+        changedTimer = setTimeout(() => {
+          send('files:changed', [...changed]);
+          changed.clear();
+        }, 400);
+      });
+      entry.watcher.on('error', () => (entry.watcher.close(), watched.delete(dir)));
+      watched.set(dir, entry);
+    } catch (e) {
+      appLog('watch', e); // a folder that is gone: nothing to watch
+    }
   }
 }
 

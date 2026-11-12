@@ -2,6 +2,7 @@ import { ActionIcon, Badge, Button, Checkbox, Group, Menu, Modal, Popover, Segme
 import {
   IconBolt,
   IconBox,
+  IconGridDots,
   IconCheck,
   IconChecklist,
   IconChevronDown,
@@ -29,7 +30,7 @@ import {
   IconX,
 } from '@tabler/icons-react';
 import { useEffect, useState } from 'react';
-import { applyToGame, exportObj, exportPack, exportThunderstore, profileProblem } from '../actions';
+import { applyToGame, exportObj, exportPack, exportThunderstore, exportUvTemplates, profileProblem } from '../actions';
 import { detail, friendly } from '../errors';
 import { call, type BackendError, type InstalledPack, type SizeMode, type VerifyResult } from '../protocol';
 import { useStore } from '../store';
@@ -515,6 +516,9 @@ function PublishMenu() {
           </Menu.Item>
           <Menu.Item leftSection={<IconPackage size={14} />} onClick={() => void exportObj('merged')}>
             {t('topBar.k51')}
+          </Menu.Item>
+          <Menu.Item leftSection={<IconGridDots size={14} />} onClick={() => void exportUvTemplates()}>
+            {t('topBar.uvTemplate')}
           </Menu.Item>
         </Menu.Dropdown>
       </Menu>

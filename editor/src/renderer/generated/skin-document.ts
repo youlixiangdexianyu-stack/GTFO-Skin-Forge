@@ -61,7 +61,7 @@ finish?: ("matte" | "gloss" | "satin" | "metal" | "brushedMetal" | "chrome" | "r
 livery?: (({
 id?: string
 name?: string
-kind?: ("fill" | "decal" | "brush")
+kind?: ("fill" | "decal" | "brush" | "pattern" | "wear")
 visible?: boolean
 color?: number[]
 opacity?: number
@@ -80,6 +80,23 @@ playSeconds?: number
 lowAmmoFraction?: number
 strokes?: Items[]
 mask?: Items[]
+pattern?: ("digital" | "woodland" | "tiger" | "splinter" | "flecktarn" | "multiTerrain" | "hydro" | "anodised" | "marble" | "damascus" | "honeycomb" | "hexGrid" | "contour" | "circuit" | "zebra" | "leopard" | "scales" | "stripes" | "plaid" | "dots" | "rust" | "flame" | "starfield" | "crackle" | null)
+colors?: (Items[] | null)
+scale?: number
+patternRotation?: (number[] | null)
+seed?: number
+amount?: number
+edgeWeight?: number
+scratches?: number
+metallic?: number
+smoothness?: number
+killsToFull?: number
+} | null)[] | null)
+wear?: (({
+kills?: number
+textures?: {
+[k: string]: string | null
+}
 } | null)[] | null)
 } | null)[]
 attachments?: ({

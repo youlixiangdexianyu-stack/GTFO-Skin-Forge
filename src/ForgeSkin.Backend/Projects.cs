@@ -67,17 +67,20 @@ public static class Projects
         return new { removed = path };
     }
 
-    // The files a document names that are not on disk, in document order.
-    public static object Missing(SkinDocument doc)
+    // The files a document names, in document order, each once.
+    public static List<string> Files(SkinDocument doc)
     {
-        var missing = new List<string>();
+        var files = new List<string>();
         MapPaths(doc, p =>
         {
-            if (!File.Exists(p) && !missing.Contains(p)) missing.Add(p);
+            if (!files.Contains(p)) files.Add(p);
             return p;
         });
-        return new { files = missing };
+        return files;
     }
+
+    // The files a document names that are not on disk, in document order.
+    public static object Missing(SkinDocument doc) => new { files = Files(doc).Where(p => !File.Exists(p)).ToList() };
 
     public static object Save(SkinDocument doc, string path)
     {
@@ -107,6 +110,7 @@ public static class Projects
         foreach (var m in doc.Materials)
         {
             Dict(m.Textures, map);
+            foreach (var w in m.Wear ?? []) Dict(w.Textures, map);
             foreach (var l in m.Layers)
             {
                 if (l.Kind != LayerKind.Text) l.Sources = l.Sources.Select(map).ToList();

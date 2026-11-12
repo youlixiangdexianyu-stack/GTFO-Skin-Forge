@@ -50,6 +50,13 @@ export async function writePng(path: string, c: HTMLCanvasElement): Promise<void
   generation++;
 }
 
+/** Drops the decoded copies of a file written outside the editor; the next load reads it again. */
+export function forgetImage(path: string) {
+  images.delete(path);
+  gifs.delete(path);
+  generation++;
+}
+
 export const isGif = (path: string) => /\.gif$/i.test(path);
 
 export interface SourceFrames {

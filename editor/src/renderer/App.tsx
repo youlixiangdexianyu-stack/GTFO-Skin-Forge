@@ -6,7 +6,9 @@ import { useEffect, useRef, useState } from 'react';
 import { Group as PanelGroup, Panel, Separator, useDefaultLayout } from 'react-resizable-panels';
 import { applyToGame, ensurePlugin, openProject } from './actions';
 import { useGameWarnings } from './gameLog';
-import { call } from './protocol';
+import { baseName, call } from './protocol';
+import { forgetImage } from './frames';
+import { forgetTexture } from './viewport/textures';
 import { useStore } from './store';
 import { AttachInspector } from './ui/AttachInspector';
 import { RailHost } from './ui/InspectorTabs';
@@ -203,6 +205,7 @@ function Inspector() {
  * is done (applyToGame queues it); other busy steps end in an edit, which starts the wait again. */
 function useAutoApply() {
   const doc = useStore((s) => s.doc);
+  const fileEpoch = useStore((s) => s.fileEpoch);
   const on = useStore((s) => s.prefs.autoApply && !!s.game?.running);
   const opened = useRef(doc.id);
   useEffect(() => {
@@ -213,7 +216,32 @@ function useAutoApply() {
       if (!useStore.getState().previewLoading) void applyToGame(true);
     }, 2000);
     return () => clearTimeout(id);
-  }, [doc, on]);
+  }, [doc, on, fileEpoch]);
+}
+
+/** Watches the files the skin uses; one written by another program (Photoshop, Substance Painter) is read again. */
+function useWatchedFiles() {
+  const doc = useStore((s) => s.doc);
+  useEffect(
+    () =>
+      window.forge.onFilesChanged((paths) => {
+        paths.forEach((p) => (forgetTexture(p), forgetImage(p)));
+        const s = useStore.getState();
+        s.log(t('app.filesChanged', { v0: paths.map(baseName).join(', ') }));
+        useStore.setState({ fileEpoch: s.fileEpoch + 1 });
+      }),
+    [],
+  );
+  useEffect(() => {
+    const id = setTimeout(() => {
+      if (useStore.getState().backendDown) return;
+      void call('project.files', { project: doc }).then(
+        ({ files }) => window.forge.watchFiles(files),
+        () => undefined,
+      );
+    }, 800);
+    return () => clearTimeout(id);
+  }, [doc]);
 }
 
 export function App() {
@@ -227,6 +255,7 @@ export function App() {
   useGameRunning();
   useAutoPlugin();
   useAutoApply();
+  useWatchedFiles();
   return (
     <div className="shell">
       <TopBar />

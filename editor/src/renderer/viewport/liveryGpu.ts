@@ -1,8 +1,11 @@
-// Decal projection in UV space for the livery (livery.ts): every mesh that uses the material is drawn at its UVs, and
-// each fragment's position is taken into the decal's frame; inside the frame's width, height and depth, on a face that
-// looks at the decal, it gets the decal image. Runs on the 3D view's own renderer into an offscreen target.
+// The livery's UV-space renderer (livery.ts): every mesh that uses a material is drawn at its UVs into an offscreen target
+// on the 3D view's own renderer, with a program per layer kind. Decals take each fragment's position into the decal's
+// frame (inside its width, height and depth, on a face that looks at the decal, it gets the image); patterns and wear
+// (viewport/uvPrograms) are computed from the fragment's position, normal and curvature in the item's root space.
 import {
+  BufferAttribute,
   Color,
+  Euler,
   DoubleSide,
   Matrix3,
   Matrix4,
@@ -16,12 +19,15 @@ import {
   ShaderMaterial,
   Texture,
   Vector3,
+  Vector4,
   WebGLRenderTarget,
+  type BufferGeometry,
   type Material,
   type Object3D,
   type WebGLRenderer,
 } from 'three';
-import type { DecalRenderer } from '../livery';
+import type { UvRenderer } from '../livery';
+import { PATTERNS, PATTERN_FRAGMENT, UV_VERTEX, WEAR_FRAGMENT } from './uvPrograms';
 import type { LiveryLayer } from '../protocol';
 import { unityToThree, type Vec3 } from '../space';
 import { anchorObject, viewRefs } from './refs';
@@ -55,7 +61,32 @@ export function meshesOf(material: string): Mesh[] {
   return out;
 }
 
-const shader = new ShaderMaterial({
+/** The UV wireframe of every triangle drawn with `material`, stroked onto `ctx` (w x h, top-left origin like the textures). */
+export function drawUvWireframe(material: string, ctx: CanvasRenderingContext2D, w: number, h: number) {
+  ctx.beginPath();
+  for (const m of meshesOf(material)) {
+    const uv = m.geometry.getAttribute('uv');
+    if (!uv) continue;
+    const index = m.geometry.index;
+    const count = index ? index.count : uv.count;
+    const list = Array.isArray(m.material) ? (m.material as Material[]) : null;
+    const ranges = list
+      ? m.geometry.groups.filter((g) => list[g.materialIndex ?? 0]?.name === material).map((g) => [g.start, Math.min(count, g.start + g.count)])
+      : [[0, count]];
+    const at = (i: number) => (index ? index.getX(i) : i);
+    for (const [start, end] of ranges)
+      for (let i = start; i + 2 < end; i += 3) {
+        const [a, b, c] = [at(i), at(i + 1), at(i + 2)];
+        ctx.moveTo(uv.getX(a) * w, uv.getY(a) * h);
+        ctx.lineTo(uv.getX(b) * w, uv.getY(b) * h);
+        ctx.lineTo(uv.getX(c) * w, uv.getY(c) * h);
+        ctx.closePath();
+      }
+  }
+  ctx.stroke();
+}
+
+const decalProgram = new ShaderMaterial({
   uniforms: { image: { value: null }, tint: { value: new Color() }, alpha: { value: 1 }, toFrame: { value: new Matrix4() }, frameRot: { value: new Matrix3() }, mirror: { value: 1 } },
   vertexShader: /* glsl */ `
     uniform mat4 toFrame;
@@ -112,56 +143,165 @@ function imageTexture(img: CanvasImageSource): Texture {
 }
 
 /**
- * Draws one decal layer for the material of `part` into a w x h canvas in UV space (top-left origin). The returned canvas
- * is reused by the next call, so the caller draws it right away.
+ * Per-vertex curvature of a geometry, cached on it as the `curvature` attribute: vertices at the same position are one
+ * point; for each, minus the mean cosine between its normal and the directions to its neighbours (positive on outer
+ * edges, negative in cavities, 0 on flat faces).
  */
-export function decalRenderer(material: string, part: string | null | undefined): DecalRenderer {
+function curvatureOf(g: BufferGeometry): void {
+  if (g.getAttribute('curvature')) return;
+  const pos = g.getAttribute('position');
+  const index = g.index;
+  const count = index ? index.count : pos.count;
+  const id = new Int32Array(pos.count);
+  const keys = new Map<string, number>();
+  for (let i = 0; i < pos.count; i++) {
+    const k = `${Math.round(pos.getX(i) * 1e4)},${Math.round(pos.getY(i) * 1e4)},${Math.round(pos.getZ(i) * 1e4)}`;
+    let v = keys.get(k);
+    if (v === undefined) keys.set(k, (v = keys.size));
+    id[i] = v;
+  }
+  const n = keys.size;
+  const P = new Float32Array(n * 3);
+  const N = new Float32Array(n * 3);
+  for (let i = 0; i < pos.count; i++) P.set([pos.getX(i), pos.getY(i), pos.getZ(i)], id[i] * 3);
+  const at = (i: number) => id[index ? index.getX(i) : i];
+  const [a, b, c, e, face] = [new Vector3(), new Vector3(), new Vector3(), new Vector3(), new Vector3()];
+  const neighbours: Set<number>[] = Array.from({ length: n }, () => new Set());
+  for (let i = 0; i + 2 < count; i += 3) {
+    const t = [at(i), at(i + 1), at(i + 2)];
+    a.fromArray(P, t[0] * 3);
+    b.fromArray(P, t[1] * 3);
+    c.fromArray(P, t[2] * 3);
+    face.subVectors(b, a).cross(e.subVectors(c, a)); // area-weighted
+    for (let k = 0; k < 3; k++) {
+      N[t[k] * 3] += face.x;
+      N[t[k] * 3 + 1] += face.y;
+      N[t[k] * 3 + 2] += face.z;
+      neighbours[t[k]].add(t[(k + 1) % 3]).add(t[(k + 2) % 3]);
+    }
+  }
+  const curve = new Float32Array(n);
+  const [nv, d, p] = [new Vector3(), new Vector3(), new Vector3()];
+  for (let v = 0; v < n; v++) {
+    nv.fromArray(N, v * 3).normalize();
+    p.fromArray(P, v * 3);
+    let sum = 0;
+    for (const u of neighbours[v]) sum += nv.dot(d.fromArray(P, u * 3).sub(p).normalize());
+    curve[v] = neighbours[v].size ? -sum / neighbours[v].size : 0;
+  }
+  const out = new Float32Array(pos.count);
+  for (let i = 0; i < pos.count; i++) out[i] = curve[id[i]];
+  g.setAttribute('curvature', new BufferAttribute(out, 1));
+}
+
+const program = (fragmentShader: string, uniforms: Record<string, { value: unknown }>) =>
+  new ShaderMaterial({
+    uniforms: { toRoot: { value: new Matrix4() }, ...uniforms },
+    vertexShader: UV_VERTEX,
+    fragmentShader,
+    side: DoubleSide,
+    depthTest: false,
+    depthWrite: false,
+    blending: NoBlending,
+  });
+const patternProgram = program(PATTERN_FRAGMENT, {
+  pattern: { value: 0 },
+  colors: { value: [0, 1, 2, 3].map(() => new Vector4()) },
+  scale: { value: 0.05 },
+  rot: { value: new Matrix3() },
+  seed: { value: 0 },
+});
+const wearProgram = program(WEAR_FRAGMENT, { amount: { value: 0 }, edgeWeight: { value: 0 }, scratches: { value: 0 }, scale: { value: 0.05 }, seed: { value: 0 } });
+
+/** Colours of a pattern layer that has fewer than four of its own (an olive woodland). */
+const DEFAULT_COLORS = [
+  [0.33, 0.36, 0.24, 1],
+  [0.2, 0.22, 0.14, 1],
+  [0.45, 0.38, 0.26, 1],
+  [0.08, 0.08, 0.07, 1],
+];
+
+/** Draws the meshes of `material` at their UVs with `shader` into a w x h canvas (top-left origin), reused by the next pass. */
+function uvPass(material: string, shader: ShaderMaterial, w: number, h: number): HTMLCanvasElement {
+  const gl = renderer!;
+  const scene = new Scene();
+  for (const m of meshesOf(material)) {
+    if (shader !== decalProgram) curvatureOf(m.geometry);
+    const list = (Array.isArray(m.material) ? m.material : [m.material]) as Material[];
+    const mats = list.map((x) => (x.name === material ? shader : hidden));
+    const copy = new Mesh(m.geometry, Array.isArray(m.material) ? mats : mats[0]);
+    copy.matrixAutoUpdate = false;
+    copy.matrix.copy(m.matrixWorld);
+    copy.frustumCulled = false;
+    scene.add(copy);
+  }
+  if (target?.width !== w || target.height !== h) {
+    target?.dispose();
+    target = new WebGLRenderTarget(w, h, { depthBuffer: false });
+  }
+  const prev = gl.getRenderTarget();
+  const clear = gl.getClearColor(new Color());
+  const clearAlpha = gl.getClearAlpha();
+  gl.setRenderTarget(target);
+  gl.setClearColor(0x000000, 0);
+  gl.clear(true, false, false);
+  gl.render(scene, camera);
+  const px = new Uint8ClampedArray(w * h * 4);
+  gl.readRenderTargetPixels(target, 0, 0, w, h, px);
+  gl.setRenderTarget(prev);
+  gl.setClearColor(clear, clearAlpha);
+  const c = out.canvas;
+  if (c.width !== w || c.height !== h) [c.width, c.height] = [w, h];
+  c.getContext('2d')!.putImageData(new ImageData(px, w, h), 0, 0);
+  return c;
+}
+
+/**
+ * Draws one livery layer that needs the model, for the material of `part`, into a w x h canvas in UV space (top-left
+ * origin): a decal's projected image, a pattern's colours (opaque where the material is) or wear's mask (in alpha). The
+ * returned canvas is reused by the next call, so the caller draws it right away.
+ */
+export function uvRenderer(material: string, part: string | null | undefined): UvRenderer {
   return (layer, img, w, h) => {
-    const gl = renderer;
     const root = viewRefs.root;
-    if (!gl || !root) throw Object.assign(new Error('the 3D view is not ready'), { code: 'no-livery-view' });
+    if (!renderer || !root) throw Object.assign(new Error('the 3D view is not ready'), { code: 'no-livery-view' });
     root.updateMatrixWorld(true);
+    const toRoot = root.matrixWorld.clone().invert();
+    if (layer.kind === 'pattern') {
+      const u = patternProgram.uniforms;
+      u.toRoot.value = toRoot;
+      u.pattern.value = Math.max(0, PATTERNS.indexOf(layer.pattern ?? 'woodland'));
+      const colors = (layer.colors ?? []).filter((c): c is number[] => !!c);
+      (u.colors.value as Vector4[]).forEach((v, i) => v.fromArray(colors[i] ?? DEFAULT_COLORS[i]));
+      u.scale.value = layer.scale ?? 0.05;
+      const [rx, ry, rz] = (layer.patternRotation ?? [0, 0, 0]).map((x) => (x ?? 0) * DEG);
+      u.rot.value = new Matrix3().setFromMatrix4(new Matrix4().makeRotationFromEuler(new Euler(rx, ry, rz)));
+      u.seed.value = layer.seed ?? 0;
+      return uvPass(material, patternProgram, w, h);
+    }
+    if (layer.kind === 'wear') {
+      const u = wearProgram.uniforms;
+      u.toRoot.value = toRoot;
+      u.amount.value = layer.amount ?? 0.4;
+      u.edgeWeight.value = layer.edgeWeight ?? 0.7;
+      u.scratches.value = layer.scratches ?? 0.3;
+      u.scale.value = layer.scale ?? 0.05;
+      u.seed.value = layer.seed ?? 0;
+      return uvPass(material, wearProgram, w, h);
+    }
     const anchor: Object3D = (part && anchorObject(part)) || root;
     const frame = anchor.matrixWorld.clone().multiply(decalMatrix(layer));
     const toFrame = frame.clone().invert();
     const rot = new Quaternion();
     frame.decompose(new Vector3(), rot, new Vector3());
-    shader.uniforms.toFrame.value = toFrame;
-    shader.uniforms.frameRot.value = new Matrix3().setFromMatrix4(new Matrix4().makeRotationFromQuaternion(rot.invert()));
-    shader.uniforms.image.value = imageTexture(img);
+    const u = decalProgram.uniforms;
+    u.toFrame.value = toFrame;
+    u.frameRot.value = new Matrix3().setFromMatrix4(new Matrix4().makeRotationFromQuaternion(rot.invert()));
+    u.image.value = imageTexture(img!);
     const [r, g, b, a] = layer.color ?? [1, 1, 1, 1];
-    shader.uniforms.tint.value = new Color(r, g, b);
-    shader.uniforms.alpha.value = a ?? 1;
-    shader.uniforms.mirror.value = layer.mirror ? -1 : 1;
-
-    const scene = new Scene();
-    for (const m of meshesOf(material)) {
-      const list = (Array.isArray(m.material) ? m.material : [m.material]) as Material[];
-      const mats = list.map((x) => (x.name === material ? shader : hidden));
-      const copy = new Mesh(m.geometry, Array.isArray(m.material) ? mats : mats[0]);
-      copy.matrixAutoUpdate = false;
-      copy.matrix.copy(m.matrixWorld);
-      copy.frustumCulled = false;
-      scene.add(copy);
-    }
-    if (target?.width !== w || target.height !== h) {
-      target?.dispose();
-      target = new WebGLRenderTarget(w, h, { depthBuffer: false });
-    }
-    const prev = gl.getRenderTarget();
-    const clear = gl.getClearColor(new Color());
-    const clearAlpha = gl.getClearAlpha();
-    gl.setRenderTarget(target);
-    gl.setClearColor(0x000000, 0);
-    gl.clear(true, false, false);
-    gl.render(scene, camera);
-    const px = new Uint8ClampedArray(w * h * 4);
-    gl.readRenderTargetPixels(target, 0, 0, w, h, px);
-    gl.setRenderTarget(prev);
-    gl.setClearColor(clear, clearAlpha);
-    const c = out.canvas;
-    if (c.width !== w || c.height !== h) [c.width, c.height] = [w, h];
-    c.getContext('2d')!.putImageData(new ImageData(px, w, h), 0, 0);
-    return c;
+    u.tint.value = new Color(r, g, b);
+    u.alpha.value = a ?? 1;
+    u.mirror.value = layer.mirror ? -1 : 1;
+    return uvPass(material, decalProgram, w, h);
   };
 }

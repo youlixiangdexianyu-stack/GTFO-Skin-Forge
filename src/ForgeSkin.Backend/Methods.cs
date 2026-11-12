@@ -101,6 +101,7 @@ public static class Methods
         "project.list" => Projects.List(Str(p, "dir")),
         "project.delete" => Projects.Delete(Str(p, "path")),
         "project.missing" => Projects.Missing(Get<SkinDocument>(p, "project")),
+        "project.files" => new { files = Projects.Files(Get<SkinDocument>(p, "project")) },
         "mesh.import" => MeshImport.Import(Str(p, "glb")),
         "pack.build" => Build(Get<SkinDocument>(p, "project"), Str(p, "projectPath"), Str(p, "out"), Opt<string>(p, "sizeMode") ?? "keep", id),
         "pack.install" => Install.Pack(Str(p, "pack"), Str(p, "profile"), Opt<bool?>(p, "activate") ?? true),

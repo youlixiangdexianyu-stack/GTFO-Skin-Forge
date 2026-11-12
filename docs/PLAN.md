@@ -445,3 +445,47 @@ Install
 4. Holograms: check in game how `Cell/Player/Display_Hologram` draws a shape and a screen (the plugin logs its properties
    on the first hologram) and set the colour properties it really has; compare with `HologramShader` off; check styled
    borders and flicker.
+
+## 7. Next features
+
+Order of work; each lands on its own, with PLAN and the editor docs updated as it goes.
+
+1. **Texture files watched.** The main process watches every file the open skin references (textures, decal and sticker
+   images, layer sources, meshes, sounds). A change (Photoshop or Substance Painter saving over a file) drops the
+   preview's cached copy, redraws the 3D view and, with 自动应用 on and the game running, applies again. A file saved
+   under a new name in a watched folder is matched like a dropped file only when the user asks (no silent re-matching).
+2. **UV template export.** Per material of the open item: a PNG at its base texture's size with the UV wireframe
+   (transparent background) and one with the wireframe over the game's albedo, drawn from the preview meshes in UV space.
+   One folder dialog (purpose `uv`), files `<material>_uv.png` and `<material>_uv_albedo.png`.
+3. **UV-space passes.** `viewport/liveryGpu` becomes one renderer for every livery effect that needs the model: it draws
+   the meshes of a material at their UVs with object-space position, normal and curvature (per vertex, from the angle
+   between the faces around it, vertices merged by position) and runs a fragment program over them. Decals, patterns and
+   wear are three programs of it; nothing else draws meshes into UV space.
+4. **Patterns** (livery kind `pattern`). Procedural, from object-space position, so they run across UV seams: digital,
+   woodland, desert, snow, urban, tiger, splinter, flecktarn, multi-terrain blobs, hydro-dip swirl, anodised gradient,
+   marble, damascus, honeycomb, hex grid, contour lines, circuit, zebra, leopard, dragon scales, stripes, plaid, polka
+   dots, rust and grime, flame gradient, starfield. Settings: up to four colours, scale, rotation (degrees about the three
+   axes), seed (CS2's pattern seed), opacity and blend like every layer. Presets set colours per pattern.
+5. **Wear** (livery kind `wear`). A mask from edge curvature, object-space noise and scratches (seed, amount, edge
+   weight, scratch amount); where it shows, the layers below it are worn through to the game's own texture, tinted towards
+   bare metal (colour, metallic, smoothness). Optional growth with kills: `killsToFull` > 0 bakes four stages (amount × 0,
+   ⅓, ⅔, 1) into `MaterialOverride.Wear = [{kills, textures}]` in the pack; the plugin counts the local player's kills
+   with each skinned gear (persisted in `BepInEx/ForgeSkin/wear.json` by skin id and gear key) and, on equip and on level
+   start, puts the stage whose kill count was reached. The Skins format gets the stage the editor shows.
+6. **Colour variants.** A skin has named colour variants: each sets the colours of chosen livery layers (fill, brush,
+   decal tint, pattern colours, wear metal). The skin overview lists them; the selected variant is what the 3D view shows
+   and what colour edits write. Apply builds the selected variant; export, install-all and the Skins format write one
+   skin per variant (`<id>~<variant id>`, named `<skin> · <variant>`), so the in-game picker lists them unchanged.
+   Players choosing their own colours in game (author marks colours as player-editable, the picker gets colour controls)
+   waits for the ForgeCore merge (§6 item 3), since it needs in-game UI.
+7. **Charms** (attachment `charm`). A model (glb or one of the bundled shapes) hung from a pivot on a part by a short
+   chain length; it swings like a damped pendulum from the gear's own motion (plugin: per frame, from the pivot's world
+   acceleration and rotation; editor: the same model driven by an idle sway and by dragging the gun in the 3D view).
+   Settings: length, swing limit, stiffness, damping.
+8. **Sticker library.** Bundled vector stickers (hazard signs, numbers and letters, squad and unit insignia, arrows and
+   chevrons, hazard stripes, barcodes, skulls, crosshairs, GTFO-style warning labels) in a grid in the decal picker; a
+   chosen sticker is rasterised to `<dataDir>/stickers/<name>-<size>.png` and placed as a decal (tint and every decal
+   setting apply).
+9. **Symmetric painting and island selection.** Brush and mask strokes can mirror across the gear's centre plane
+   (the 3D view finds the surface under the mirrored point). An island tool fills or masks a whole UV island with one
+   click (`LiveryLayer.Fills` / `MaskFills`: triangles in UV space), so a part's face can be painted exactly.

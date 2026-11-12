@@ -41,6 +41,9 @@ const api = {
   /** A found update downloading: bytes so far and in all (0 when unknown); received -1 means it failed, = total done. */
   onUpdateProgress: (cb: (received: number, total: number) => void) => subscribe('update:progress', cb),
   onUpdateReady: (cb: () => void) => subscribe('update:ready', cb),
+  /** Watches these files (replacing the last list); onFilesChanged reports the ones written since. */
+  watchFiles: (paths: string[]): Promise<void> => ipcRenderer.invoke('files:watch', paths),
+  onFilesChanged: (cb: (paths: string[]) => void) => subscribe('files:changed', cb),
   restartToUpdate: (): Promise<void> => ipcRenderer.invoke('update:restart'),
 };
 

@@ -91,6 +91,18 @@ export function loadTexture(path: string, channel: TextureChannel | 'reticle'): 
   return p;
 }
 
+/** Textures of files written since they were loaded: still on materials until the next paint is in, then freed. */
+const retired: Promise<Texture>[] = [];
+
+/** A file changed on disk: its textures load again on the next paint. */
+export function forgetTexture(path: string) {
+  for (const [key, p] of cache)
+    if (key.slice(key.indexOf('|') + 1).toLowerCase() === path.toLowerCase()) {
+      cache.delete(key);
+      retired.push(p);
+    }
+}
+
 /** Key sets of the textures each user (one paint of the 3D view, one thumbnail render) still needs. */
 const held = new Set<Set<string>>();
 
@@ -105,6 +117,11 @@ export function holdTextures(keys: Set<string>) {
  */
 export function releaseTextures(...sets: Set<string>[]) {
   sets.forEach((s) => held.delete(s));
+  for (const p of retired.splice(0))
+    void p.then(
+      (t) => t.dispose(),
+      () => undefined,
+    );
   for (const [key, p] of cache) {
     if ([...held].some((s) => s.has(key))) continue;
     cache.delete(key);

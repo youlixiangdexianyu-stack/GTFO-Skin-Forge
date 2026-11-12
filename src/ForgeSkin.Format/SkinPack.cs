@@ -131,7 +131,7 @@ public sealed class SkinPack : IDisposable
             if (string.IsNullOrWhiteSpace(m.Material)) throw new SkinFormatException("no-material", "Material override without a material name");
             // The plugin matches renderers by material name, so two overrides of one material would silently shadow each other.
             if (!names.Add(m.Material)) throw new SkinFormatException("duplicate-material", $"{m.Material}: more than one override");
-            foreach (var t in m.Textures.Values) File(t, m.Material, true);
+            foreach (var t in m.Textures.Values.Concat(m.Wear?.SelectMany(w => w.Textures.Values) ?? [])) File(t, m.Material, true);
             Params(m.Params, m.Material);
             foreach (var l in m.Layers)
             {

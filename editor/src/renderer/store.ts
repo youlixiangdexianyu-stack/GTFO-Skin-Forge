@@ -197,6 +197,8 @@ interface State {
   update: { received: number; total: number } | null;
   /** A new version is downloaded; restarting installs it. */
   updateReady: boolean;
+  /** Bumped when a file the skin uses is written outside the editor (the 3D view repaints, 自动应用 applies again). */
+  fileEpoch: number;
   /** Video memory the last built pack of a skin takes in game (pack.build's estimate). */
   skinMemory: { id: string; bytes: number } | null;
   /** Plain message when the last autosave failed; null when it worked. */
@@ -337,6 +339,7 @@ export const useStore = create<State>((set, get) => ({
   cache: null,
   update: null,
   updateReady: false,
+  fileEpoch: 0,
   skinMemory: null,
   autosaveError: null,
   unmatched: [],

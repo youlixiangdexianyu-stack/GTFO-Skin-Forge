@@ -82,10 +82,28 @@ public sealed class MaterialOverride
     // a finish, MetallicSmoothness and Emissive) textures when packing, so a pack never carries them.
     public Finish? Finish { get; set; }
     public List<LiveryLayer>? Livery { get; set; }
+
+    // Pack only: the livery baked at growing wear (a wear layer with KillsToFull), lowest kill count first. The plugin shows
+    // the last stage whose kill count the local player reached with this skin on this gear, instead of Textures.
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public List<WearStage>? Wear { get; set; }
+}
+
+public sealed class WearStage
+{
+    public int Kills { get; set; }
+    public Dictionary<TextureChannel, string> Textures { get; set; } = new();
 }
 
 public enum Finish { Matte, Gloss, Satin, Metal, BrushedMetal, Chrome, Rubber, Plastic, CarbonFibre, PaintedSteel, WornMetal, Glow }
-public enum LiveryKind { Fill, Decal, Brush }
+public enum LiveryKind { Fill, Decal, Brush, Pattern, Wear }
+
+// Procedural patterns, drawn from object-space position so they run across UV seams.
+public enum Pattern
+{
+    Digital, Woodland, Tiger, Splinter, Flecktarn, MultiTerrain, Hydro, Anodised, Marble, Damascus, Honeycomb, HexGrid,
+    Contour, Circuit, Zebra, Leopard, Scales, Stripes, Plaid, Dots, Rust, Flame, Starfield, Crackle,
+}
 public enum BlendMode { Normal, Multiply, Screen, Overlay, Add }
 
 // One paint layer of a material: a fill over the whole surface, an image decal projected onto the surface, or brush strokes.
@@ -121,6 +139,23 @@ public sealed class LiveryLayer
     // triples (UV 0..1, top-left origin; width in UV units).
     public List<float[]> Strokes { get; set; } = new();
     public List<float[]> Mask { get; set; } = new();
+
+    // Pattern: which, its colours (one to four RGBA), size of its features in metres, rotation (Euler degrees) and seed.
+    public Pattern? Pattern { get; set; }
+    public List<float[]>? Colors { get; set; }
+    public float Scale { get; set; } = 0.05f;
+    public float[]? PatternRotation { get; set; }
+    public int Seed { get; set; }
+
+    // Wear: how much of the layers below is worn through (0..1), how strongly edges wear first and how many scratches;
+    // worn areas show the game's own texture tinted by Color, with this metallic and smoothness. KillsToFull > 0 grows
+    // the wear with the player's kills, from none to Amount at that many kills.
+    public float Amount { get; set; } = 0.4f;
+    public float EdgeWeight { get; set; } = 0.7f;
+    public float Scratches { get; set; } = 0.3f;
+    public float Metallic { get; set; } = 0.85f;
+    public float Smoothness { get; set; } = 0.55f;
+    public int KillsToFull { get; set; }
 }
 
 public sealed class MaterialParams

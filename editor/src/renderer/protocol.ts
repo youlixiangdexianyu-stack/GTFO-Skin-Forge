@@ -26,6 +26,7 @@ export type TriggerEffect = NonNullable<NonNullable<Attachment['effects']>[numbe
 export type SkinSound = NonNullable<NonNullable<SkinDocument['sounds']>[number]>;
 export type LiveryLayer = NonNullable<NonNullable<MaterialOverride['livery']>[number]>;
 export type LiveryKind = NonNullable<LiveryLayer['kind']>;
+export type Pattern = NonNullable<LiveryLayer['pattern']>;
 export type BlendMode = NonNullable<LiveryLayer['blend']>;
 export type Finish = NonNullable<MaterialOverride['finish']>;
 
@@ -243,6 +244,7 @@ export interface Methods {
   'project.list': [{ dir: string }, ProjectEntry[]];
   'project.delete': [{ path: string }, unknown];
   'project.missing': [{ project: SkinDocument }, { files: string[] }];
+  'project.files': [{ project: SkinDocument }, { files: string[] }];
   'mesh.import': [{ glb: string }, MeshImport];
   'pack.build': [{ project: SkinDocument; projectPath: string; out: string; sizeMode: SizeMode }, { pack: string; warnings: string[]; memory: number }];
   'pack.install': [{ pack: string; profile: string; activate: boolean }, unknown];

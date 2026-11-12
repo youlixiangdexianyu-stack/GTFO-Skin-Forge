@@ -1,10 +1,11 @@
 // Livery panels: the part's finish and paint layers (part inspector), the selected paint layer (right panel) and the
 // brush bar in the 3D view. Layers are listed top first: the top of the list is painted on top.
-import { ActionIcon, Alert, Button, Group, SegmentedControl, Select, SimpleGrid, Slider as MSlider, Switch, Text, TextInput, Tooltip, UnstyledButton } from '@mantine/core';
-import { IconArrowDown, IconArrowUp, IconBrush, IconBucketDroplet, IconCircle, IconEye, IconEyeOff, IconLine, IconMask, IconPhoto, IconScribble, IconSticker, IconTrash } from '@tabler/icons-react';
+import { ActionIcon, Alert, Button, Group, NumberInput, SegmentedControl, Select, SimpleGrid, Slider as MSlider, Switch, Text, TextInput, Tooltip, UnstyledButton } from '@mantine/core';
+import { IconArrowDown, IconArrowUp, IconBrush, IconBrushOff, IconBucketDroplet, IconCircle, IconDice5, IconEye, IconEyeOff, IconLine, IconMask, IconPhoto, IconScribble, IconSticker, IconTexture, IconTrash } from '@tabler/icons-react';
 import { useEffect, useState, type ComponentType } from 'react';
 import { sourceFrames, type SourceFrames } from '../frames';
-import { addDecal, addLivery, BLENDS, FINISH_IDS, FINISHES, isGifDecal, layersOf, moveLivery, removeLivery, setFinish, updateLivery } from '../livery';
+import { addDecal, addLivery, BLENDS, FINISH_IDS, FINISHES, isGifDecal, layersOf, moveLivery, PATTERN_PRESETS, removeLivery, setFinish, updateLivery } from '../livery';
+import { PATTERNS } from '../viewport/uvPrograms';
 import { Playback } from './DynamicInspector';
 import { baseName, fileUrl, type BlendMode, type CatalogPart, type LiveryKind, type LiveryLayer } from '../protocol';
 import { materialOf, useStore } from '../store';
@@ -17,6 +18,8 @@ export const LIVERY_KINDS: { id: LiveryKind; label: () => string; icon: Componen
   { id: 'fill', label: () => t('livery.fill'), icon: IconBucketDroplet },
   { id: 'decal', label: () => t('livery.decal'), icon: IconSticker },
   { id: 'brush', label: () => t('livery.brush'), icon: IconBrush },
+  { id: 'pattern', label: () => t('livery.pattern'), icon: IconTexture },
+  { id: 'wear', label: () => t('livery.wear'), icon: IconBrushOff },
 ];
 export const kindOf = (k: LiveryKind | null | undefined) => LIVERY_KINDS.find((x) => x.id === k) ?? LIVERY_KINDS[0];
 
@@ -178,6 +181,104 @@ function DecalPlayback({ material, layer }: { material: string; layer: LiveryLay
   );
 }
 
+const css = (c: number[] | null | undefined) => `rgb(${(c ?? [0, 0, 0]).slice(0, 3).map((x) => Math.round((x ?? 0) * 255)).join(',')})`;
+
+/** A seed with a button that rolls a new one. */
+function Seed({ value, onChange }: { value: number; onChange: (v: number) => void }) {
+  return (
+    <Group gap={6} wrap="nowrap">
+      <NumberInput style={{ flex: 1 }} size="xs" value={value} min={0} max={9999} allowDecimal={false} onChange={(v) => onChange(Number(v) || 0)} />
+      <Tooltip label={t('livery.reroll')}>
+        <ActionIcon variant="default" onClick={() => onChange(Math.floor(Math.random() * 10000))}>
+          <IconDice5 size={15} />
+        </ActionIcon>
+      </Tooltip>
+    </Group>
+  );
+}
+
+/** Pattern layer: presets, the pattern, its four colours, size, rotation and seed. */
+function PatternSection({ layer, up }: { layer: LiveryLayer; up: (fn: (l: LiveryLayer) => void, key?: string) => void }) {
+  const colors = layer.colors ?? PATTERN_PRESETS[0].colors;
+  return (
+    <div className="section">
+      <h3>{t('livery.pattern')}</h3>
+      <div className="presets">
+        {PATTERN_PRESETS.map((p) => (
+          <Tooltip key={p.id} label={t(`livery.preset.${p.id}`)}>
+            <UnstyledButton className="preset" aria-selected={layer.pattern === p.pattern && JSON.stringify(colors) === JSON.stringify(p.colors)} onClick={() => up((l) => void ((l.pattern = p.pattern), (l.colors = p.colors)))}>
+              {p.colors.map((c, i) => (
+                <i key={i} style={{ background: css(c) }} />
+              ))}
+            </UnstyledButton>
+          </Tooltip>
+        ))}
+      </div>
+      <Field label={t('livery.patternKind')}>
+        <Select value={layer.pattern ?? 'woodland'} data={PATTERNS.map((p) => ({ value: p, label: t(`livery.p.${p}`) }))} allowDeselect={false} searchable onChange={(v) => v && up((l) => void (l.pattern = v as LiveryLayer['pattern']))} />
+      </Field>
+      <Field label={t('livery.colors')}>
+        <SimpleGrid cols={2} spacing={4}>
+          {[0, 1, 2, 3].map((i) => (
+            <Color key={i} value={colors[i] ?? [0, 0, 0, 1]} onChange={(c) => up((l) => void ((l.colors = [0, 1, 2, 3].map((j) => (j === i ? [c[0], c[1], c[2], 1] : (colors[j] ?? [0, 0, 0, 1]))))), `color${i}`)} />
+          ))}
+        </SimpleGrid>
+      </Field>
+      <Field label={t('livery.patternScale')}>
+        <Slider value={(layer.scale ?? 0.05) * 1000} min={5} max={300} step={1} label={(v) => `${v.toFixed(0)} mm`} onChange={(v) => up((l) => void (l.scale = v / 1000), 'scale')} />
+      </Field>
+      <Field label={t('livery.patternRotation')}>
+        <Vec value={(layer.patternRotation ?? [0, 0, 0]) as [number, number, number]} labels={['X', 'Y', 'Z']} step={5} decimalScale={0} onChange={(v) => up((l) => void (l.patternRotation = v), 'rot')} />
+      </Field>
+      <Field label={t('livery.seed')}>
+        <Seed value={layer.seed ?? 0} onChange={(v) => up((l) => void (l.seed = v), 'seed')} />
+      </Field>
+    </div>
+  );
+}
+
+/** Wear layer: how much, where (edges, patches, scratches), the bare metal and growth with kills. */
+function WearSection({ layer, up }: { layer: LiveryLayer; up: (fn: (l: LiveryLayer) => void, key?: string) => void }) {
+  return (
+    <div className="section">
+      <Group gap={6} mb={6}>
+        <h3 style={{ margin: 0 }}>{t('livery.wear')}</h3>
+        <Info label={t('livery.wearInfo')} />
+      </Group>
+      <Field label={t('livery.wearAmount')}>
+        <Slider value={layer.amount ?? 0.4} onChange={(v) => up((l) => void (l.amount = v), 'amount')} />
+      </Field>
+      <Field label={t('livery.wearEdges')}>
+        <Slider value={layer.edgeWeight ?? 0.7} onChange={(v) => up((l) => void (l.edgeWeight = v), 'edges')} />
+      </Field>
+      <Field label={t('livery.wearScratches')}>
+        <Slider value={layer.scratches ?? 0.3} onChange={(v) => up((l) => void (l.scratches = v), 'scratches')} />
+      </Field>
+      <Field label={t('livery.wearScale')}>
+        <Slider value={(layer.scale ?? 0.03) * 1000} min={3} max={200} step={1} label={(v) => `${v.toFixed(0)} mm`} onChange={(v) => up((l) => void (l.scale = v / 1000), 'scale')} />
+      </Field>
+      <Field label={t('livery.metalColor')}>
+        <Color value={layer.color ?? [1, 1, 1, 1]} onChange={(c) => up((l) => void (l.color = [c[0], c[1], c[2], 1]), 'color')} />
+      </Field>
+      <Field label={t('livery.wearMetallic')}>
+        <Slider value={layer.metallic ?? 0.85} onChange={(v) => up((l) => void (l.metallic = v), 'metal')} />
+      </Field>
+      <Field label={t('livery.wearSmoothness')}>
+        <Slider value={layer.smoothness ?? 0.55} onChange={(v) => up((l) => void (l.smoothness = v), 'smooth')} />
+      </Field>
+      <Field label={t('livery.seed')}>
+        <Seed value={layer.seed ?? 0} onChange={(v) => up((l) => void (l.seed = v), 'seed')} />
+      </Field>
+      <Field label={t('livery.killsToFull')}>
+        <Group gap={6} wrap="nowrap">
+          <NumberInput style={{ flex: 1 }} size="xs" value={layer.killsToFull ?? 0} min={0} max={100000} step={50} allowDecimal={false} onChange={(v) => up((l) => void (l.killsToFull = Number(v) || 0), 'kills')} />
+          <Info label={t('livery.killsToFullInfo')} />
+        </Group>
+      </Field>
+    </div>
+  );
+}
+
 /** The selected paint layer. */
 export function LiveryInspector() {
   const sel = useLiverySelection();
@@ -241,6 +342,8 @@ export function LiveryInspector() {
         </div>
       )}
       {isGifDecal(layer) && <DecalPlayback material={material} layer={layer} />}
+      {layer.kind === 'pattern' && <PatternSection layer={layer} up={up} />}
+      {layer.kind === 'wear' && <WearSection layer={layer} up={up} />}
       {layer.kind === 'brush' && (
         <div className="section">
           <h3>{t('livery.brush')}</h3>
@@ -252,9 +355,11 @@ export function LiveryInspector() {
       )}
       <div className="section">
         <h3>{t('livery.look')}</h3>
-        <Field label={layer.kind === 'decal' ? t('livery.tint') : t('livery.color')}>
-          <Color value={layer.color ?? [1, 1, 1, 1]} onChange={(c) => up((l) => void (l.color = [c[0], c[1], c[2], 1]), 'color')} />
-        </Field>
+        {layer.kind !== 'pattern' && layer.kind !== 'wear' && (
+          <Field label={layer.kind === 'decal' ? t('livery.tint') : t('livery.color')}>
+            <Color value={layer.color ?? [1, 1, 1, 1]} onChange={(c) => up((l) => void (l.color = [c[0], c[1], c[2], 1]), 'color')} />
+          </Field>
+        )}
         <Field label={t('livery.opacity')}>
           <Slider value={layer.opacity ?? 1} onChange={(v) => up((l) => void (l.opacity = v), 'op')} />
         </Field>

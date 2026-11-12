@@ -102,6 +102,7 @@ export function WeaponModel({ preview }: { preview: WeaponPreview }) {
     return gltf.scene.clone(true);
   }, [gltf]);
   const doc = useStore((s) => s.doc);
+  const fileEpoch = useStore((s) => s.fileEpoch);
   const select = useStore((s) => s.select);
   const materials = useRef(new Map<string, MeshStandardMaterial>());
   const compositors = useRef(new Map<string, Compositor>());
@@ -199,7 +200,7 @@ export function WeaponModel({ preview }: { preview: WeaponPreview }) {
       let livery = liveries.current.get(name);
       if (hasLivery(m)) {
         if (!livery) liveries.current.set(name, (livery = new LiveryPreview(name)));
-        livery.update(m!, baseTexturePath(doc, preview, name, 'albedo'), layout);
+        livery.update(m!, baseTexturePath(doc, preview, name, 'albedo'), baseTexturePath(doc, preview, name, 'metallicSmoothness'), `${layout}|${fileEpoch}`);
       } else if (livery) {
         livery.dispose();
         liveries.current.delete(name);
@@ -237,7 +238,7 @@ export function WeaponModel({ preview }: { preview: WeaponPreview }) {
     return () => {
       cancelled = true;
     };
-  }, [doc, preview]);
+  }, [doc, preview, fileEpoch]);
 
   useEffect(
     () => () => {

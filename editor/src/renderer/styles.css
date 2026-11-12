@@ -954,6 +954,27 @@ body {
 .finish:hover {
   border-color: var(--line);
 }
+/* Pattern presets: four colour stripes per preset. */
+.presets {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(34px, 1fr));
+  gap: 4px;
+  margin-bottom: 10px;
+}
+.preset {
+  display: flex;
+  height: 22px;
+  overflow: hidden;
+  border: 1px solid var(--line-soft);
+  border-radius: var(--mantine-radius-sm);
+}
+.preset i {
+  flex: 1;
+}
+.preset[aria-selected='true'] {
+  border-color: var(--paint);
+  box-shadow: 0 0 0 1px var(--paint);
+}
 .finish[aria-selected='true'] {
   border-color: var(--paint);
   color: var(--bone);

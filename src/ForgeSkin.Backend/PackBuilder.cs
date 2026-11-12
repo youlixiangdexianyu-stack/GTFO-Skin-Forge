@@ -79,22 +79,28 @@ public static class PackBuilder
             {
                 (m.Finish, m.Livery) = (null, null); // the editor baked the livery into this material's textures
                 var sizes = new Dictionary<TextureChannel, (int W, int H)>();
-                foreach (var channel in m.Textures.Keys.ToList())
+                // A material's textures, and each wear stage's (the plugin loads them all), at the target size.
+                void Textures(Dictionary<TextureChannel, string> textures, string stage)
                 {
-                    Program.Progress(requestId, done++, total, $"{m.Material} {channel}");
-                    var file = Abs(m.Textures[channel]);
-                    var (sw, sh) = Images.Size(file);
-                    var size = TargetSize(sizeMode, sw, sh, BaselineSize(baseline, m.Material, channel));
-                    var name = $"textures/{Preview.Safe(m.Material)}_{channel}.png";
-                    CachedPng(name, $"texture|{Stamp(file)}|{size}", () =>
+                    foreach (var channel in textures.Keys.ToList())
                     {
-                        using var src = Images.Load(file);
-                        return Images.Resize(src, size.W, size.H);
-                    });
-                    m.Textures[channel] = name;
-                    sizes[channel] = size;
-                    memory += Dxt(size.W, size.H);
+                        Program.Progress(requestId, done++, total, $"{m.Material} {stage}{channel}");
+                        var file = Abs(textures[channel]);
+                        var (sw, sh) = Images.Size(file);
+                        var size = TargetSize(sizeMode, sw, sh, BaselineSize(baseline, m.Material, channel));
+                        var name = $"textures/{Preview.Safe(m.Material)}_{stage}{channel}.png";
+                        CachedPng(name, $"texture|{Stamp(file)}|{size}", () =>
+                        {
+                            using var src = Images.Load(file);
+                            return Images.Resize(src, size.W, size.H);
+                        });
+                        textures[channel] = name;
+                        sizes[channel] = size;
+                        memory += Dxt(size.W, size.H);
+                    }
                 }
+                Textures(m.Textures, "");
+                for (int i = 0; i < (m.Wear?.Count ?? 0); i++) Textures(m.Wear![i].Textures, $"wear{i}_");
                 foreach (var channel in m.Layers.Select(l => l.Channel).Distinct())
                     if ((sizes.TryGetValue(channel, out var ts) ? ts : BaselineSize(baseline, m.Material, channel)) is { } target)
                         memory += Rgba(target.W, target.H);

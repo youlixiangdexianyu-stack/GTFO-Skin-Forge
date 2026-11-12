@@ -4,13 +4,13 @@
 // pack and game-file replacement carry plain Albedo / MetallicSmoothness / Emissive images and no livery data. An animated
 // GIF decal is baked at its first frame, and its frames over the region it covers become a dynamic layer of the material.
 import { baseTexturePath, isGif, loadImage, MAX_ATLAS, MAX_FRAMES, sourceFrames, writeLayerFrames, writePng, type Rect } from './frames';
-import { dirName, type BlendMode, type DynamicLayer, type Finish, type LiveryKind, type LiveryLayer, type MaterialOverride, type MaterialParams, type SkinDocument, type WeaponPreview } from './protocol';
+import { dirName, type BlendMode, type DynamicLayer, type Finish, type LiveryKind, type LiveryLayer, type MaterialOverride, type MaterialParams, type Pattern, type SkinDocument, type WeaponPreview } from './protocol';
 import { ensureMaterial, materialOf, uid, useStore } from './store';
 import { t } from './i18n';
 
-type Pattern = 'brushed' | 'carbon' | 'worn';
+type FinishPattern = 'brushed' | 'carbon' | 'worn';
 /** Unity MetallicSmoothness of each finish (metallic in R, smoothness in A) and the pattern it adds. */
-export const FINISHES: Record<Finish, { metal: number; smooth: number; pattern?: Pattern; swatch: string }> = {
+export const FINISHES: Record<Finish, { metal: number; smooth: number; pattern?: FinishPattern; swatch: string }> = {
   matte: { metal: 0, smooth: 0.08, swatch: '#7c7f84' },
   gloss: { metal: 0, smooth: 0.88, swatch: '#c9ced6' },
   satin: { metal: 0, smooth: 0.45, swatch: '#a3a7ad' },
@@ -25,6 +25,45 @@ export const FINISHES: Record<Finish, { metal: number; smooth: number; pattern?:
   glow: { metal: 0, smooth: 0.5, swatch: '#ffd48a' },
 };
 export const FINISH_IDS = Object.keys(FINISHES) as Finish[];
+
+/** Pattern presets: a pattern with colours that suit it (the add button uses the first). */
+export type PatternPresetId = 'woodland' | 'woodlandDigital' | 'desertDigital' | 'snowDigital' | 'urbanDigital' | 'navyDigital' | 'desert' | 'tigerJungle' | 'tigerOrange' | 'splinter' | 'flecktarn' | 'multiTerrain' | 'hydroOcean' | 'hydroSunset' | 'anodisedRainbow' | 'anodisedPurple' | 'marbleWhite' | 'marbleGold' | 'damascus' | 'honeycombGold' | 'hexTech' | 'contour' | 'circuit' | 'zebra' | 'leopard' | 'dragonScales' | 'racingStripes' | 'plaidRed' | 'popDots' | 'rust' | 'hotRod' | 'starfield' | 'lava';
+export const PATTERN_PRESETS: { id: PatternPresetId; pattern: Pattern; colors: number[][] }[] = [
+  { id: 'woodland', pattern: 'woodland', colors: [[0.294, 0.325, 0.125, 1], [0.184, 0.165, 0.106, 1], [0.42, 0.49, 0.227, 1], [0.106, 0.106, 0.086, 1]] },
+  { id: 'woodlandDigital', pattern: 'digital', colors: [[0.365, 0.42, 0.227, 1], [0.227, 0.267, 0.145, 1], [0.49, 0.478, 0.322, 1], [0.118, 0.133, 0.09, 1]] },
+  { id: 'desertDigital', pattern: 'digital', colors: [[0.788, 0.698, 0.541, 1], [0.651, 0.545, 0.357, 1], [0.49, 0.416, 0.282, 1], [0.886, 0.827, 0.69, 1]] },
+  { id: 'snowDigital', pattern: 'digital', colors: [[0.949, 0.957, 0.961, 1], [0.788, 0.808, 0.827, 1], [0.557, 0.588, 0.62, 1], [0.353, 0.38, 0.408, 1]] },
+  { id: 'urbanDigital', pattern: 'digital', colors: [[0.541, 0.553, 0.569, 1], [0.361, 0.376, 0.392, 1], [0.2, 0.212, 0.227, 1], [0.71, 0.722, 0.733, 1]] },
+  { id: 'navyDigital', pattern: 'digital', colors: [[0.122, 0.165, 0.267, 1], [0.184, 0.255, 0.4, 1], [0.29, 0.365, 0.51, 1], [0.071, 0.094, 0.149, 1]] },
+  { id: 'desert', pattern: 'woodland', colors: [[0.824, 0.706, 0.549, 1], [0.627, 0.51, 0.353, 1], [0.784, 0.659, 0.455, 1], [0.431, 0.353, 0.235, 1]] },
+  { id: 'tigerJungle', pattern: 'tiger', colors: [[0.42, 0.478, 0.227, 1], [0.114, 0.133, 0.078, 1], [0.247, 0.29, 0.141, 1], [0.114, 0.133, 0.078, 1]] },
+  { id: 'tigerOrange', pattern: 'tiger', colors: [[0.878, 0.478, 0.122, 1], [0.067, 0.067, 0.067, 1], [0.949, 0.761, 0.482, 1], [0.067, 0.067, 0.067, 1]] },
+  { id: 'splinter', pattern: 'splinter', colors: [[0.647, 0.604, 0.451, 1], [0.369, 0.42, 0.227, 1], [0.478, 0.353, 0.227, 1], [0.231, 0.29, 0.165, 1]] },
+  { id: 'flecktarn', pattern: 'flecktarn', colors: [[0.42, 0.416, 0.271, 1], [0.18, 0.227, 0.133, 1], [0.31, 0.353, 0.196, 1], [0.227, 0.165, 0.118, 1]] },
+  { id: 'multiTerrain', pattern: 'multiTerrain', colors: [[0.639, 0.604, 0.478, 1], [0.435, 0.416, 0.29, 1], [0.29, 0.29, 0.196, 1], [0.184, 0.165, 0.125, 1]] },
+  { id: 'hydroOcean', pattern: 'hydro', colors: [[0.043, 0.239, 0.569, 1], [0.122, 0.71, 0.788, 1], [0.91, 0.969, 0.98, 1], [0.027, 0.188, 0.259, 1]] },
+  { id: 'hydroSunset', pattern: 'hydro', colors: [[1.0, 0.42, 0.208, 1], [0.969, 0.773, 0.624, 1], [0.608, 0.173, 0.369, 1], [0.18, 0.102, 0.278, 1]] },
+  { id: 'anodisedRainbow', pattern: 'anodised', colors: [[1.0, 0.231, 0.231, 1], [1.0, 0.824, 0.231, 1], [0.231, 1.0, 0.69, 1], [0.231, 0.42, 1.0, 1]] },
+  { id: 'anodisedPurple', pattern: 'anodised', colors: [[0.357, 0.165, 0.525, 1], [0.616, 0.306, 0.867, 1], [0.235, 0.035, 0.424, 1], [0.78, 0.49, 1.0, 1]] },
+  { id: 'marbleWhite', pattern: 'marble', colors: [[0.933, 0.933, 0.918, 1], [0.227, 0.227, 0.227, 1], [0.812, 0.812, 0.784, 1], [1.0, 1.0, 1.0, 1]] },
+  { id: 'marbleGold', pattern: 'marble', colors: [[0.078, 0.078, 0.078, 1], [0.831, 0.686, 0.216, 1], [0.165, 0.165, 0.165, 1], [0.0, 0.0, 0.0, 1]] },
+  { id: 'damascus', pattern: 'damascus', colors: [[0.29, 0.31, 0.337, 1], [0.788, 0.808, 0.831, 1], [0.0, 0.0, 0.0, 1], [0.0, 0.0, 0.0, 1]] },
+  { id: 'honeycombGold', pattern: 'honeycomb', colors: [[0.831, 0.627, 0.09, 1], [0.722, 0.525, 0.043, 1], [0.902, 0.765, 0.361, 1], [0.227, 0.165, 0.02, 1]] },
+  { id: 'hexTech', pattern: 'hexGrid', colors: [[0.102, 0.114, 0.133, 1], [0.133, 0.827, 0.933, 1], [0.0, 0.0, 0.0, 1], [0.0, 0.0, 0.0, 1]] },
+  { id: 'contour', pattern: 'contour', colors: [[0.851, 0.812, 0.69, 1], [0.478, 0.416, 0.282, 1], [0.231, 0.184, 0.118, 1], [0.0, 0.0, 0.0, 1]] },
+  { id: 'circuit', pattern: 'circuit', colors: [[0.059, 0.239, 0.18, 1], [0.831, 0.686, 0.216, 1], [0.898, 0.78, 0.42, 1], [0.0, 0.0, 0.0, 1]] },
+  { id: 'zebra', pattern: 'zebra', colors: [[0.949, 0.949, 0.949, 1], [0.067, 0.067, 0.067, 1], [0.0, 0.0, 0.0, 1], [0.0, 0.0, 0.0, 1]] },
+  { id: 'leopard', pattern: 'leopard', colors: [[0.851, 0.663, 0.357, 1], [0.541, 0.353, 0.169, 1], [0.11, 0.078, 0.051, 1], [0.0, 0.0, 0.0, 1]] },
+  { id: 'dragonScales', pattern: 'scales', colors: [[0.122, 0.42, 0.227, 1], [0.247, 0.639, 0.365, 1], [0.047, 0.141, 0.086, 1], [0.0, 0.0, 0.0, 1]] },
+  { id: 'racingStripes', pattern: 'stripes', colors: [[0.839, 0.157, 0.157, 1], [0.945, 0.98, 0.933, 1], [0.114, 0.208, 0.341, 1], [0.945, 0.98, 0.933, 1]] },
+  { id: 'plaidRed', pattern: 'plaid', colors: [[0.643, 0.086, 0.102, 1], [0.086, 0.102, 0.114, 1], [0.729, 0.094, 0.106, 1], [0.898, 0.898, 0.898, 1]] },
+  { id: 'popDots', pattern: 'dots', colors: [[1.0, 0.839, 0.039, 1], [0.816, 0.0, 0.0, 1], [0.0, 0.0, 0.0, 1], [0.0, 0.0, 0.0, 1]] },
+  { id: 'rust', pattern: 'rust', colors: [[0.357, 0.357, 0.357, 1], [0.545, 0.227, 0.078, 1], [0.227, 0.114, 0.047, 1], [0.769, 0.416, 0.173, 1]] },
+  { id: 'hotRod', pattern: 'flame', colors: [[0.082, 0.082, 0.082, 1], [1.0, 0.482, 0.0, 1], [1.0, 0.878, 0.4, 1], [0.816, 0.0, 0.0, 1]] },
+  { id: 'starfield', pattern: 'starfield', colors: [[0.043, 0.051, 0.102, 1], [1.0, 1.0, 1.0, 1], [0.353, 0.094, 0.604, 1], [0.0, 0.0, 0.0, 1]] },
+  { id: 'lava', pattern: 'crackle', colors: [[0.102, 0.102, 0.102, 1], [1.0, 0.302, 0.0, 1], [0.227, 0.102, 0.063, 1], [0.0, 0.0, 0.0, 1]] },
+];
+
 
 const COMPOSITE: Record<BlendMode, GlobalCompositeOperation> = {
   normal: 'source-over',
@@ -43,8 +82,14 @@ export function liveryParams(m: MaterialOverride | undefined): Partial<MaterialP
   return m?.finish === 'glow' ? { emissiveEnabled: true, emissiveColor: [1, 1, 1], emissiveIntensity: 1 } : {};
 }
 
-/** Renders a decal layer in UV space (viewport/liveryGpu): transparent where it does not land. */
-export type DecalRenderer = (layer: LiveryLayer, image: CanvasImageSource, w: number, h: number) => CanvasImageSource;
+/**
+ * Renders a layer that needs the model in UV space (viewport/liveryGpu): a decal's image (transparent where it does not
+ * land; `image` is its current frame), a pattern (opaque on the material) or a wear mask (alpha; `image` null for both).
+ */
+export type UvRenderer = (layer: LiveryLayer, image: CanvasImageSource | null, w: number, h: number) => CanvasImageSource;
+
+/** A material whose livery writes MetallicSmoothness: a finish, or wear (bare metal where worn). */
+export const writesMs = (m: MaterialOverride) => !!m.finish || layersOf(m).some((l) => l.kind === 'wear' && l.visible !== false);
 
 /** Which frame an animated decal (`count` frames at `fps`) shows; a still decal has one frame. */
 export type FrameOf = (layer: LiveryLayer, count: number, fps: number) => number;
@@ -59,9 +104,10 @@ const GUTTER = 2;
  * `render` with its last output per layer kept while the layer, the image (a GIF frame), the size and `extra` stay the
  * same; `cache` outlives the returned renderer.
  */
-export function cachedDecal(render: DecalRenderer, cache: Map<string, { key: string; image: CanvasImageSource; canvas: HTMLCanvasElement }>, extra = ''): DecalRenderer {
+export function cachedUv(render: UvRenderer, cache: Map<string, { key: string; image: CanvasImageSource | null; canvas: HTMLCanvasElement }>, extra = ''): UvRenderer {
   return (l, image, w, h) => {
-    const key = JSON.stringify([l.image, l.position, l.rotation, l.angle, l.size, l.depth, l.mirror, l.color, w, h, extra]);
+    const { name: _n, visible: _v, opacity: _o, blend: _b, strokes: _s, mask: _m, ...shape } = l;
+    const key = JSON.stringify([shape, w, h, extra]);
     const hit = cache.get(l.id!);
     if (hit?.key === key && hit.image === image) return hit.canvas;
     const c = hit?.canvas ?? document.createElement('canvas');
@@ -179,8 +225,9 @@ export async function composeLivery(
   base: CanvasImageSource | null,
   albedo: HTMLCanvasElement,
   ms: HTMLCanvasElement | null,
-  decal: DecalRenderer,
+  uv: UvRenderer,
   frameOf: FrameOf = () => 0,
+  baseMs: CanvasImageSource | null = null,
 ) {
   const { width: w, height: h } = albedo;
   const layers = layersOf(m).filter((l) => l.visible !== false);
@@ -199,10 +246,20 @@ export async function composeLivery(
   ctx.fillStyle = '#808080';
   ctx.fillRect(0, 0, w, h);
   if (base) ctx.drawImage(base, 0, 0, w, h);
+  const msCtx = ms?.getContext('2d', { willReadFrequently: true }) ?? null;
   if (m.finish) {
     const f = finishPixels(m.finish, w, h);
     if (f.look) ctx.putImageData(f.look, 0, 0);
-    ms?.getContext('2d', { willReadFrequently: true })!.putImageData(f.ms, 0, 0);
+    msCtx?.putImageData(f.ms, 0, 0);
+  } else if (msCtx) {
+    // Wear without a finish: the game's own metallic and smoothness, else plain paint.
+    msCtx.globalCompositeOperation = 'copy';
+    if (baseMs) msCtx.drawImage(baseMs, 0, 0, w, h);
+    else {
+      msCtx.fillStyle = 'rgba(0,0,0,0.35)';
+      msCtx.fillRect(0, 0, w, h);
+    }
+    msCtx.globalCompositeOperation = 'source-over';
   }
   const lc = canvas(w, h, scratch.layer);
   const l2 = lc.getContext('2d')!;
@@ -212,8 +269,9 @@ export async function composeLivery(
     l2.fillStyle = l2.strokeStyle = rgba(l.color);
     if (l.kind === 'fill') l2.fillRect(0, 0, w, h);
     else if (l.kind === 'brush') drawStrokes(l2, l.strokes ?? [], w, h);
-    else if (images[i]) {
-      const src = decal(l, images[i]!, w, h);
+    else if (l.kind === 'wear') wearThrough(l, uv(l, null, w, h), base, l2, msCtx, w, h);
+    else if (l.kind === 'pattern' || images[i]) {
+      const src = uv(l, images[i], w, h);
       l2.drawImage(src, 0, 0);
       l2.globalCompositeOperation = 'destination-over';
       for (let r = 1; r <= GUTTER; r++) for (const [dx, dy] of [[r, 0], [-r, 0], [0, r], [0, -r]]) l2.drawImage(src, dx, dy);
@@ -229,6 +287,33 @@ export async function composeLivery(
   });
   ctx.globalAlpha = 1;
   ctx.globalCompositeOperation = 'source-over';
+}
+
+/**
+ * Wear: into `l2`, the game's own texture (else plain metal) tinted by the layer colour where `mask` shows, so the layers
+ * below are worn through to it; `ms` turns towards the layer's metallic and smoothness by the same mask.
+ */
+function wearThrough(l: LiveryLayer, mask: CanvasImageSource, base: CanvasImageSource | null, l2: CanvasRenderingContext2D, ms: CanvasRenderingContext2D | null, w: number, h: number) {
+  if (base) l2.drawImage(base, 0, 0, w, h);
+  else l2.fillRect(0, 0, w, h);
+  l2.globalCompositeOperation = 'multiply';
+  l2.fillStyle = rgba([...(l.color ?? [1, 1, 1]).slice(0, 3), 1]);
+  l2.fillRect(0, 0, w, h);
+  l2.globalCompositeOperation = 'destination-in';
+  l2.drawImage(mask, 0, 0);
+  if (!ms) return;
+  const a = l2.getImageData(0, 0, w, h).data;
+  const img = ms.getImageData(0, 0, w, h);
+  const p = img.data;
+  const k = Math.min(1, Math.max(0, l.opacity ?? 1)) / 255;
+  const [metal, smooth] = [(l.metallic ?? 0.85) * 255, (l.smoothness ?? 0.55) * 255];
+  for (let i = 0; i < p.length; i += 4) {
+    const t = a[i + 3] * k;
+    if (!t) continue;
+    p[i] = p[i + 1] = p[i + 2] = p[i] + (metal - p[i]) * t;
+    p[i + 3] = p[i + 3] + (smooth - p[i + 3]) * t;
+  }
+  ms.putImageData(img, 0, 0);
 }
 
 /** The texels a decal render covers (any alpha), grown by the gutter and kept inside the texture; null when none. */
@@ -258,9 +343,9 @@ function covered(src: CanvasImageSource, w: number, h: number): Rect | null {
  * to the region. Frames are copied in game without blending, so the paint above and below the decal is in each of them.
  * Returns the dynamic layers that play them.
  */
-async function bakeAnimatedDecals(m: MaterialOverride, base: CanvasImageSource | null, albedo: HTMLCanvasElement, render: DecalRenderer, projectPath: string, onProgress: (text: string) => void) {
+async function bakeAnimatedDecals(m: MaterialOverride, base: CanvasImageSource | null, albedo: HTMLCanvasElement, render: UvRenderer, projectPath: string, onProgress: (text: string) => void) {
   const { width: w, height: h } = albedo;
-  const decal = cachedDecal(render, new Map()); // the other decals are rendered once for all frames
+  const decal = cachedUv(render, new Map()); // the other layers are rendered once for all frames
   const out: DynamicLayer[] = [];
   for (const l of layersOf(m)) {
     if (l.visible === false || !isGifDecal(l)) continue;
@@ -302,7 +387,7 @@ export async function bakeLivery(
   doc: SkinDocument,
   preview: WeaponPreview | null,
   projectPath: string,
-  decalFor: (m: MaterialOverride) => DecalRenderer,
+  uvFor: (m: MaterialOverride) => UvRenderer,
   onProgress: (text: string) => void,
 ): Promise<{ m: MaterialOverride; layers: DynamicLayer[] }[]> {
   const animated: { m: MaterialOverride; layers: DynamicLayer[] }[] = [];
@@ -313,12 +398,31 @@ export async function bakeLivery(
       const basePath = baseTexturePath(doc, preview, m.material!, 'albedo');
       const base = basePath ? await loadImage(basePath) : null;
       const [w, h] = base ? [base.naturalWidth, base.naturalHeight] : [1024, 1024];
+      const msPath = writesMs(m) ? baseTexturePath(doc, preview, m.material!, 'metallicSmoothness') : null;
+      const baseMs = msPath ? await loadImage(msPath).catch(() => null) : null;
       const albedo = canvas(w, h);
-      const ms = m.finish ? canvas(w, h) : null;
-      const render = decalFor(m);
-      await composeLivery(m, base, albedo, ms, render);
+      const ms = writesMs(m) ? canvas(w, h) : null;
+      const render = uvFor(m);
       const dir = `${dirName(projectPath)}\\.frames\\livery`;
       const safe = (m.material ?? '').replace(/[^\w.-]/g, '_');
+      // Wear that grows with kills: the livery at none, a third, two thirds and all of each such layer's amount.
+      const growing = layersOf(m).filter((l) => l.kind === 'wear' && l.visible !== false && (l.killsToFull ?? 0) > 0);
+      if (growing.length) {
+        const full = Math.max(...growing.map((l) => l.killsToFull!));
+        const amounts = new Map(growing.map((l) => [l, l.amount ?? 0.4]));
+        m.wear = [];
+        for (const [i, k] of [0, 1 / 3, 2 / 3, 1].entries()) {
+          onProgress(t('livery.bakingWear', { v0: m.material, v1: i + 1 }));
+          growing.forEach((l) => (l.amount = amounts.get(l)! * k));
+          await composeLivery(m, base, albedo, ms, render, undefined, baseMs);
+          const textures: Record<string, string> = { albedo: `${dir}\\${safe}_wear${i}_albedo.png` };
+          await writePng(textures.albedo, albedo);
+          if (ms) await writePng((textures.metallicSmoothness = `${dir}\\${safe}_wear${i}_ms.png`), ms);
+          m.wear.push({ kills: Math.round(full * k), textures });
+        }
+        growing.forEach((l) => (l.amount = amounts.get(l)!));
+      }
+      await composeLivery(m, base, albedo, ms, render, undefined, baseMs);
       m.textures ??= {};
       m.textures.albedo = `${dir}\\${safe}_albedo.png`;
       await writePng(m.textures.albedo, albedo);
@@ -344,6 +448,8 @@ const NAMES: Record<LiveryKind, () => string> = {
   fill: () => t('livery.fill'),
   decal: () => t('livery.decal'),
   brush: () => t('livery.brush'),
+  pattern: () => t('livery.pattern'),
+  wear: () => t('livery.wear'),
 };
 
 export function addLivery(material: string, part: string, kind: LiveryKind, image?: string, aspect = 1) {
@@ -367,6 +473,8 @@ export function addLivery(material: string, part: string, kind: LiveryKind, imag
       mirror: false,
       strokes: [],
       mask: [],
+      ...(kind === 'pattern' && { pattern: PATTERN_PRESETS[0].pattern, colors: PATTERN_PRESETS[0].colors, scale: 0.05, seed: Math.floor(Math.random() * 1000) }),
+      ...(kind === 'wear' && { color: [0.78, 0.78, 0.8, 1], amount: 0.4, edgeWeight: 0.7, scratches: 0.3, scale: 0.03, metallic: 0.85, smoothness: 0.55, seed: Math.floor(Math.random() * 1000) }),
     });
   });
   s.select({ kind: 'livery', material, id });

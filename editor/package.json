@@ -38,6 +38,7 @@
     "@react-three/postprocessing": "^3.2.2",
     "@tabler/icons-react": "^3.51.0",
     "camera-controls": "3.1.2",
+    "electron-squirrel-startup": "^1.0.1",
     "i18next": "^27.1.1",
     "immer": "^11.2.10",
     "konva": "^10.9.1",
@@ -48,6 +49,7 @@
     "react-konva": "^19.3.2",
     "react-resizable-panels": "^4.21.0",
     "three": "^0.187.0",
+    "update-electron-app": "^3.3.0",
     "wasm-media-encoders": "0.7.0",
     "zustand": "^5.1.0"
   },
@@ -56,6 +58,7 @@
     "@electron-forge/maker-squirrel": "^8.0.1",
     "@electron-forge/maker-zip": "^8.0.1",
     "@electron-forge/plugin-vite": "^8.0.1",
+    "@types/electron-squirrel-startup": "^1.0.2",
     "@types/node": "^26.6.6",
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",

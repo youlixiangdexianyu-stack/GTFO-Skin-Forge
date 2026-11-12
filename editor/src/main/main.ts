@@ -3,7 +3,12 @@ import { appendFileSync, cpSync, existsSync, mkdirSync, readdirSync, rmSync } fr
 import { mkdir, stat, writeFile } from 'node:fs/promises';
 import { dirname, isAbsolute, join, normalize, resolve, sep } from 'node:path';
 import { pathToFileURL } from 'node:url';
+import squirrelStartup from 'electron-squirrel-startup';
+import { makeUserNotifier, updateElectronApp, UpdateSourceType } from 'update-electron-app';
 import { Backend } from './backend';
+
+// The installer runs the app once per install, update and uninstall to make or remove its shortcuts; it quits then.
+if (squirrelStartup) app.quit();
 
 // Moves the pre-rename Electron profile (GTFO Skin Forge -> ForgeSkin: preferences, panel layout, last weapon) to the
 // new app name before Chromium opens it; once moved there is nothing left to move. Electron has already created the new
@@ -175,6 +180,8 @@ function registerIpc() {
   ipcMain.handle('win:isMaximized', () => !!win?.isMaximized());
 }
 
+const updateLog = (message: string) => appLog('update', message);
+
 app.whenReady().then(() => {
   protocol.handle('sf', (req) => {
     const path = decodeURIComponent(new URL(req.url).pathname.slice(1));
@@ -184,6 +191,19 @@ app.whenReady().then(() => {
   registerIpc();
   startBackend();
   createWindow();
+  // An installed copy checks this repository's GitHub releases (update.electronjs.org) at start and hourly, downloads a
+  // newer one in the background and offers to restart into it. The bundled plugin updates with it.
+  if (app.isPackaged)
+    updateElectronApp({
+      updateSource: { type: UpdateSourceType.ElectronPublicUpdateService, repo: 'youlixiangdexianyu-stack/GTFO-Skin-Forge' },
+      logger: { log: updateLog, info: updateLog, warn: updateLog, error: updateLog },
+      onNotifyUser: makeUserNotifier({
+        title: 'ForgeSkin 有新版本',
+        detail: '新版本已经下载好了，重启 ForgeSkin 就会用上新版本（插件也一起更新）。',
+        restartButtonText: '现在重启',
+        laterButtonText: '稍后',
+      }),
+    });
 });
 
 app.on('before-quit', () => {

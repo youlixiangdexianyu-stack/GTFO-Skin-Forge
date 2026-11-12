@@ -1,6 +1,6 @@
 // Spawns ForgeSkin.Backend and speaks PLAN §3.3: one JSON object per line on stdio.
 import { execFileSync, spawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
-import { dirname, join } from 'node:path';
+import { basename, dirname, join } from 'node:path';
 import { app } from 'electron';
 
 export interface BackendError {
@@ -23,11 +23,14 @@ export class Backend {
     private readonly onExit: (code: number | null) => void,
   ) {}
 
-  /** Data dir: `GTFO_UserData` next to the app exe when packaged, `editor/GTFO_UserData` in dev. */
+  /**
+   * Data dir: `GTFO_UserData` next to the app exe when packaged, `editor/GTFO_UserData` in dev. An installed copy runs
+   * from `<install>/app-<version>/`, which every update replaces: its data lives in `<install>/GTFO_UserData`.
+   */
   static dataDir(): string {
-    return app.isPackaged
-      ? join(dirname(app.getPath('exe')), 'GTFO_UserData')
-      : join(app.getAppPath(), 'GTFO_UserData');
+    if (!app.isPackaged) return join(app.getAppPath(), 'GTFO_UserData');
+    const dir = dirname(app.getPath('exe'));
+    return join(/^app-\d/.test(basename(dir)) ? dirname(dir) : dir, 'GTFO_UserData');
   }
 
   private command(): { file: string; args: string[]; cwd: string } {

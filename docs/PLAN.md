@@ -50,9 +50,11 @@ docs/PLAN.md                this file
 
 Packaging: `npm run make` in editor/ builds the Squirrel installer; its prePackage hook publishes the backend
 self-contained single file and copies the prebuilt plugin (repo prebuilt/plugin/) to `resources/publish/plugin`.
-Release: a GitHub release `v<version>` (the version in editor/package.json, raised every release) carries the
-installer, its `RELEASES` and `.nupkg`, and the plugin as a Thunderstore-layout zip. An installed editor updates
-itself from these releases (`update-electron-app` through update.electronjs.org: checks at start and hourly,
+Release (from 1.0.3, in NAinfini/GTFO-Forge-Mods; this repository's last release is 1.0.3): a release
+`ForgeSkin-v<version>` (the version in editor/package.json, raised every release) carries the installer, its `RELEASES`
+and `.nupkg`, and the plugin as a Thunderstore-layout zip; the release `ForgeSkin-update` always holds the newest
+`RELEASES` and `.nupkg`. An installed editor updates itself from that feed (`update-electron-app`, static source
+`https://github.com/NAinfini/GTFO-Forge-Mods/releases/download/ForgeSkin-update`: checks at start and hourly,
 downloads in the background with a status-bar progress bar, then offers a restart in the window: a toast and a
 status-bar 重启更新 button, never a system dialog); the plugin it installs updates with it.
 

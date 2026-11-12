@@ -1,6 +1,6 @@
 {
   "name": "ForgeSkin",
-  "version_number": "1.0.2",
+  "version_number": "1.0.3",
   "website_url": "",
   "description": "Applies ForgeSkin packs (textures, attachments, live ammo screens, animated layers) to your own weapons.",
   "dependencies": [

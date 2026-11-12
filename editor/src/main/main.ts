@@ -209,7 +209,9 @@ function registerIpc() {
 }
 
 const updateLog = (message: string) => appLog('update', message);
-const REPO = 'youlixiangdexianyu-stack/GTFO-Skin-Forge';
+// Updates come from the GTFO-Forge-Mods repository: its release `ForgeSkin-update` always holds the newest installer's
+// RELEASES and .nupkg (the repository has other packages' releases, so its "latest" is not ours).
+const FEED = 'https://github.com/NAinfini/GTFO-Forge-Mods/releases/download/ForgeSkin-update';
 
 // The download takes minutes and Squirrel reports no progress: the window shows a bar from the package's size in the
 // feed's RELEASES and the size of the file Update.exe is writing into <install>/packages/. Unknown sizes show a moving bar.
@@ -220,7 +222,7 @@ async function watchDownload() {
   let file: string | null = null;
   let total = 0;
   try {
-    const feed = `https://update.electronjs.org/${REPO}/${process.platform}-${process.arch}/${app.getVersion()}/RELEASES`;
+    const feed = `${FEED}/RELEASES`;
     const [, url, size] = (await (await net.fetch(feed)).text()).replace(/^\uFEFF/, '').trim().split(/\r?\n/).pop()!.split(' ');
     file = join(dirname(process.execPath), '..', 'packages', decodeURIComponent(url.split('/').pop()!));
     total = Number(size) || 0;
@@ -325,14 +327,14 @@ app.whenReady().then(() => {
   registerIpc();
   startBackend();
   createWindow();
-  // An installed copy checks this repository's GitHub releases (update.electronjs.org) at start and hourly, downloads a
+  // An installed copy checks the update feed (FEED) at start and hourly, downloads a
   // newer one in the background and offers to restart into it, in the window (update:ready, update:restart) rather than
   // a system dialog. The bundled plugin updates with it.
   ipcMain.handle('update:restart', () => autoUpdater.quitAndInstall());
   autoUpdater.on('update-available', () => void watchDownload());
   if (app.isPackaged)
     updateElectronApp({
-      updateSource: { type: UpdateSourceType.ElectronPublicUpdateService, repo: REPO },
+      updateSource: { type: UpdateSourceType.StaticStorage, baseUrl: FEED },
       logger: { log: updateLog, info: updateLog, warn: updateLog, error: updateLog },
       onNotifyUser: () => send('update:ready'),
     });

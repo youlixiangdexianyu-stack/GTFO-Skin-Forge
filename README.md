@@ -1,5 +1,9 @@
 # ForgeSkin
 
+> **已迁移。** 这个仓库不再维护，1.0.3 是这里的最后一个版本。之后的源码和版本发布都在
+> [NAinfini/GTFO-Forge-Mods](https://github.com/NAinfini/GTFO-Forge-Mods)（`ForgeSkin` 文件夹）。已装的编辑器更新到 1.0.3
+> 以后会自动从新地址更新，不用重装。
+
 GTFO 的武器皮肤工具，由两部分组成：
 
 - **ForgeSkin 编辑器**：Windows 桌面程序，给作者制作皮肤用。

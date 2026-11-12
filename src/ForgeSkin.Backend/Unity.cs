@@ -146,11 +146,20 @@ public static class Unity
     }
 
     // Decoded RGBA8, top row first.
-    public static (int Width, int Height, byte[] Rgba, string Name) ReadTexture(GameAssets g, TexRef t)
+    public static (int Width, int Height, byte[] Rgba, string Name) ReadTexture(GameAssets g, TexRef t) => DecodeTexture(LoadTexture(g, t));
+
+    // The texture's header and encoded pixels: reads the game files, so it needs the game reader.
+    public static (TextureFile Tex, byte[] Pixels) LoadTexture(GameAssets g, TexRef t)
     {
-        var f = g.Field(t.File, t.PathId);
-        var tex = TextureFile.ReadTextureFile(f);
-        var raw = tex.DecodeTextureRaw(tex.FillPictureData(t.File), false);
+        var tex = TextureFile.ReadTextureFile(g.Field(t.File, t.PathId));
+        return (tex, tex.FillPictureData(t.File));
+    }
+
+    // Decoding is pure CPU work on the loaded bytes and may run on any thread.
+    public static (int Width, int Height, byte[] Rgba, string Name) DecodeTexture((TextureFile Tex, byte[] Pixels) loaded)
+    {
+        var (tex, pixels) = loaded;
+        var raw = tex.DecodeTextureRaw(pixels, false);
         int w = tex.m_Width, h = tex.m_Height, row = w * 4;
         var rgba = new byte[row * h];
         for (int y = 0; y < h; y++) Buffer.BlockCopy(raw, (h - 1 - y) * row, rgba, y * row, row);

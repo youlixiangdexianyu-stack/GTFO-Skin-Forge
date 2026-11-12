@@ -103,9 +103,14 @@ public static class Methods
 
     static object Build(SkinDocument project, string projectPath, string outPath, string sizeMode, long id)
     {
+        // Each step's time goes to backend.log, so a slow apply on another machine shows where it waits.
+        var clock = System.Diagnostics.Stopwatch.StartNew();
         var (catalog, baseline) = WithGame(g => (Catalog.Get(g),
             project.Target.Weapon is { } w ? Preview.Weapon(g, w, id).Textures : new Dictionary<string, Dictionary<TextureChannel, string>>()));
-        return PackBuilder.Build(project, projectPath, outPath, sizeMode, catalog, baseline, id);
+        long game = clock.ElapsedMilliseconds;
+        var result = PackBuilder.Build(project, projectPath, outPath, sizeMode, catalog, baseline, id);
+        Log.Write($"pack.build {project.Target.Weapon}: game files {game} ms, pack {clock.ElapsedMilliseconds - game} ms");
+        return result;
     }
 
     static JsonNode Schema()

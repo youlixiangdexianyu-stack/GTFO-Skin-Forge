@@ -1,6 +1,7 @@
 using System.Numerics;
 using System.Text.Json;
 using System.Text.Json.Nodes;
+using AssetsTools.NET.Texture;
 using SkiaSharp;
 using ForgeSkin.Format;
 
@@ -44,6 +45,7 @@ public static class Preview
         var cached = Path.Combine(dir, "preview.json");
         if (File.Exists(cached)) return JsonSerializer.Deserialize<PreviewResult>(File.ReadAllText(cached), Program.Json)!;
 
+        var clock = System.Diagnostics.Stopwatch.StartNew();
         var root = item.Build(g);
         var partOf = Catalog.Renderers(root).ToDictionary(r => r.Node, r => r.Part);
         var glb = new GlbWriter();
@@ -91,18 +93,22 @@ public static class Preview
         var textures = new Dictionary<string, Dictionary<TextureChannel, string>>();
         var parameters = new Dictionary<string, PreviewMaterial>();
         var written = new Dictionary<(string, long), string>();
+        // Textures are read here (the game reader is single-threaded) and decoded and written as PNG in parallel below.
+        var pending = new List<((TextureFile, byte[]) Loaded, TextureChannel Channel, string Png)>();
         int done = 0;
         foreach (var (name, m) in materials)
         {
             Program.Progress(requestId, done++, materials.Count, name);
             var data = Unity.ReadMaterial(g, m);
             var channels = new Dictionary<TextureChannel, string>();
-            string Export(TexRef t, TextureChannel channel, string suffix)
+            string Export(TexRef t, TextureChannel channel, string suffix, bool now = false)
             {
                 if (!written.TryGetValue((t.File.path, t.PathId), out var png))
                 {
                     png = Path.Combine(dir, "tex", $"{Safe(name)}_{suffix}.png");
-                    SaveTexture(g, t, channel, png);
+                    var loaded = Unity.LoadTexture(g, t);
+                    if (now) SaveTexture(loaded, channel, png);
+                    else pending.Add((loaded, channel, png));
                     written[(t.File.path, t.PathId)] = png;
                 }
                 return png;
@@ -111,7 +117,7 @@ public static class Preview
             if (data.Shader.Contains("HolographicSight"))
                 foreach (var layer in new[] { "A", "B", "C" })
                     if (data.Textures.TryGetValue("_Reticule" + layer, out var rt) && (!data.Floats.TryGetValue("_Fade" + layer, out var fade) || fade > 0)
-                        && Export(rt, TextureChannel.Emissive, "Reticle" + layer) is var png && !Blank(png))
+                        && Export(rt, TextureChannel.Emissive, "Reticle" + layer, now: true) is var png && !Blank(png))
                         reticles.Add(new PreviewReticle(layer, png,
                             data.Colors.GetValueOrDefault("_ReticuleColor" + layer) ?? [1, 1, 1, 1],
                             data.Floats.GetValueOrDefault("_ReticuleScale" + layer, 1), data.Floats.GetValueOrDefault("_ReticuleOffset" + layer)));
@@ -136,6 +142,9 @@ public static class Preview
             }
             textures[name] = channels;
         }
+        Parallel.ForEach(pending, new ParallelOptions { MaxDegreeOfParallelism = Math.Max(1, Environment.ProcessorCount / 2) },
+            p => SaveTexture(p.Loaded, p.Channel, p.Png));
+        Log.Write($"preview {id}: {written.Count} textures in {clock.ElapsedMilliseconds} ms");
 
         var transforms = new Dictionary<string, List<PreviewTransform>>();
         foreach (var (part, path, n) in Assembly.PartNodes(root, activeOnly: true))
@@ -181,9 +190,9 @@ public static class Preview
     }
 
     // Writes a game texture as PNG; Unity DXT5nm normal maps (x in A, y in G) become ordinary RGB normal maps.
-    public static (int Width, int Height) SaveTexture(GameAssets g, TexRef t, TextureChannel channel, string path)
+    public static (int Width, int Height) SaveTexture((TextureFile, byte[]) loaded, TextureChannel channel, string path)
     {
-        var (w, h, rgba, _) = Unity.ReadTexture(g, t);
+        var (w, h, rgba, _) = Unity.DecodeTexture(loaded);
         if (channel == TextureChannel.Normal && IsDxtNm(rgba))
             for (int i = 0; i < rgba.Length; i += 4)
             {

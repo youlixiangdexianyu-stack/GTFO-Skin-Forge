@@ -205,7 +205,8 @@ function SettingsMenu() {
   const check = async () => {
     setChecking(true);
     const r = await window.forge.checkUpdate().finally(() => setChecking(false));
-    toast(r === 'error' ? 'error' : 'ok', t(`topBar.update.${r}`));
+    // A found update announces itself (the same message at start and on a manual check).
+    if (r !== 'downloading') toast(r === 'error' ? 'error' : 'ok', t(`topBar.update.${r}`));
   };
   return (
     <Popover position="bottom-end" width={300} shadow="md">

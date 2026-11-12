@@ -273,6 +273,7 @@ let initialised = false;
 type Set = (p: Partial<State>) => void;
 function subscribe(f: Window['forge'], set: Set, get: () => State) {
   f.onLog((line) => get().log(line));
+  f.onUpdateAvailable(() => get().toast('info', t('topBar.update.downloading')));
   f.onEvent((event, data) => {
     if (event === 'progress') {
       const p = data as { done: number; total: number; text: string };

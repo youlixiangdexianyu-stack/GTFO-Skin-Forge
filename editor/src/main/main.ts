@@ -247,6 +247,8 @@ app.whenReady().then(() => {
   createWindow();
   // An installed copy checks this repository's GitHub releases (update.electronjs.org) at start and hourly, downloads a
   // newer one in the background and offers to restart into it. The bundled plugin updates with it.
+  // The download takes a while; the window says it has started so a quiet start is not taken for no update.
+  autoUpdater.on('update-available', () => send('update:available'));
   if (app.isPackaged)
     updateElectronApp({
       updateSource: { type: UpdateSourceType.ElectronPublicUpdateService, repo: 'youlixiangdexianyu-stack/GTFO-Skin-Forge' },

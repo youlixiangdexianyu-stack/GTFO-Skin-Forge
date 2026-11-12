@@ -51,6 +51,7 @@ sealed class SkinnedGear
     readonly List<Transform> _faceCamera = new();
     readonly List<PartPose> _poses = new();
     readonly List<(GameObject Root, string Id, Material Template)> _roots = new(); // attachment roots
+    readonly List<(MeshRenderer Renderer, Material Material)> _own = new(); // renderers and materials this skin created
     bool _equipped; // first wield seen: diagnostics logged
     bool _flashlight, _aiming; // edges for FlashlightOn/Off and AimEnd
     int _lastClip = -1, _lastReserve = -1; // edges for Empty and AmmoPickup; -1 until the first poll
@@ -373,6 +374,7 @@ sealed class SkinnedGear
         _screens.Clear();
         _faceCamera.Clear();
         _roots.Clear();
+        _own.Clear();
     }
 
     void ApplyMaterials(Dictionary<string, (Skin Skin, MaterialOverride Override)> overrides)
@@ -711,6 +713,7 @@ sealed class SkinnedGear
                 foreach (var (root, _, _) in gear._roots)
                     if (root != null) PlayerBackpackManager.SetFPSRendering(root, enable);
                 gear.TakeBack(t, enable);
+                gear.TakeBackOwn(t, enable);
             }
         }
         catch (Exception e) { ForgeSkinPlugin.Fail($"first-person rendering sync: {e.Message}"); }
@@ -737,6 +740,25 @@ sealed class SkinnedGear
                 changed = true;
             }
             if (changed) renderer.sharedMaterials = mine;
+        }
+    }
+
+    // The game's SetFPSRendering gives every enabled renderer under the gear a fresh copy of its slot-0 material, ours
+    // included: without this the screen digits would keep drawing the frozen copy while the colour and emission updates
+    // go to the original nobody draws. Our own material goes back with the keyword the game just applied.
+    void TakeBackOwn(Transform go, bool enable)
+    {
+        foreach (var (renderer, material) in _own)
+        {
+            if (renderer == null || material == null || !renderer.transform.IsChildOf(go)) continue;
+            var now = renderer.sharedMaterial;
+            if (now != material)
+            {
+                ForgeSkinPlugin.Info($"{_label}: fps rendering {enable}: {renderer.name} was given {Describe(now)}, ours {Describe(material)} put back");
+                if (now != null && now.name.StartsWith(material.name, StringComparison.Ordinal)) Object.Destroy(now);
+                renderer.sharedMaterial = material;
+            }
+            if (enable) material.EnableKeyword(FpsKeyword); else material.DisableKeyword(FpsKeyword);
         }
     }
 
@@ -920,6 +942,7 @@ sealed class SkinnedGear
         var renderer = go.AddComponent<MeshRenderer>();
         renderer.sharedMaterial = material;
         renderer.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+        _own.Add((renderer, material));
         return filter;
     }
 

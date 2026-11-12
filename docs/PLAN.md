@@ -193,7 +193,7 @@ game is not running.
   Colours: albedo is the colour (a 1×1 texture); with `GlowInGame` text and border also emit the colour at `Glow` × 0.2,
   else no emission. The 0.2 step is set from the game's own glowing gear materials (_EmissiveColor × map: flashlight lens
   1.0, HSU lights 0.54, tool screens 0.45–0.74, shotgun lights 0.07), so the default 1.5 glows clearly and the slider's top
-  (5) matches the flashlight lens. The panel emits its colour at the shader's unit 0.01 (shown as itself, no bloom). Below the low-ammo threshold the text's albedo and emission both switch to `LowAmmoColor`.
+  (5) matches the flashlight lens. The panel emits its colour at the shader's unit 0.01 (shown as itself, no bloom). Below the low-ammo threshold the text's albedo and emission both switch to `LowAmmoColor`; with `LowAmmoGradient` on the tint blends in as the clip falls from `LowAmmoGradientStart` down to the threshold.
   `Digits` 0 is automatic: the digits of the largest value the source can show (clip size, the storage's bullet max cap, or
   both); automatic kills show the value's own digits, centred, up to 4; `PadZero` pads to that width. Updates only when the
   value changes; `AmmoClip` reads the weapon's current clip, `AmmoReserve` / `AmmoTotal` the player's ammo storage.
@@ -284,9 +284,12 @@ Layout (every mode)
   G/R/S keys and numeric fields; hide it; reset to vanilla.
 
 Attachment and screen workspace (replaces DLY, generalised to every weapon)
-- 3D weapon view; click a part to select; per-part hide (eye icon); select the screen even when fully transparent.
+- 3D weapon view; click a part to select; picking an attachment in the list focuses the view on it; per-part hide (eye icon);
+  select the screen even when fully transparent.
 - Screen position (mm), rotation, size, scale, surface gap, text/panel/border colours (a part is drawn opaque unless fully
-  transparent, as in game), low-ammo colour (text and glow), glow strength and 游戏里发光 (glow in game) on/off; digits 自动
+  transparent, as in game), low-ammo colour (text and glow), a gradient switch and the clip percentage where the tint
+  starts, glow strength and 游戏里发光 (glow in game)
+  on/off; digits 自动
   (automatic, the default) or 1–6, the info tip saying what automatic picks for the weapon or that its ammo limit is unknown;
   static text takes any characters and fonts: bundled, installed on the computer, or a font file. The preview draws the face
   as the plugin builds it.

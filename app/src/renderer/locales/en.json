@@ -147,6 +147,8 @@
   "attachInspector.k38": "Low ammo colour",
   "attachInspector.k39": "Below",
   "attachInspector.k40": "In game the background and border are only shown or hidden: below 1% opacity they are hidden.",
+  "attachInspector.lowGradient": "Gradient near low ammo",
+  "attachInspector.gradientStart": "Gradient from",
   "attachInspector.k41": "Model look",
   "attachInspector.k42": "Unlit (glows by itself)",
   "attachInspector.k43": "Delete this attachment",

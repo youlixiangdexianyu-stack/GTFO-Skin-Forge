@@ -120,6 +120,8 @@ glowInGame?: boolean
 font?: (string | null)
 lowAmmoFraction?: number
 lowAmmoColor?: (number[] | null)
+lowAmmoGradient?: boolean
+lowAmmoGradientStart?: number
 glyphMeshes?: ((string | null)[] | null)
 glyphAspect?: number
 textMesh?: (string | null)

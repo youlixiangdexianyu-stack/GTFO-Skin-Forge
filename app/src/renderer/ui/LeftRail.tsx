@@ -9,6 +9,7 @@ import { kindOf } from './LiveryPanel';
 import { layersOf } from '../livery';
 import { FEATURE, Info } from './Features';
 import { hiddenMeshes, partTarget, useSceneVersion } from '../viewport/refs';
+import { focusSelection } from '../viewport/Viewport';
 import { partLabel, t } from '../i18n';
 
 function EyeToggle({ part, sub }: { part: string; sub?: string | null }) {
@@ -39,7 +40,7 @@ function AttachmentRow({ a, depth }: { a: Attachment; depth: number }) {
   const visible = a.visible !== false;
   const stop = (fn: () => void) => (e: React.MouseEvent) => (e.stopPropagation(), fn());
   return (
-    <div className="part attach" style={{ paddingLeft: 30 + depth * 14 }} aria-selected={selected} onClick={() => select({ kind: 'attachment', id: a.id! })}>
+    <div className="part attach" style={{ paddingLeft: 30 + depth * 14 }} aria-selected={selected} onClick={() => { select({ kind: 'attachment', id: a.id! }); focusSelection(); }}>
       <Tooltip label={visible ? t('leftRail.k10') : t('leftRail.k11')}>
         <ActionIcon variant="subtle" color={visible ? 'gray' : 'flare'} size="sm" onClick={stop(() => updateAttachment(a.id!, (x) => void (x.visible = !visible)))}>
           {visible ? <IconEye size={14} /> : <IconEyeOff size={14} />}

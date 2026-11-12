@@ -21,6 +21,7 @@ import { anchorObject, previewEvents, quiet, SCENE_EVENT, viewRefs } from './ref
 import { t } from '../i18n';
 
 const rgb = (c?: number[] | null) => `rgb(${(c?.[0] ?? 1) * 255},${(c?.[1] ?? 1) * 255},${(c?.[2] ?? 1) * 255})`;
+const mix = (a: number[], b: number[], t: number) => a.map((v, i) => v + (b[i] - v) * t);
 
 /** Screen preview: panel, inner border and a sample value drawn with the glyph strip. */
 function ScreenMesh({ screen, selected, onPick }: { screen: Screen; selected: boolean; onPick: (e: ThreeEvent<MouseEvent>) => void }) {
@@ -45,11 +46,21 @@ function ScreenMesh({ screen, selected, onPick }: { screen: Screen; selected: bo
 
   const { digits, max, grow } = screenDigits(screen, useItem());
   const top = max ?? 30; // the sample counts down from the largest value the source shows
+  const kills = screen.source === 'kills';
+
+  // 0: text colour, 1: low-ammo colour. With the gradient on, the tint blends in from the chosen clip percentage.
+  const tint = (v: number) => {
+    if (!screen.lowAmmoColor || kills || screen.source === 'static' || top <= 0) return 0;
+    const threshold = screen.lowAmmoFraction ?? 0.2;
+    const fraction = Math.min(1, Math.max(0, v / top));
+    const from = screen.lowAmmoGradient ? Math.max(threshold, Math.min(1, screen.lowAmmoGradientStart ?? 0.4)) : threshold;
+    return from <= threshold ? (fraction <= threshold ? 1 : 0) : Math.min(1, Math.max(0, (from - fraction) / (from - threshold)));
+  };
 
   // Redraws the face as the plugin builds it: an opaque border ring, an opaque panel inside it (the game's gear shader
   // has no transparency, so only fully transparent leaves a part out), the text shrunk to fit; counts down so the
   // low-ammo colour (text and glow) shows too.
-  const draw = (value: number) => {
+  const draw = (shown: number) => {
     const px = 512;
     canvas.width = px;
     canvas.height = Math.max(8, Math.round((px * h) / w));
@@ -77,7 +88,6 @@ function ScreenMesh({ screen, selected, onPick }: { screen: Screen; selected: bo
       ctx.restore();
     }
 
-    const low = !kills && screen.source !== 'static' && screen.lowAmmoColor && value <= top * (screen.lowAmmoFraction ?? 0.2);
     const inner = (px - 2 * bw) * 0.95;
     let gh = H * (screen.textScale ?? 0.8);
     let image: HTMLCanvasElement;
@@ -87,7 +97,7 @@ function ScreenMesh({ screen, selected, onPick }: { screen: Screen; selected: bo
     } else {
       // Cells of the glyph strip; a counter keeps its width (blank cells for missing leading zeros), automatic kills
       // show only their own digits.
-      const v = Math.min(Math.max(0, value), 10 ** digits - 1);
+      const v = Math.min(Math.max(0, shown), 10 ** digits - 1);
       const text = grow ? String(v) : String(v).padStart(digits, screen.padZero !== false ? '0' : ' ');
       const cellW = glyphs.width / GLYPHS.length;
       gh *= Math.min(1, inner / ((gh * cellW * digits) / glyphs.height));
@@ -100,18 +110,19 @@ function ScreenMesh({ screen, selected, onPick }: { screen: Screen; selected: bo
         if (gi >= 0) g.drawImage(glyphs, gi * cellW, 0, cellW, glyphs.height, i * cellW, 0, cellW, glyphs.height);
       });
     }
+    const lowAmount = tint(shown);
+    const colour = screen.lowAmmoColor && lowAmount > 0 ? mix(screen.textColor ?? [1, 1, 1], screen.lowAmmoColor, lowAmount) : screen.textColor;
     const t = image.getContext('2d')!;
     t.globalCompositeOperation = 'source-in';
-    t.fillStyle = rgb(low ? screen.lowAmmoColor : screen.textColor);
+    t.fillStyle = rgb(colour);
     t.fillRect(0, 0, image.width, image.height);
     const gw = (gh * image.width) / image.height;
-    ctx.shadowColor = rgb(low ? screen.lowAmmoColor : screen.textColor);
+    ctx.shadowColor = rgb(colour);
     ctx.shadowBlur = glow;
     ctx.drawImage(image, (px - gw) / 2, (H - gh) / 2, gw, gh);
     texture.needsUpdate = true;
   };
 
-  const kills = screen.source === 'kills';
   useEffect(() => draw(kills ? previewEvents.kills : top), [screen, glyphs, top]); // eslint-disable-line react-hooks/exhaustive-deps
   const last = useRef(0);
   useFrame(({ clock }) => {

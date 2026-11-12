@@ -147,6 +147,8 @@
   "attachInspector.k38": "低弹药变色",
   "attachInspector.k39": "低于",
   "attachInspector.k40": "游戏里底板和边框只有显示和隐藏两种：透明度低于 1% 会隐藏。",
+  "attachInspector.lowGradient": "接近低弹量时渐变",
+  "attachInspector.gradientStart": "渐变起点",
   "attachInspector.k41": "模型外观",
   "attachInspector.k42": "不受光照（自身发亮）",
   "attachInspector.k43": "删除这个挂件",

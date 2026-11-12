@@ -268,9 +268,13 @@ public sealed class Screen
     public bool GlowInGame { get; set; } = true;
     public string? Font { get; set; }
 
-    // Optional low-ammo colour: replaces the text colour and its glow below the threshold.
+    // Optional low-ammo colour: replaces the text colour and its glow below the threshold. With LowAmmoGradient on the
+    // tint blends in as the clip falls from LowAmmoGradientStart to LowAmmoFraction (both fractions of the full clip);
+    // off switches at LowAmmoFraction.
     public float LowAmmoFraction { get; set; } = 0.2f;
     public float[]? LowAmmoColor { get; set; }
+    public bool LowAmmoGradient { get; set; }
+    public float LowAmmoGradientStart { get; set; } = 0.4f;
 
     // Filled when packing from the glyph strip the app renders with the chosen font (.frames/<id>-glyphs.png): one mesh
     // per glyph "0123456789 -" (null for the blank), in cell units (height 1, width GlyphAspect), facing -Z.

@@ -168,6 +168,8 @@ public sealed class SkinPack : IDisposable
             if (a.Screen != null)
             {
                 if (a.Screen.Digits is < 0 or > 6) throw new SkinFormatException("bad-screen", $"{a.Id}: digits 0 (automatic) to 6");
+                if (a.Screen.LowAmmoGradientStart is < 0 or > 1) throw new SkinFormatException("bad-screen", $"{a.Id}: low-ammo gradient start 0 to 1");
+                Vec(a.Screen.LowAmmoColor, 4, a.Id);
                 if (a.Screen.Source != ScreenSource.Static && a.Screen.GlyphMeshes == null)
                     throw new SkinFormatException("no-glyphs", $"{a.Id}: glyph meshes not baked");
                 if (a.Screen.GlyphMeshes is { } glyphs)

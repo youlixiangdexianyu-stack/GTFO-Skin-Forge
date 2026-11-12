@@ -226,6 +226,21 @@ function AttachmentPanel({ a }: { a: Attachment }) {
               <Slider value={s.lowAmmoFraction ?? 0.2} min={0.05} max={0.9} onChange={(v) => upScreen((x) => void (x.lowAmmoFraction = v), 'lf')} />
             </Field>
           )}
+          {s.lowAmmoColor && (
+            <Switch mt="xs" label={t('attachInspector.lowGradient')} checked={!!s.lowAmmoGradient} onChange={(e) => upScreen((x) => void (x.lowAmmoGradient = e.currentTarget.checked))} />
+          )}
+          {s.lowAmmoColor && s.lowAmmoGradient && (
+            <Field label={t('attachInspector.gradientStart')}>
+              <Slider
+                value={Math.max((s.lowAmmoGradientStart ?? 0.4) * 100, Math.round((s.lowAmmoFraction ?? 0.2) * 100) + 1)}
+                min={Math.round((s.lowAmmoFraction ?? 0.2) * 100) + 1}
+                max={100}
+                step={1}
+                label={(v) => `${v.toFixed(0)}%`}
+                onChange={(v) => upScreen((x) => void (x.lowAmmoGradientStart = v / 100), 'gs')}
+              />
+            </Field>
+          )}
           <p className="hint" style={{ marginTop: 8 }}>
             {t('attachInspector.k40')}
           </p>

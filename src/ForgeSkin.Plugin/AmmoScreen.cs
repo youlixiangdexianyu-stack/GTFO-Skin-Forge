@@ -30,6 +30,8 @@ sealed class AmmoScreen
 
     readonly float _gain; // emission multiplier of text and border; 0: not emissive
     readonly float _lowFraction;
+    readonly bool _gradient; // blend the low colour in as the clip approaches the threshold
+    readonly float _gradientStart; // clip fraction where the blend begins
     readonly bool _hasLow;
     readonly PlayerAmmoStorage? _storage;
     readonly AmmoType _ammoType;
@@ -38,6 +40,8 @@ sealed class AmmoScreen
     readonly string _label;
     public readonly List<Material> Surfaces = new(); // border and panel, for attachment Flash
     bool _low;
+    float _mix; // 0 = text colour, 1 = low colour
+    readonly float[] _mixed = new float[3];
 
     public AmmoScreen(SkinnedGear gear, Skin skin, Format.Screen s, Material template, GameObject root)
     {
@@ -58,6 +62,8 @@ sealed class AmmoScreen
         _hasLow = s.LowAmmoColor != null && s.Source is not (ScreenSource.Static or ScreenSource.Kills);
         _lowColor = _hasLow ? s.LowAmmoColor : null;
         _lowFraction = s.LowAmmoFraction;
+        _gradient = s.LowAmmoGradient;
+        _gradientStart = s.LowAmmoGradientStart;
         // Glyph meshes are in cell units (height 1): a cell is scaled by the text height, shrunk until the text fits.
         float inner = (w - 2 * bw) * 0.95f, dh = h * s.TextScale;
         _cells = Array.Empty<MeshFilter>();
@@ -205,7 +211,8 @@ sealed class AmmoScreen
             value = _source switch { ScreenSource.AmmoClip => clip, ScreenSource.AmmoReserve => reserve, _ => clip + reserve };
         }
         if (value == _value) return;
-        if (_value == int.MinValue) ForgeSkinPlugin.Info($"{_label}: screen {_source} first value {value}");
+        bool first = _value == int.MinValue;
+        if (first) ForgeSkinPlugin.Info($"{_label}: screen {_source} first value {value}");
         _value = value;
 
         int v = Math.Min(Math.Max(0, value), Pow10[_cells.Length] - 1);
@@ -222,10 +229,34 @@ sealed class AmmoScreen
 
         if (!_hasLow || _storage == null) return;
         int max = Max();
-        bool low = max > 0 && value <= max * _lowFraction;
-        if (low == _low) return;
-        _low = low;
-        Paint(_text!, low ? _lowColor! : _textColor, _gain);
-        ForgeSkinPlugin.Info($"{_label}: screen {(low ? "low" : "normal")} colour at {value}/{max}: {Describe()}");
+        SetMix(Tint(value, max), value, max, first);
+    }
+
+    // 0: text colour, 1: low colour. With the gradient on, the tint starts as the clip falls below the gradient start
+    // and reaches the low colour at the threshold; off, it switches at the threshold.
+    float Tint(int value, int max)
+    {
+        if (max <= 0) return 1f;
+        float fraction = Math.Min(1f, (float)value / max);
+        float from = _gradient ? Math.Max(_lowFraction, _gradientStart) : _lowFraction;
+        return from <= _lowFraction
+            ? fraction <= _lowFraction ? 1f : 0f
+            : Mathf.Clamp01((from - fraction) / (from - _lowFraction));
+    }
+
+    void SetMix(float mix, int value, int max, bool first)
+    {
+        if (first && mix == 0f) return; // the text already has its colour
+        if (!first && mix == _mix) return;
+        bool wasLow = _low;
+        bool wasTinted = _mix > 0f;
+        _mix = mix;
+        _low = mix >= 1f;
+        for (int i = 0; i < 3; i++) _mixed[i] = Mathf.Lerp(_textColor[i], _lowColor![i], mix);
+        Paint(_text!, _mixed, _gain);
+        if (wasLow != _low)
+            ForgeSkinPlugin.Info($"{_label}: screen {(_low ? "low" : "normal")} colour at {value}/{max} (tint {mix.ToString("0.00", System.Globalization.CultureInfo.InvariantCulture)}): {Describe()}");
+        else if (!wasTinted && mix > 0f)
+            ForgeSkinPlugin.Info($"{_label}: screen low-ammo tint starts at {value}/{max}");
     }
 }

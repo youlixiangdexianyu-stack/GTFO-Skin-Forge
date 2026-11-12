@@ -167,10 +167,15 @@ public sealed class SkinPack : IDisposable
             if (a.Material != null) foreach (var t in a.Material.Textures.Values) File(t, a.Id, true);
             if (a.Screen != null)
             {
-                if (a.Screen.Digits is < 1 or > 6) throw new SkinFormatException("bad-screen", $"{a.Id}: digits 1-6");
-                if (a.Screen.Source != ScreenSource.Static && a.Screen.GlyphAtlas == null)
-                    throw new SkinFormatException("no-glyphs", $"{a.Id}: glyph atlas not baked");
-                File(a.Screen.GlyphAtlas, a.Id, true);
+                if (a.Screen.Digits is < 0 or > 6) throw new SkinFormatException("bad-screen", $"{a.Id}: digits 0 (automatic) to 6");
+                if (a.Screen.Source != ScreenSource.Static && a.Screen.GlyphMeshes == null)
+                    throw new SkinFormatException("no-glyphs", $"{a.Id}: glyph meshes not baked");
+                if (a.Screen.GlyphMeshes is { } glyphs)
+                {
+                    if (glyphs.Length != 12 || !(a.Screen.GlyphAspect > 0)) throw new SkinFormatException("no-glyphs", $"{a.Id}: needs 12 glyph meshes and their aspect");
+                    foreach (var g in glyphs) File(g, a.Id);
+                }
+                File(a.Screen.TextMesh, a.Id);
             }
         }
     }

@@ -2,7 +2,8 @@ import { ActionIcon, Button, Checkbox, Group, SegmentedControl, Select, Switch, 
 import { useState } from 'react';
 import { cssFont, DEFAULT_FONT, FONT_GROUPS, isFontFile, loadFont, systemFonts } from '../fonts';
 import { IconPlus, IconTrash, IconX } from '@tabler/icons-react';
-import { baseName, triggersFor, type Attachment, type Screen, type ScreenSource, type Trigger, type TriggerEffect } from '../protocol';
+import { baseName, triggersFor, type Attachment, type CatalogItem, type Screen, type ScreenSource, type Trigger, type TriggerEffect } from '../protocol';
+import { screenDigits } from '../frames';
 import { useItem, useStore } from '../store';
 import { Color, Field, Num, Slider, Vec } from './fields';
 import { SelectionLayout } from './SelectionLayout';
@@ -16,6 +17,13 @@ const SOURCES: { value: ScreenSource; label: string }[] = [
   { value: 'kills', get label() { return t('attachInspector.k4'); } },
   { value: 'static', get label() { return t('attachInspector.k5'); } },
 ];
+
+/** What 自动 picks for this weapon, or that the weapon's ammo is unknown here. */
+function autoDigits(s: Screen, item: CatalogItem | undefined): string {
+  const { digits, max } = screenDigits(s, item);
+  if (s.source === 'kills') return t('attachInspector.autoKills');
+  return max != null ? t('attachInspector.autoDigits', { v0: max, v1: digits }) : t('attachInspector.autoUnknown', { v0: digits });
+}
 
 const PICK_FILE = '~file';
 const DIGITS = '0123456789';
@@ -147,19 +155,23 @@ function AttachmentPanel({ a }: { a: Attachment }) {
             <Field label={t('attachInspector.k24')}>
               <TextInput
                 value={s.staticText ?? ''}
-                maxLength={8}
-                placeholder={t('attachInspector.k25')}
                 onChange={(e) => {
-                  const t = e.currentTarget.value.replace(/[^0-9 -]/g, '');
-                  upScreen((x) => void (x.staticText = t), 'text');
+                  const text = e.currentTarget.value;
+                  upScreen((x) => void (x.staticText = text), 'text');
                 }}
               />
             </Field>
           ) : (
             <Field label={t('attachInspector.k26')}>
               <Group gap="sm" wrap="nowrap">
-                <Num w={90} value={s.digits ?? 2} step={1} decimalScale={0} min={1} max={4} onChange={(v) => upScreen((x) => void (x.digits = Math.round(v)), 'digits')} />
+                <Select
+                  w={110}
+                  value={String(s.digits ?? 0)}
+                  data={[{ value: '0', label: t('attachInspector.k25') }, ...['1', '2', '3', '4', '5', '6'].map((d) => ({ value: d, label: d }))]}
+                  onChange={(v) => v && upScreen((x) => void (x.digits = Number(v)))}
+                />
                 <Checkbox size="xs" label={t('attachInspector.k27')} checked={s.padZero !== false} onChange={(e) => upScreen((x) => void (x.padZero = e.currentTarget.checked))} />
+                {!s.digits && <Info label={autoDigits(s, item)} />}
               </Group>
             </Field>
           )}
@@ -175,6 +187,7 @@ function AttachmentPanel({ a }: { a: Attachment }) {
           <Field label={t('attachInspector.k33')}>
             <Slider value={s.glow ?? 1.5} min={0} max={5} step={0.05} onChange={(v) => upScreen((x) => void (x.glow = v), 'glow')} />
           </Field>
+          <Switch mt="xs" label={t('attachInspector.glowInGame')} checked={s.glowInGame !== false} onChange={(e) => upScreen((x) => void (x.glowInGame = e.currentTarget.checked))} />
           <Field label={t('attachInspector.k10')}>
             <FontPicker value={s.font ?? null} onChange={(f) => upScreen((x) => void (x.font = f))} />
           </Field>

@@ -33,7 +33,7 @@ public class FormatTests
         Attachments =
         {
             new Attachment { Id = "m1", Name = "Model", Part = "receiver", Mesh = "meshes/m1.forgeskinmesh" },
-            new Attachment { Id = "s1", Name = "Ammo", Part = "receiver", Transform = "a_mag", Screen = new Screen { Digits = 3, GlyphAtlas = "glyphs/s1.png" } },
+            new Attachment { Id = "s1", Name = "Ammo", Part = "receiver", Transform = "a_mag", Screen = new Screen { Digits = 3, GlyphAspect = 0.67f, GlyphMeshes = [.. Enumerable.Repeat("glyphs/s1.forgeskinmesh", 10), null, "glyphs/s1.forgeskinmesh"] } },
         },
         Parts = { new PartTransform { Part = "mag", Position = [0, 0.01f, 0] } },
         Sounds = { new SkinSound { Id = "k1", Name = "Kill", Trigger = Trigger.Kill, File = "sounds/k1.ogg" } },
@@ -45,7 +45,7 @@ public class FormatTests
     {
         ["textures/Front_UZI_2_Albedo.png"] = Png,
         ["layers/l1.png"] = Png,
-        ["glyphs/s1.png"] = Png,
+        ["glyphs/s1.forgeskinmesh"] = Mesh(),
         ["meshes/m1.forgeskinmesh"] = Mesh(),
         ["sounds/k1.ogg"] = "OggS"u8.ToArray(),
     };
@@ -88,7 +88,7 @@ public class FormatTests
         { "no-anchor", (d, _) => d.Attachments[0].Part = "" },
         { "empty-attachment", (d, _) => d.Attachments[0].Mesh = null },
         { "bad-screen", (d, _) => d.Attachments[1].Screen!.Digits = 9 },
-        { "no-glyphs", (d, _) => d.Attachments[1].Screen!.GlyphAtlas = null },
+        { "no-glyphs", (d, _) => d.Attachments[1].Screen!.GlyphMeshes = null },
         { "bad-mesh", (_, f) => f["meshes/m1.forgeskinmesh"] = [1, 2, 3, 4, 5, 6, 7, 8] },
         { "bad-trigger", (d, _) => d.Attachments[0].Effects.Add(new AttachmentEffect { Trigger = Trigger.Always }) },
         { "bad-audio", (_, f) => f["sounds/k1.ogg"] = "RIFF0000WAVE"u8.ToArray() },

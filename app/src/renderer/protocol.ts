@@ -112,6 +112,9 @@ export interface CatalogItem {
   /** ItemDataBlock id for items with their own prefab (packs, consumables, objective items, hacking tool); null otherwise. */
   itemId?: number | null;
   calibre?: string | null;
+  /** Guns: magazine size and the most bullets the reserve holds (from the game data); null otherwise. */
+  clipSize?: number | null;
+  maxReserve?: number | null;
   parts: CatalogPart[];
 }
 

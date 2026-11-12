@@ -39,7 +39,8 @@ sealed class Skin
             {
                 if (a.Mesh != null && !skin._meshes.ContainsKey(a.Mesh)) skin._meshes[a.Mesh] = ToMesh(ForgeSkinMesh.Read(pack.ReadBytes(a.Mesh)), a.Mesh);
                 if (a.Material != null) foreach (var (channel, path) in a.Material.Textures) skin.Decode(pack, path, channel, true, true);
-                if (a.Screen?.GlyphAtlas is { } glyphs) skin.Decode(pack, glyphs, TextureChannel.Albedo, true, false);
+                foreach (var g in (a.Screen?.GlyphMeshes ?? Array.Empty<string?>()).Append(a.Screen?.TextMesh))
+                    if (g != null && !skin._meshes.ContainsKey(g)) skin._meshes[g] = ToMesh(ForgeSkinMesh.Read(pack.ReadBytes(g)), g);
             }
             foreach (var t in skin.Doc.Parts)
                 if (t.Mesh != null && !skin._meshes.ContainsKey(t.Mesh)) skin._meshes[t.Mesh] = ToMesh(ForgeSkinMesh.Read(pack.ReadBytes(t.Mesh)), t.Mesh);
@@ -55,8 +56,8 @@ sealed class Skin
     }
 
     // A texture set straight on a material (`compress`) is compressed to DXT on load, a quarter of the
-    // VRAM of raw RGBA. Layer atlases and glyph strips stay raw: layers copy frames out of them with CopyTexture, which
-    // needs the format of the uncompressed render target, and glyph edges would blur. Normal maps are stored the way
+    // VRAM of raw RGBA. Layer atlases stay raw: layers copy frames out of them with CopyTexture, which
+    // needs the format of the uncompressed render target. Normal maps are stored the way
     // the game's own are (DXT5nm: x in alpha, y in green), which the gear shaders read.
     void Decode(SkinPack pack, string path, TextureChannel channel, bool mips, bool compress)
     {

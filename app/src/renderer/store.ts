@@ -662,7 +662,7 @@ export const useStore = create<State>((set, get) => ({
           kind === 'screen'
             ? {
                 source: 'ammoClip',
-                digits: 2,
+                digits: 0, // automatic
                 padZero: true,
                 size: [0.03, 0.015],
                 surfaceGap: 0.0005,
@@ -672,6 +672,7 @@ export const useStore = create<State>((set, get) => ({
                 textColor: [0.73, 0.98, 1, 1],
                 textScale: 0.8,
                 glow: 1.5,
+                glowInGame: true,
                 lowAmmoFraction: 0.2,
                 lowAmmoColor: [1, 0.35, 0.25, 1],
               }

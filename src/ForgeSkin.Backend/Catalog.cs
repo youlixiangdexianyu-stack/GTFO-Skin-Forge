@@ -15,6 +15,9 @@ public sealed record CatalogItem(string Id, string Name, string? NameZh, string 
     // ItemDataBlock persistentID of an item built from its own first-person prefabs (packs, consumables, carry items,
     // the hacking tool); null for gear built from parts, which has GearId.
     public uint? ItemId { get; init; }
+    // Guns: magazine size and the most bullets the reserve holds (the screen's automatic digit count); null otherwise.
+    public int? ClipSize { get; init; }
+    public int? MaxReserve { get; init; }
     [JsonIgnore] public Recipe Source { get; init; } = null!;
     [JsonIgnore] public int Order { get; init; }
 
@@ -41,7 +44,7 @@ public static class Catalog
     public static List<CatalogItem> Get(GameAssets g)
     {
         if (_items != null && _build == g.BuildId) return _items;
-        var file = Path.Combine(g.Cache, "catalog.json");
+        var file = Path.Combine(g.Cache, "catalog-2.json");
         List<CatalogItem> items;
         try
         {
@@ -203,6 +206,24 @@ public static class Catalog
 
     static Node Holder() => new() { Name = "Gear" };
 
+    // A gun's magazine and reserve maximum in bullets, as the game derives them: the archetype of its fire mode (gear
+    // component 1) in its category gives DefaultClipSize (times the mag part's ClipSizeMultiplier) and CostOfBullet; the
+    // slot's ammo cap in PlayerDataBlock divided by that cost is the reserve. Melee weapons and tools get none.
+    static (int? Clip, int? Reserve) Ammo(GameAssets g, Dictionary<int, uint> comps, JsonObject category, string slot)
+    {
+        if (slot is not ("main" or "special")) return (null, null);
+        var key = (comps.TryGetValue(1, out var mode) ? mode : 0) switch
+        {
+            0 => "SemiArchetype", 1 => "BurstArchetype", 2 => "AutoArchetype", 3 => "SemiBurstArchetype", _ => null,
+        };
+        if (key == null || (uint?)category[key] is not { } id || !g.Blocks("Archetype").TryGetValue(id, out var a)) return (null, null);
+        float multiplier = comps.TryGetValue(23, out var mag) && g.Blocks("GearMagPart").TryGetValue(mag, out var m) ? (float)m["ClipSizeMultiplier"]! : 1f;
+        int clip = (int)((int)a["DefaultClipSize"]! * multiplier);
+        float cost = (float)a["CostOfBullet"]!;
+        float cap = (float)g.Blocks("Player").Values.First()[slot == "main" ? "AmmoStandardMaxCap" : "AmmoSpecialMaxCap"]!;
+        return (clip, cost > 0 ? (int)(cap / cost) : null);
+    }
+
     static List<CatalogItem> Load(GameAssets g)
     {
         var items = new List<CatalogItem>();
@@ -229,9 +250,10 @@ public static class Catalog
             var parts = Parts(Build(g, recipe));
             if (parts.Count == 0) continue;
 
+            var (clip, reserve) = Ammo(g, comps, cat, slotName);
             items.Add(new CatalogItem((string?)naming?["id"] ?? Slug((string)gear["name"]!), english, (string?)naming?["nameZh"], catName,
                 slotName, (uint)gear["persistentID"]!, (string?)calibre?["label"], parts)
-            { Source = recipe, Order = (int?)naming?["order"] ?? 500, CategoryZh = (string?)naming?["categoryZh"] });
+            { Source = recipe, Order = (int?)naming?["order"] ?? 500, CategoryZh = (string?)naming?["categoryZh"], ClipSize = clip, MaxReserve = reserve });
 
             int ammoParts = parts.Count(p => p.Role == "ammo");
             if (calibre != null && (!calibres.TryGetValue((string)calibre["id"]!, out var had) || had.AmmoParts < ammoParts))

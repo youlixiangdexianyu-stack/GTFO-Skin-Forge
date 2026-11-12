@@ -212,9 +212,12 @@ public enum ScreenSource { AmmoClip, AmmoReserve, AmmoTotal, Static, Kills }
 public sealed class Screen
 {
     public ScreenSource Source { get; set; } = ScreenSource.AmmoClip;
-    public int Digits { get; set; } = 2;
+    // 0: automatic, as many digits as the largest value the source can show (magazine: clip size; reserve: its maximum;
+    // total: both; kills: the value's own digits, up to 4). PadZero pads up to that width.
+    public int Digits { get; set; }
     public bool PadZero { get; set; } = true;
-    public string? StaticText { get; set; }
+    public string? StaticText { get; set; } // any characters, drawn with Font
+
 
     public float[] Size { get; set; } = { 0.03f, 0.015f }; // metres
     public float SurfaceGap { get; set; } = 0.0005f; // editor value; already included in Attachment.Position
@@ -224,12 +227,20 @@ public sealed class Screen
     public float[] TextColor { get; set; } = { 0.73f, 0.98f, 1, 1 };
     public float TextScale { get; set; } = 0.8f;
     public float Glow { get; set; } = 1.5f;
+    // On: digits and border are emissive (brightness from Glow) and bloom in game; off: plain lit colours.
+    public bool GlowInGame { get; set; } = true;
     public string? Font { get; set; }
 
-    // Optional low-ammo colour switch.
+    // Optional low-ammo colour: replaces the text colour and its glow below the threshold.
     public float LowAmmoFraction { get; set; } = 0.2f;
     public float[]? LowAmmoColor { get; set; }
 
-    // Filled when packing: glyph strip "0123456789 -" rendered with the chosen font, white on transparent.
-    public string? GlyphAtlas { get; set; }
+    // Filled when packing from the glyph strip the app renders with the chosen font (.frames/<id>-glyphs.png): one mesh
+    // per glyph "0123456789 -" (null for the blank), in cell units (height 1, width GlyphAspect), facing -Z.
+    public string?[]? GlyphMeshes { get; set; }
+    public float GlyphAspect { get; set; }
+    // Filled when packing a static screen from the text the app renders with the chosen font (.frames/<id>-text.png):
+    // the whole text as one mesh, height 1, width TextAspect, facing -Z.
+    public string? TextMesh { get; set; }
+    public float TextAspect { get; set; }
 }

@@ -6,8 +6,8 @@ using ForgeSkin.Format;
 
 namespace ForgeSkin.Backend;
 
-// Project -> .forgeskin: textures resized by size mode (aspect kept), layer frames packed into atlases, glyph strips and
-// meshes copied, manifest validated by opening the written pack.
+// Project -> .forgeskin: textures resized by size mode (aspect kept), layer frames packed into atlases, glyph strips traced
+// into meshes, meshes copied, manifest validated by opening the written pack.
 public static class PackBuilder
 {
     sealed record FrameRect(int X, int Y, int W, int H, int TextureWidth, int TextureHeight);
@@ -139,14 +139,36 @@ public static class PackBuilder
                 if (a.Screen != null)
                 {
                     a.Screen.Font = null;
-                    var glyphs = a.Screen.GlyphAtlas != null ? Abs(a.Screen.GlyphAtlas) : Path.Combine(projectDir, ".frames", a.Id + "-glyphs.png");
-                    if (File.Exists(glyphs))
+                    a.Screen.GlyphMeshes = null; // Validate reports no-glyphs for live screens without a strip
+                    a.Screen.TextMesh = null;
+                    var text = Path.Combine(projectDir, ".frames", a.Id + "-text.png");
+                    if (a.Screen.Source == ScreenSource.Static && File.Exists(text))
                     {
-                        var name = $"glyphs/{Preview.Safe(a.Id)}.png";
-                        Copy(name, glyphs);
-                        a.Screen.GlyphAtlas = name;
+                        using var bmp = Images.Load(text);
+                        var (mesh, aspect) = GlyphMesh.Text(bmp);
+                        if (mesh != null)
+                        {
+                            a.Screen.TextMesh = $"glyphs/{Preview.Safe(a.Id)}_text.forgeskinmesh";
+                            a.Screen.TextAspect = aspect;
+                            using var s = zip.CreateEntry(a.Screen.TextMesh).Open();
+                            s.Write(mesh.Write());
+                        }
                     }
-                    else a.Screen.GlyphAtlas = null; // Validate reports no-glyphs for live screens
+                    var strip = Path.Combine(projectDir, ".frames", a.Id + "-glyphs.png");
+                    if (a.Screen.Source != ScreenSource.Static && File.Exists(strip))
+                    {
+                        using var bmp = Images.Load(strip);
+                        var (glyphs, aspect) = GlyphMesh.Build(bmp);
+                        a.Screen.GlyphAspect = aspect;
+                        a.Screen.GlyphMeshes = glyphs.Select((g, i) =>
+                        {
+                            if (g == null) return null;
+                            var name = $"glyphs/{Preview.Safe(a.Id)}_{i}.forgeskinmesh";
+                            using var s = zip.CreateEntry(name).Open();
+                            s.Write(g.Write());
+                            return name;
+                        }).ToArray();
+                    }
                 }
             }
 

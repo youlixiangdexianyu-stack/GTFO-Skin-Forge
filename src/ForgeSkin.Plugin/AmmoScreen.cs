@@ -5,20 +5,24 @@ using UnityEngine;
 namespace ForgeSkin.Plugin;
 
 // A screen in the attachment's local XY plane, centred on its origin, visible face toward local -Z:
-// border quad (full size), panel quad inset by the border width, and one quad per digit whose mesh is swapped
-// between twelve glyph meshes ("0123456789 -") when the value changes.
+// border frame (a ring BorderWidth wide inside the edges), panel quad inside it, and one cell per digit whose mesh is
+// swapped between the pack's glyph meshes ("0123456789 -", real stroke geometry) when the value changes. Everything is
+// opaque gear shader (it has no transparency): the colour as albedo, plus the same colour as emission when it glows in game.
 sealed class AmmoScreen
 {
-    const int Blank = 10, Minus = 11;
+    const int Blank = 10;
     const float Step = 0.0002f; // metres between the stacked quads, toward the viewer
     static readonly int[] Pow10 = { 1, 10, 100, 1000, 10000, 100000, 1000000 };
 
     readonly ScreenSource _source;
     readonly bool _pad;
     readonly MeshFilter[] _cells;
-    readonly Mesh[] _glyphs = new Mesh[12];
-    readonly Material? _text;
-    readonly Color _normal, _lowColor;
+    readonly Mesh?[] _glyphs = new Mesh?[12];
+    readonly Material? _text, _border;
+    readonly Material _template;
+    readonly float[] _textColor;
+    readonly float[]? _lowColor;
+    readonly float _glow; // 0: not emissive
     readonly float _lowFraction;
     readonly bool _hasLow;
     readonly PlayerAmmoStorage? _storage;
@@ -34,77 +38,152 @@ sealed class AmmoScreen
         _source = s.Source;
         _label = gear.Label;
         _pad = s.PadZero;
-        float w = s.Size[0], h = s.Size[1], bw = s.BorderWidth;
-        if (s.BorderColor[3] > 0.01f)
-            gear.Child(root, "border", gear.Own(Quad(w, h, 0, 1)), Flat(gear, template, s.BorderColor, s.Glow), 0f);
+        _template = template;
+        _glow = s.GlowInGame ? s.Glow : 0f;
+        _textColor = s.TextColor;
+        float w = s.Size[0], h = s.Size[1], bw = Math.Min(s.BorderWidth, Math.Min(w, h) * 0.5f);
+        if (s.BorderColor[3] > 0.01f && bw > 0)
+            gear.Child(root, "border", gear.Own(Frame(w, h, bw)), _border = Surface(gear, s.BorderColor, _glow), -Step);
         if (s.PanelColor[3] > 0.01f)
-            gear.Child(root, "panel", gear.Own(Quad(w - 2 * bw, h - 2 * bw, 0, 1)), Flat(gear, template, s.PanelColor, 1f), -Step);
+            gear.Child(root, "panel", gear.Own(Quad(w - 2 * bw, h - 2 * bw)), Surface(gear, s.PanelColor, s.GlowInGame ? 1f : 0f), 0f);
 
-        if (s.GlyphAtlas == null) { _cells = Array.Empty<MeshFilter>(); return; }
-        var atlas = skin.Texture(s.GlyphAtlas, false);
-        float dh = h * s.TextScale, dw = dh * (atlas.width / 12f) / atlas.height;
-        float fit = (w - 2 * bw) * 0.95f / (dw * s.Digits);
-        if (fit < 1) { dw *= fit; dh *= fit; }
-        for (int g = 0; g < 12; g++) _glyphs[g] = gear.Own(Quad(dw, dh, g / 12f, (g + 1) / 12f));
-
-        _text = gear.Own(new Material(template) { name = "ForgeSkin screen text" });
-        _text.SetTexture(SkinnedGear.MainTex, atlas);
-        _text.SetTexture(SkinnedGear.EmissiveMap, atlas);
-        _text.SetTexture(SkinnedGear.MetallicGlossMap, Texture2D.blackTexture);
-        _text.SetTexture(SkinnedGear.BumpMap, null);
-        if (_text.HasProperty(SkinnedGear.Cutoff))
-        {
-            _text.SetFloat(SkinnedGear.Cutoff, 0.5f);
-            _text.EnableKeyword("_ALPHATEST_ON");
-        }
-        _normal = Emission(s.TextColor, s.Glow);
+        _text = Surface(gear, s.TextColor, _glow);
+        Surfaces.Remove(_text);
         _hasLow = s.LowAmmoColor != null && s.Source is not (ScreenSource.Static or ScreenSource.Kills);
-        _lowColor = _hasLow ? Emission(s.LowAmmoColor!, s.Glow) : _normal;
+        _lowColor = _hasLow ? s.LowAmmoColor : null;
         _lowFraction = s.LowAmmoFraction;
-        SkinnedGear.SetEmission(_text, _normal);
-
-        _cells = new MeshFilter[s.Digits];
-        for (int i = 0; i < _cells.Length; i++)
-        {
-            _cells[i] = gear.Child(root, "digit" + i, _glyphs[Blank], _text, -2 * Step);
-            _cells[i].transform.localPosition = new Vector3(dw * (i + 0.5f - _cells.Length * 0.5f), 0, -2 * Step);
-        }
+        // Glyph meshes are in cell units (height 1): a cell is scaled by the text height, shrunk until the text fits.
+        float inner = (w - 2 * bw) * 0.95f, dh = h * s.TextScale;
+        _cells = Array.Empty<MeshFilter>();
 
         if (s.Source == ScreenSource.Static)
         {
-            var text = s.StaticText ?? "";
-            for (int i = 0; i < _cells.Length && i < text.Length; i++)
-                _cells[i].sharedMesh = _glyphs[text[i] is >= '0' and <= '9' ? text[i] - '0' : text[i] == '-' ? Minus : Blank];
+            if (s.TextMesh == null) return;
+            dh *= Math.Min(1f, inner / (dh * s.TextAspect));
+            gear.Child(root, "text", skin.Mesh(s.TextMesh), _text, -2 * Step).transform.localScale = new Vector3(dh, dh, 1);
+            return;
         }
-        else if (s.Source != ScreenSource.Kills) _storage = gear.Storage(out _ammoType, out _clipSize);
+        if (s.GlyphMeshes == null) return;
+        for (int g = 0; g < 12; g++) _glyphs[g] = s.GlyphMeshes[g] is { } path ? skin.Mesh(path) : null;
+        if (s.Source != ScreenSource.Kills) _storage = gear.Storage(out _ammoType, out _clipSize);
+        // Automatic width: the digits of the largest value the source can show; kills have no maximum and grow up to 4.
+        _grow = s.Digits == 0 && s.Source == ScreenSource.Kills;
+        int width = s.Digits > 0 ? s.Digits : _grow ? 4 : _storage != null ? DigitCount(Max()) : 2;
+        _dw = dh * s.GlyphAspect;
+        float fit = inner / (_dw * width);
+        if (fit < 1) { _dw *= fit; dh *= fit; }
+
+        _cells = new MeshFilter[width];
+        for (int i = 0; i < _cells.Length; i++)
+        {
+            _cells[i] = gear.Child(root, "digit" + i, _glyphs[Blank], _text, -2 * Step);
+            _cells[i].transform.localScale = new Vector3(dh, dh, 1);
+        }
+        Place(width);
     }
 
-    static Color Emission(float[] c, float glow) => new Color(c[0], c[1], c[2]) * (glow * SkinnedGear.EmissionUnit);
+    readonly bool _grow; // automatic kills: as many cells shown as the value has digits, centred
+    readonly float _dw;
+    int _shown;
 
-    // Opaque gear-shader quad lit by its own colour.
-    Material Flat(SkinnedGear gear, Material template, float[] c, float glow)
+    static int DigitCount(int n)
     {
-        var m = gear.Own(new Material(template) { name = "ForgeSkin screen panel" });
+        int count = 1;
+        for (n = Math.Max(0, n); n >= 10; n /= 10) count++;
+        return Math.Min(count, Pow10.Length - 1);
+    }
+
+    // Centres the first `shown` cells.
+    void Place(int shown)
+    {
+        if (shown == _shown) return;
+        _shown = shown;
+        for (int i = 0; i < shown; i++) _cells[i].transform.localPosition = new Vector3(_dw * (i + 0.5f - shown * 0.5f), 0, -2 * Step);
+    }
+
+    // The largest value an ammo source can show (needs _storage).
+    int Max() => _source switch
+    {
+        ScreenSource.AmmoClip => _clipSize,
+        ScreenSource.AmmoReserve => _storage!.GetBulletMaxCap(_ammoType),
+        _ => _clipSize + _storage!.GetBulletMaxCap(_ammoType),
+    };
+
+    // Opaque gear-shader surface in one colour: the colour as albedo (a 1x1 texture; the shader has no colour
+    // property) and, with glow > 0, the same colour as emission at glow times the shader's unit.
+    Material Surface(SkinnedGear gear, float[] c, float glow)
+    {
+        var m = gear.Own(new Material(_template) { name = "ForgeSkin screen" });
         Surfaces.Add(m);
-        m.SetTexture(SkinnedGear.MainTex, Texture2D.blackTexture);
         m.SetTexture(SkinnedGear.MetallicGlossMap, Texture2D.blackTexture);
         m.SetTexture(SkinnedGear.BumpMap, null);
         m.SetTexture(SkinnedGear.EmissiveMap, Texture2D.whiteTexture);
-        SkinnedGear.SetEmission(m, Emission(c, glow));
+        m.SetTexture(SkinnedGear.MainTex, gear.Own(new Texture2D(1, 1, TextureFormat.RGBA32, false) { name = "ForgeSkin screen colour" }));
+        Paint(m, c, glow);
         return m;
     }
 
-    static Mesh Quad(float w, float h, float u0, float u1)
+    static void Paint(Material m, float[] c, float glow)
+    {
+        var colour = new Color(c[0], c[1], c[2]);
+        var albedo = m.GetTexture(SkinnedGear.MainTex).Cast<Texture2D>();
+        albedo.SetPixel(0, 0, colour);
+        albedo.Apply(false, false);
+        if (glow > 0) SkinnedGear.SetEmission(m, colour * (glow * SkinnedGear.EmissionUnit));
+        else
+        {
+            if (m.HasProperty(SkinnedGear.EmissiveColor)) m.SetColor(SkinnedGear.EmissiveColor, Color.black);
+            SkinnedGear.SetEmissive(m, false);
+        }
+    }
+
+    static Mesh Quad(float w, float h)
     {
         float x = w * 0.5f, y = h * 0.5f;
         var mesh = new Mesh { name = "ForgeSkin quad" };
         mesh.vertices = new[] { new Vector3(-x, -y, 0), new Vector3(x, -y, 0), new Vector3(-x, y, 0), new Vector3(x, y, 0) };
-        mesh.uv = new[] { new Vector2(u0, 0), new Vector2(u1, 0), new Vector2(u0, 1), new Vector2(u1, 1) };
+        mesh.uv = new[] { new Vector2(0, 0), new Vector2(1, 0), new Vector2(0, 1), new Vector2(1, 1) };
         mesh.normals = new[] { Vector3.back, Vector3.back, Vector3.back, Vector3.back };
         mesh.triangles = new[] { 0, 2, 3, 0, 3, 1 }; // clockwise seen from -Z
         mesh.RecalculateTangents();
         mesh.RecalculateBounds();
         return mesh;
+    }
+
+    // The ring between the outer edges and the edges inset by bw: four strips, clockwise seen from -Z.
+    static Mesh Frame(float w, float h, float bw)
+    {
+        float x = w * 0.5f, y = h * 0.5f, ix = x - bw, iy = y - bw;
+        var v = new[]
+        {
+            new Vector3(-x, -y, 0), new Vector3(x, -y, 0), new Vector3(x, y, 0), new Vector3(-x, y, 0),
+            new Vector3(-ix, -iy, 0), new Vector3(ix, -iy, 0), new Vector3(ix, iy, 0), new Vector3(-ix, iy, 0),
+        };
+        var uv = new Vector2[8];
+        var normals = new Vector3[8];
+        for (int i = 0; i < 8; i++) (uv[i], normals[i]) = (new Vector2(v[i].x / w + 0.5f, v[i].y / h + 0.5f), Vector3.back);
+        var tris = new int[24];
+        for (int k = 0; k < 4; k++)
+        {
+            int o0 = k, o1 = (k + 1) % 4, i0 = 4 + k, i1 = 4 + (k + 1) % 4;
+            (tris[k * 6], tris[k * 6 + 1], tris[k * 6 + 2]) = (o0, i0, i1);
+            (tris[k * 6 + 3], tris[k * 6 + 4], tris[k * 6 + 5]) = (o0, i1, o1);
+        }
+        var mesh = new Mesh { name = "ForgeSkin frame", vertices = v, uv = uv, normals = normals, triangles = tris };
+        mesh.RecalculateTangents();
+        mesh.RecalculateBounds();
+        return mesh;
+    }
+
+    // What the screen really shows, for checking against the editor in one in-game run.
+    public string Describe()
+    {
+        static string M(Material? m) => m == null ? "none" :
+            $"albedo {m.GetTexture(SkinnedGear.MainTex)?.TryCast<Texture2D>()?.GetPixel(0, 0).ToString() ?? "?"}, " +
+            $"_EmissiveColor {(m.HasProperty(SkinnedGear.EmissiveColor) ? m.GetColor(SkinnedGear.EmissiveColor).ToString() : "-")}, " +
+            $"_EnableEmissive {(m.HasProperty(SkinnedGear.EnableEmissive) ? m.GetFloat(SkinnedGear.EnableEmissive) : -1)}, ENABLE_EMISSIVE {m.IsKeywordEnabled("ENABLE_EMISSIVE")}";
+        return $"glow {_glow}, text [{M(_text)}]{(_low ? " (low)" : "")}, border [{M(_border)}], " +
+               $"template {_template.name} / {_template.shader.name} keywords [{string.Join(" ", _template.shaderKeywords)}]";
     }
 
     public void Update(int clip, int kills)
@@ -123,25 +202,23 @@ sealed class AmmoScreen
         _value = value;
 
         int v = Math.Min(Math.Max(0, value), Pow10[_cells.Length] - 1);
+        int shown = _grow ? DigitCount(v) : _cells.Length;
+        Place(shown);
         for (int i = _cells.Length - 1; i >= 0; i--)
         {
+            if (i >= shown) { _cells[i].sharedMesh = _glyphs[Blank]; continue; }
             int digit = v % 10;
             v /= 10;
-            bool blank = !_pad && i != _cells.Length - 1 && digit == 0 && v == 0;
+            bool blank = !_pad && i != shown - 1 && digit == 0 && v == 0;
             _cells[i].sharedMesh = _glyphs[blank ? Blank : digit];
         }
 
         if (!_hasLow || _storage == null) return;
-        int max = _source switch
-        {
-            ScreenSource.AmmoClip => _clipSize,
-            ScreenSource.AmmoReserve => _storage.GetBulletMaxCap(_ammoType),
-            _ => _clipSize + _storage.GetBulletMaxCap(_ammoType),
-        };
+        int max = Max();
         bool low = max > 0 && value <= max * _lowFraction;
         if (low == _low) return;
         _low = low;
-        ForgeSkinPlugin.Info($"{_label}: screen {(low ? "low" : "normal")} colour at {value}/{max}");
-        _text!.SetColor(SkinnedGear.EmissiveColor, low ? _lowColor : _normal);
+        Paint(_text!, low ? _lowColor! : _textColor, _glow);
+        ForgeSkinPlugin.Info($"{_label}: screen {(low ? "low" : "normal")} colour at {value}/{max}: {Describe()}");
     }
 }

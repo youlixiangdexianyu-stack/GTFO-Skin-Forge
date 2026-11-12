@@ -1,9 +1,10 @@
 // Renders dynamic-layer frames and screen glyph strips in the renderer and writes them as PNGs for pack.build.
 // Contract with the backend/plugin: each frame in <projectDir>/.frames/<layerId>/NNNN.png is the final pixels of the
 // target region (base texture + layer, opacity baked; the plugin copies without blending); rect.json gives the region in
-// base-texture pixels with a top-left origin. The glyph strip is "0123456789 -" in 12 equal cells, white on transparent.
+// base-texture pixels with a top-left origin. The glyph strip is "0123456789 -" in 12 equal cells, white on transparent;
+// a static screen's text is one image <attachmentId>-text.png. The backend traces both into meshes.
 import { cssFont, loadFont } from './fonts';
-import { dirName, fileUrl, type DynamicLayer, type Screen, type SkinDocument, type WeaponPreview } from './protocol';
+import { dirName, fileUrl, type CatalogItem, type DynamicLayer, type Screen, type SkinDocument, type WeaponPreview } from './protocol';
 import { t } from './i18n';
 
 export const GLYPHS = '0123456789 -';
@@ -233,11 +234,48 @@ export function glyphCanvas(font: string | null | undefined, cellW = 64, cellH =
   return c;
 }
 
+/** A static screen's whole text in its font, white on transparent, `cellH` high (any characters). */
+export function screenTextCanvas(font: string | null | undefined, text: string, cellH = 96): HTMLCanvasElement {
+  const c = document.createElement('canvas');
+  const px = Math.round(cellH * 0.82);
+  const ctx = c.getContext('2d')!;
+  ctx.font = cssFont(font, px);
+  c.width = Math.max(1, Math.ceil(ctx.measureText(text).width + cellH * 0.1));
+  c.height = cellH;
+  ctx.font = cssFont(font, px); // resizing the canvas reset it
+  ctx.fillStyle = '#fff';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(text, c.width / 2, cellH / 2 + cellH * 0.04);
+  return c;
+}
+
+/**
+ * How many digits a counter screen shows, as the plugin decides it: a set number, or automatically the digits of the
+ * largest value its source can show (magazine: clip size; reserve: its maximum; total: both). Kills have no maximum:
+ * automatic kills show the value's own digits (up to 4). `max` is null where the editor does not know the weapon's ammo.
+ */
+export function screenDigits(s: Screen, item: CatalogItem | undefined): { digits: number; max: number | null; grow: boolean } {
+  const clip = item?.clipSize ?? null;
+  const reserve = item?.maxReserve ?? null;
+  const max =
+    s.source === 'ammoReserve' ? reserve
+    : s.source === 'ammoTotal' ? (clip != null && reserve != null ? clip + reserve : null)
+    : s.source === 'kills' || s.source === 'static' ? null
+    : clip;
+  const grow = !s.digits && s.source === 'kills';
+  const digits = s.digits ? s.digits : grow ? 4 : max != null ? Math.min(6, String(Math.max(0, max)).length) : 2;
+  return { digits, max, grow };
+}
+
 export async function bakeGlyphs(doc: SkinDocument, projectPath: string): Promise<void> {
+  const dir = `${dirName(projectPath)}\\.frames`;
   for (const a of doc.attachments ?? []) {
     if (!a?.screen) continue;
     await loadFont(a.screen.font);
-    await window.forge.writeFile(`${dirName(projectPath)}\\.frames\\${a.id}-glyphs.png`, await toPng(glyphCanvas(a.screen.font)));
+    // Twice the preview resolution: the backend traces the outlines, and finer pixels give smoother strokes.
+    if (a.screen.source === 'static') await window.forge.writeFile(`${dir}\\${a.id}-text.png`, await toPng(screenTextCanvas(a.screen.font, a.screen.staticText ?? '', 192)));
+    else await window.forge.writeFile(`${dir}\\${a.id}-glyphs.png`, await toPng(glyphCanvas(a.screen.font, 128, 192)));
   }
 }
 

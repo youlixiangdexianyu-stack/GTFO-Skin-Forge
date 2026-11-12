@@ -97,10 +97,14 @@ borderWidth?: number
 textColor?: number[]
 textScale?: number
 glow?: number
+glowInGame?: boolean
 font?: (string | null)
 lowAmmoFraction?: number
 lowAmmoColor?: (number[] | null)
-glyphAtlas?: (string | null)
+glyphMeshes?: ((string | null)[] | null)
+glyphAspect?: number
+textMesh?: (string | null)
+textAspect?: number
 } | null)
 effects?: ({
 trigger?: ("always" | "kill" | "hit" | "fire" | "dryFire" | "reloadStart" | "reloadEnd" | "equip" | "unequip" | "aim" | "aimEnd" | "lowAmmo" | "empty" | "ammoPickup" | "flashlightOn" | "flashlightOff")

@@ -46,7 +46,7 @@ public class GameTests
         File.Copy(albedo, Path.Combine(dir, "front.png"));
         var ammo = items.First(i => (string)i!["slot"]! == "ammo")!;
         File.Copy((string)Call("preview.weapon", new { id = (string)ammo["id"]! })["glb"]!, Path.Combine(dir, "bullet.glb"));
-        File.Copy(albedo, Path.Combine(dir, "glyphs.png"));
+        Images.SavePng(GlyphMeshTests.Strip(), Path.Combine(Directory.CreateDirectory(Path.Combine(dir, ".frames")).FullName, "counter-glyphs.png"));
         var project = new SkinDocument
         {
             Id = "skin-flow-test",
@@ -56,7 +56,7 @@ public class GameTests
             Attachments =
             {
                 new Attachment { Id = "bullet", Name = "Bullet", Part = "receiver", Mesh = "bullet.glb" },
-                new Attachment { Id = "counter", Name = "Ammo", Part = "receiver", Screen = new Screen { Digits = 3, GlyphAtlas = "glyphs.png" } },
+                new Attachment { Id = "counter", Name = "Ammo", Part = "receiver", Screen = new Screen { Digits = 3 } },
             },
         };
         var projectPath = Path.Combine(dir, "flow.forgeskinproj");
@@ -69,7 +69,7 @@ public class GameTests
             Assert.Equal(45u, p.Manifest.Target.GearId);
             Assert.Equal("textures/Front_UZI_2_Albedo.png", p.Manifest.Materials[0].Textures[TextureChannel.Albedo]);
             Assert.True(ForgeSkinMesh.Read(p.ReadBytes(p.Manifest.Attachments[0].Mesh!)).Indices.Length > 0);
-            Assert.NotNull(p.Manifest.Attachments[1].Screen!.GlyphAtlas);
+            Assert.Equal(11, p.Manifest.Attachments[1].Screen!.GlyphMeshes!.Count(g => g != null));
         }
 
         var profile = Directory.CreateDirectory(Path.Combine(dir, "profile", "BepInEx")).Parent!.FullName;

@@ -12,11 +12,11 @@ import {
   type MeshStandardMaterial,
   type Object3D,
 } from 'three';
-import { glyphCanvas, GLYPHS } from '../frames';
+import { glyphCanvas, GLYPHS, screenDigits, screenTextCanvas } from '../frames';
 import { loadFont } from '../fonts';
 import { fileUrl, type Attachment, type Screen, type TriggerEffect } from '../protocol';
 import { unityToThree } from '../space';
-import { useStore } from '../store';
+import { useItem, useStore } from '../store';
 import { anchorObject, previewEvents, quiet, SCENE_EVENT, viewRefs } from './refs';
 import { t } from '../i18n';
 
@@ -43,56 +43,76 @@ function ScreenMesh({ screen, selected, onPick }: { screen: Screen; selected: bo
     return () => void (live = false);
   }, [screen.font]);
 
-  // Redraws the face: counts down so the low-ammo colour is visible too.
+  const { digits, max, grow } = screenDigits(screen, useItem());
+  const top = max ?? 30; // the sample counts down from the largest value the source shows
+
+  // Redraws the face as the plugin builds it: an opaque border ring, an opaque panel inside it (the game's gear shader
+  // has no transparency, so only fully transparent leaves a part out), the text shrunk to fit; counts down so the
+  // low-ammo colour (text and glow) shows too.
   const draw = (value: number) => {
     const px = 512;
     canvas.width = px;
     canvas.height = Math.max(8, Math.round((px * h) / w));
     const ctx = canvas.getContext('2d')!;
     const H = canvas.height;
+    const unit = px / w; // canvas pixels per metre
     ctx.clearRect(0, 0, px, H);
+    const glow = screen.glowInGame !== false ? 6 * (screen.glow ?? 1.5) : 0;
+    const bw = Math.min(screen.borderWidth ?? 0.0008, Math.min(w, h) / 2) * unit;
     const panel = screen.panelColor ?? [0, 0, 0, 0.85];
     if ((panel[3] ?? 1) > 0.01) {
-      ctx.globalAlpha = panel[3] ?? 1;
       ctx.fillStyle = rgb(panel);
-      ctx.fillRect(0, 0, px, H);
+      ctx.fillRect(bw, bw, px - 2 * bw, H - 2 * bw);
     }
     const border = screen.borderColor ?? [1, 1, 1, 1];
-    const bw = ((screen.borderWidth ?? 0.0008) / w) * px;
     if ((border[3] ?? 1) > 0.01 && bw > 0) {
-      ctx.globalAlpha = border[3] ?? 1;
-      ctx.strokeStyle = rgb(border);
-      ctx.lineWidth = bw;
-      ctx.strokeRect(bw / 2, bw / 2, px - bw, H - bw);
+      ctx.save();
+      ctx.shadowColor = rgb(border);
+      ctx.shadowBlur = glow;
+      ctx.fillStyle = rgb(border);
+      ctx.beginPath();
+      ctx.rect(0, 0, px, H);
+      ctx.rect(bw, bw, px - 2 * bw, H - 2 * bw);
+      ctx.fill('evenodd');
+      ctx.restore();
     }
-    const digits = Math.max(1, screen.digits ?? 2);
-    const text =
-      screen.source === 'static' ? (screen.staticText ?? '') : screen.padZero !== false ? String(value).padStart(digits, '0') : String(value);
-    const low = !kills && screen.lowAmmoColor && value / 30 <= (screen.lowAmmoFraction ?? 0.2);
-    const gh = H * (screen.textScale ?? 0.8);
-    const cellW = glyphs.width / GLYPHS.length;
-    const gw = (gh * cellW) / glyphs.height;
-    const x0 = (px - gw * text.length) / 2;
-    const tmp = document.createElement('canvas');
-    tmp.width = Math.max(1, Math.ceil(gw * text.length));
-    tmp.height = Math.max(1, Math.ceil(gh));
-    const t = tmp.getContext('2d')!;
-    [...text].forEach((ch, i) => {
-      const gi = GLYPHS.indexOf(ch);
-      if (gi >= 0) t.drawImage(glyphs, gi * cellW, 0, cellW, glyphs.height, i * gw, 0, gw, gh);
-    });
+
+    const low = !kills && screen.source !== 'static' && screen.lowAmmoColor && value <= top * (screen.lowAmmoFraction ?? 0.2);
+    const inner = (px - 2 * bw) * 0.95;
+    let gh = H * (screen.textScale ?? 0.8);
+    let image: HTMLCanvasElement;
+    if (screen.source === 'static') {
+      image = screenTextCanvas(screen.font, screen.staticText ?? '');
+      gh *= Math.min(1, inner / ((gh * image.width) / image.height));
+    } else {
+      // Cells of the glyph strip; a counter keeps its width (blank cells for missing leading zeros), automatic kills
+      // show only their own digits.
+      const v = Math.min(Math.max(0, value), 10 ** digits - 1);
+      const text = grow ? String(v) : String(v).padStart(digits, screen.padZero !== false ? '0' : ' ');
+      const cellW = glyphs.width / GLYPHS.length;
+      gh *= Math.min(1, inner / ((gh * cellW * digits) / glyphs.height));
+      image = document.createElement('canvas');
+      image.width = cellW * text.length;
+      image.height = glyphs.height;
+      const g = image.getContext('2d')!;
+      [...text].forEach((ch, i) => {
+        const gi = GLYPHS.indexOf(ch);
+        if (gi >= 0) g.drawImage(glyphs, gi * cellW, 0, cellW, glyphs.height, i * cellW, 0, cellW, glyphs.height);
+      });
+    }
+    const t = image.getContext('2d')!;
     t.globalCompositeOperation = 'source-in';
     t.fillStyle = rgb(low ? screen.lowAmmoColor : screen.textColor);
-    t.fillRect(0, 0, tmp.width, tmp.height);
-    ctx.globalAlpha = 1;
+    t.fillRect(0, 0, image.width, image.height);
+    const gw = (gh * image.width) / image.height;
     ctx.shadowColor = rgb(low ? screen.lowAmmoColor : screen.textColor);
-    ctx.shadowBlur = 6 * (screen.glow ?? 1);
-    ctx.drawImage(tmp, x0, (H - gh) / 2);
+    ctx.shadowBlur = glow;
+    ctx.drawImage(image, (px - gw) / 2, (H - gh) / 2, gw, gh);
     texture.needsUpdate = true;
   };
 
   const kills = screen.source === 'kills';
-  useEffect(() => draw(kills ? previewEvents.kills : 30), [screen, glyphs]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => draw(kills ? previewEvents.kills : top), [screen, glyphs, top]); // eslint-disable-line react-hooks/exhaustive-deps
   const last = useRef(0);
   useFrame(({ clock }) => {
     if (kills) {
@@ -102,8 +122,8 @@ function ScreenMesh({ screen, selected, onPick }: { screen: Screen; selected: bo
     }
     if (screen.source === 'static' || clock.elapsedTime - last.current < 0.35) return;
     last.current = clock.elapsedTime;
-    sample.current = (sample.current + 1) % 31;
-    draw(30 - sample.current);
+    sample.current = (sample.current + 1) % (top + 1);
+    draw(top - sample.current);
   });
 
   return (

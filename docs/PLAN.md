@@ -112,7 +112,7 @@ app moves its pre-rename Electron profile (`%APPDATA%/GTFO Skin Forge`) to `%APP
 | `game.locate` | → `{gameDir, dataDir, found, running}` (Steam registry + libraryfolders.vdf + common dirs) |
 | `game.setDir` | `{dir}` → same as locate |
 | `profiles.list` | → BepInEx profiles: r2modman / Thunderstore Mod Manager profiles and the game dir; `{name, path, hasBepInEx, pluginVersion}` |
-| `catalog.get` | → gear and attachments in official order: `{id, name, nameZh, category, slot (main/special/melee/tool/pack/consumable/carry/attachment/ammo), gearId, itemId, parts:[{id, role, label, materials:[...] , defaultEnabled}]}`; melee and tool parts use the `melee_*` / `tool_*` ids; an item with its own prefabs is one `body` part made of its first-person prefabs |
+| `catalog.get` | → gear and attachments in official order: `{id, name, nameZh, category, slot (main/special/melee/tool/pack/consumable/carry/attachment/ammo), gearId, itemId, clipSize, maxReserve (guns: magazine and reserve bullets from the fire mode's archetype, the mag's clip multiplier and the slot's ammo cap), parts:[{id, role, label, materials:[...] , defaultEnabled}]}`; melee and tool parts use the `melee_*` / `tool_*` ids; an item with its own prefabs is one `body` part made of its first-person prefabs |
 | `preview.weapon` | `{id}` → `{glb, parts:[{id, nodes:[...]}], textures:{material:{channel:png}}, params:{material:{...}}}`; cached under dataDir/cache, built from the local game |
 | `match.folder` | `{weaponId, folder}` → per part per channel `{file, confidence, reason}` + unmatched files |
 | `match.files` | `{weaponId, files:[...]}` → same, for drag-and-drop of loose files |
@@ -120,7 +120,7 @@ app moves its pre-rename Electron profile (`%APPDATA%/GTFO Skin Forge`) to `%APP
 | `project.list` | `{dir}` → `[{path, id, name, modified}]`, newest first; a file that does not parse is listed under its file name |
 | `project.delete` | `{path}` → deletes one `.forgeskinproj` |
 | `mesh.import` | `{glb}` → `{forgeskinmesh (cache path), preview glb, bounds}` |
-| `pack.build` | `{project, projectPath, out, sizeMode: keep/original/1k/2k/4k}` → `{pack, warnings}`; resizes keeping aspect, bakes layer atlases and glyph atlases from frame PNGs the renderer wrote |
+| `pack.build` | `{project, projectPath, out, sizeMode: keep/original/1k/2k/4k}` → `{pack, warnings}`; resizes keeping aspect, bakes layer atlases from frame PNGs the renderer wrote and traces screen glyph strips and static texts into meshes |
 | `pack.install` | `{pack, profile, activate}` → writes skin + active.json (a running game picks it up only with the development switch on) |
 | `pack.list / pack.remove / pack.activate` | manage installed skins in a profile |
 | `pack.exportMod` | `{packs, out, name, version, description, icon}` → `{mod}`: a Thunderstore skin mod zip (manifest.json, icon.png scaled to 256x256, README.md, `forgeskin.forge`, `skins/*`), depending on the base library |
@@ -175,8 +175,20 @@ game is not running.
 - Readback: debug only; with it off the plugin reads nothing on the game's spawn path for it. With `Readback = true` in ForgeSkin.cfg the plugin writes, for every assembled gear, the local TRS of every part
   root and descendant relative to the gear root to `BepInEx/ForgeSkin/readback/<gearId>.json` (vanilla, before any skin).
   The backend compares it with its own assembly (`assembly.verify`); any transform off by more than 1 mm or 0.1° fails.
-- Screens: a quad panel + border + digits drawn from the glyph atlas; updates only when the value changes; `AmmoClip` reads the
-  weapon's current clip, `AmmoReserve` / `AmmoTotal` the player's ammo storage.
+- Screens: everything is opaque geometry with the gear shader (it has no transparency and other shaders break the first-person
+  projection): a border ring `BorderWidth` wide, a panel quad inside it (each left out only when fully transparent), and the
+  text as real glyph meshes. The pack carries one mesh per glyph "0123456789 -" (blank has none) traced from the strip the app
+  renders with the chosen font (marching squares at alpha 0.5, simplified, triangulated with holes by LibTessDotNet); a static
+  screen carries its whole text, any characters, as one mesh the same way. Text shrinks to fit 95% of the inner width.
+  Colours: albedo is the colour (a 1×1 texture); with `GlowInGame` the same colour is emission at `Glow` × 0.01 (the shader's
+  emission unit), else no emission. Below the low-ammo threshold the text's albedo and emission both switch to `LowAmmoColor`.
+  `Digits` 0 is automatic: the digits of the largest value the source can show (clip size, the storage's bullet max cap, or
+  both); automatic kills show the value's own digits, centred, up to 4; `PadZero` pads to that width. Updates only when the
+  value changes; `AmmoClip` reads the weapon's current clip, `AmmoReserve` / `AmmoTotal` the player's ammo storage.
+- The game's `GearMaterialFeeder` puts a `MaterialPropertyBlock` on every renderer under the gear, which overrides material
+  colours and emission. After creating attachments, after every feeder rescan, at first wield and after first-person
+  rendering is set, the plugin clears blocks on its own renderers and puts its own materials back, and logs one line per
+  screen with the block it found and the text and border colours actually applied.
 - Dynamic layers: atlas frames are copied into the target texture region with `Graphics.CopyTexture` (GPU), never a full re-upload.
 - The plugin identifies a gear by its offline gear id: `GearIDRange.PlayfabItemInstanceId` ("OfflineGear_ID_<id>"), or for a
   range rebuilt from a packet the game's own gear (`GearManager.GetAllGearForSlot`) with the same components.
@@ -200,7 +212,7 @@ game is not running.
 - Nothing in the product uses the network: the app, backend and plugin work offline.
 - Textures are decoded once per pack and cached; no per-frame allocation, string or dictionary lookups on the update path.
   Material textures are compressed to DXT on load (normal maps first swizzled to the game's DXT5nm layout, x in A and y in G)
-  and their CPU copy dropped; layer atlases (copied with `CopyTexture` into raw render targets) and glyph atlases stay raw.
+  and their CPU copy dropped; layer atlases (copied with `CopyTexture` into raw render targets) stay raw.
   Sizes not a multiple of 4 stay raw with a warning.
 - Every failure logs one `[ForgeSkin]` line and leaves the weapon vanilla.
 - Every line is also written, flushed at once, to `<plugin folder>/forgeskin.log` (cleared at launch), which the app reads
@@ -263,7 +275,11 @@ Layout (every mode)
 
 Attachment and screen workspace (replaces DLY, generalised to every weapon)
 - 3D weapon view; click a part to select; per-part hide (eye icon); select the screen even when fully transparent.
-- Screen position (mm), rotation, size, scale, surface gap, text/panel/border colours, separate panel and border opacity, low-ammo colour.
+- Screen position (mm), rotation, size, scale, surface gap, text/panel/border colours (a part is drawn opaque unless fully
+  transparent, as in game), low-ammo colour (text and glow), glow strength and 游戏里发光 (glow in game) on/off; digits 自动
+  (automatic, the default) or 1–6, the info tip saying what automatic picks for the weapon or that its ammo limit is unknown;
+  static text takes any characters and fonts: bundled, installed on the computer, or a font file. The preview draws the face
+  as the plugin builds it.
 - Edit outline, corner handles and RGB axes; "focus selection".
 - Modal G/R/S with X/Y/Z axis lock in part-local axes; click/Enter confirm, right-click/Esc cancel; rotation rings; scale handle;
   numeric fields stay in sync.

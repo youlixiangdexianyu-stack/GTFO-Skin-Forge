@@ -48,6 +48,8 @@ sealed class SkinnedGear
     int _layerCount;
     public int Kills; // this weapon's kills this level
     readonly List<AmmoScreen> _screens = new();
+    readonly List<(Renderer Renderer, Material Material)> _own = new(); // attachment and screen renderers we created
+    static readonly MaterialPropertyBlock NoBlock = new(), Probe = new();
     readonly List<Transform> _faceCamera = new();
     readonly List<PartPose> _poses = new();
     readonly List<(GameObject Root, string Id, Material Template)> _roots = new(); // attachment roots
@@ -140,8 +142,11 @@ sealed class SkinnedGear
         {
             foreach (var gear in Live)
                 if (gear._feeder == feeder)
+                {
                     foreach (var swap in gear._swaps)
                         if (swap.Renderer != null) swap.Renderer.sharedMaterials = swap.Mine;
+                    gear.KeepOwn("after feeder rescan");
+                }
         }
         catch (Exception e) { ForgeSkinPlugin.Fail($"feeder rescan: {e.Message}"); }
     }
@@ -350,6 +355,7 @@ sealed class SkinnedGear
         if (_on[(int)Trigger.AmmoPickup].Count > 0) Storage(out _, out _); // the reserve is polled per frame
         ForgeSkinPlugin.Info($"{_label}: {key}, skin {weapon?.Doc.Id ?? "-"}, {_swaps.Count} renderers, " +
                              $"{attachments} attachments, {_screens.Count} screens, {sounds} sounds, {_layerCount} layers, {_poses.Count} part poses ({hidden} hidden)");
+        KeepOwn("after creation");
         LogAttachments();
     }
 
@@ -371,6 +377,7 @@ sealed class SkinnedGear
         _lastClip = _lastReserve = -1;
         _layerCount = 0;
         _screens.Clear();
+        _own.Clear();
         _faceCamera.Clear();
         _roots.Clear();
     }
@@ -666,6 +673,7 @@ sealed class SkinnedGear
                 if (gear._root == null || !(gear._root.transform.IsChildOf(t) || t.IsChildOf(gear._root.transform))) continue;
                 foreach (var (root, _, _) in gear._roots)
                     if (root != null) PlayerBackpackManager.SetFPSRendering(root, enable);
+                gear.KeepOwn("after first-person rendering set", quiet: true);
             }
         }
         catch (Exception e) { ForgeSkinPlugin.Fail($"first-person rendering sync: {e.Message}"); }
@@ -695,7 +703,49 @@ sealed class SkinnedGear
             if (first) ForgeSkinPlugin.Info($"{_label}: pose at first wield before rewrite {pose.Describe()}");
             pose.Write();
         }
-        if (first) LogAttachments();
+        if (first)
+        {
+            KeepOwn("at first wield");
+            LogAttachments();
+        }
+    }
+
+    // The game's GearMaterialFeeder gives every renderer under the gear a MaterialPropertyBlock, ours included, and a
+    // block overrides the material: it would replace our colours and emission with the feeder's values. Our renderers
+    // draw only our own materials, so any block on them is cleared and our material put back (keeping the first-person
+    // keyword the game set on whatever it swapped in). One line per screen with the block found and the colours shown.
+    void KeepOwn(string when, bool quiet = false)
+    {
+        int blocks = 0, swapped = 0;
+        string found = "";
+        foreach (var (r, m) in _own)
+        {
+            if (r == null) continue;
+            if (r.HasPropertyBlock())
+            {
+                r.GetPropertyBlock(Probe);
+                if (blocks++ == 0)
+                    found = $" (first: empty {Probe.isEmpty}, _EmissiveColor {Probe.GetColor(EmissiveColor)}, _EnableEmissive {Probe.GetFloat(EnableEmissive)}, " +
+                            $"_MainTex {Probe.GetTexture(MainTex)?.name ?? "-"})";
+                r.SetPropertyBlock(NoBlock);
+            }
+            var current = r.sharedMaterial;
+            if (current == null || current.Pointer != m.Pointer)
+            {
+                swapped++;
+                if (current != null)
+                {
+                    if (current.IsKeywordEnabled(PlayerBackpackManager.ENABLE_FPS_RENDERING)) m.EnableKeyword(PlayerBackpackManager.ENABLE_FPS_RENDERING);
+                    else m.DisableKeyword(PlayerBackpackManager.ENABLE_FPS_RENDERING);
+                }
+                r.sharedMaterial = m;
+            }
+        }
+        if (quiet && blocks == 0 && swapped == 0) return;
+        foreach (var s in _screens)
+            ForgeSkinPlugin.Info($"{_label}: screen {when}: {blocks} property blocks cleared{found}, {swapped} materials put back; {s.Describe()}");
+        if (_screens.Count == 0 && (blocks > 0 || swapped > 0))
+            ForgeSkinPlugin.Info($"{_label}: attachments {when}: {blocks} property blocks cleared{found}, {swapped} materials put back");
     }
 
     // Where each attachment really is: after every apply and at the first wield (the pose differs while holstered).
@@ -840,7 +890,7 @@ sealed class SkinnedGear
         return m;
     }
 
-    public MeshFilter Child(GameObject parent, string name, Mesh mesh, Material material, float z)
+    public MeshFilter Child(GameObject parent, string name, Mesh? mesh, Material material, float z)
     {
         var go = new GameObject(name) { layer = parent.layer };
         go.transform.SetParent(parent.transform, false);
@@ -850,6 +900,7 @@ sealed class SkinnedGear
         var renderer = go.AddComponent<MeshRenderer>();
         renderer.sharedMaterial = material;
         renderer.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+        _own.Add((renderer, material));
         return filter;
     }
 

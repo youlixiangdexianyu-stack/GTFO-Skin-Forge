@@ -8,6 +8,7 @@ import { Box3, CanvasTexture, Object3D, SRGBColorSpace, Sphere, type Mesh } from
 import { unityDirToThree, type Vec3 } from '../space';
 import { persistAutosave, useStore } from '../store';
 import { Attachments } from './Attachments';
+import { LiveryTool } from './LiveryTool';
 import { PartMeshes } from './PartMeshes';
 import { ModalTransform, modalState, newGesture, selectedTarget, type Target } from './ModalTransform';
 import { selectedObjects, quiet, SCENE_EVENT, shown, useSceneVersion, viewRefs } from './refs';
@@ -309,6 +310,7 @@ export function Viewport() {
       </Suspense>
       <Gizmo />
       <ModalTransform />
+      <LiveryTool />
       <EffectComposer multisampling={4} renderPriority={1} autoClear={false}>
         <SelectionOutline />
         <Bloom luminanceThreshold={prefs.bloom ? 0.85 : 10} luminanceSmoothing={0.1} intensity={0.9} mipmapBlur />

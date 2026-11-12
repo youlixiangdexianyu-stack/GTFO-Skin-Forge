@@ -20,6 +20,7 @@ import { IconArrowsMove, IconFocusCentered, IconFolder, IconMagnet, IconRotate, 
 import { triggersFor } from '../protocol';
 import { useItem, useStore } from '../store';
 import { simulate } from '../viewport/refs';
+import { LiveryBar } from './LiveryPanel';
 import { SkinStrip } from './SkinStrip';
 import { WeaponTitle } from './WeaponGallery';
 import { focusSelection, useModal, useViewStore, Viewport } from '../viewport/Viewport';
@@ -286,6 +287,7 @@ export function Stage() {
           <LightBar />
           <AttachTools />
           <EventBar />
+          <LiveryBar />
           <ModalHint />
         </>
       )}

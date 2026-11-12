@@ -1,4 +1,4 @@
-// Everything that can be added to one part, in one menu (the "+" on a part row): textures, dynamic layers, screens,
+// Everything that can be added to one part, in one menu (the "+" on a part row): textures, paint layers, dynamic layers, screens,
 // models and a replacement model for the part itself. New kinds of per-part content get their item here.
 import { Menu } from '@mantine/core';
 import { IconBox, IconDeviceDesktop, IconLetterT, IconMovie, IconPhoto, IconReplace, IconStack2 } from '@tabler/icons-react';
@@ -8,6 +8,7 @@ import type { CatalogPart, LayerKind } from '../protocol';
 import { useStore } from '../store';
 import { addLayer } from './DynamicInspector';
 import { FEATURE } from './Features';
+import { addLiveryLayer, LIVERY_KINDS } from './LiveryPanel';
 import { hasOwnModel, replacePartModel } from './PartModel';
 import { t } from '../i18n';
 
@@ -31,6 +32,12 @@ export function PartAddMenu({ part, path, children }: { part: CatalogPart; path?
         </Menu.Item>
         {material && (
           <>
+            <Menu.Label>{t('livery.title')}</Menu.Label>
+            {LIVERY_KINDS.map((k) => (
+              <Menu.Item key={k.id} leftSection={<k.icon size={14} color={FEATURE.livery.color} />} onClick={() => (here(), addLiveryLayer(material, part.id, k.id))}>
+                {k.label()}
+              </Menu.Item>
+            ))}
             <Menu.Label>{t('dynamicInspector.k33')}</Menu.Label>
             {LAYERS.map((l) => (
               <Menu.Item key={l.kind} leftSection={<l.icon size={14} color={FEATURE.layer.color} />} onClick={() => (here(), void addLayer(material, part.id, l.kind))}>

@@ -4,6 +4,7 @@ import { IconBox, IconCheck, IconChevronRight, IconDeviceDesktop, IconFolderOpen
 import { importMesh } from '../actions';
 import { FEATURE, FeatureHead, FeatureTile, Info } from './Features';
 import { PartLayers } from './DynamicInspector';
+import { PartLivery } from './LiveryPanel';
 import { PartModel } from './PartModel';
 import { useState, type ReactElement } from 'react';
 import { MAX_SECONDS } from '../audio';
@@ -184,6 +185,7 @@ function PartPanel({ part }: { part: CatalogPart }) {
         <h3>{t('skinInspector.k13')}</h3>
         <EmissiveSection material={material} />
       </div>
+      <PartLivery part={part} />
       <PartLayers part={part} />
       <PartAttachments part={part.id} />
       <div className="section">

@@ -2,9 +2,11 @@ import { useGLTF } from '@react-three/drei';
 import { useFrame, type ThreeEvent } from '@react-three/fiber';
 import { useEffect, useMemo, useRef } from 'react';
 import { CanvasTexture, Mesh, Vector3, SRGBColorSpace, type MeshStandardMaterial, type Object3D } from 'three';
-import { drawLayer, LayerSource, loadImage } from '../frames';
+import { baseTexturePath, drawLayer, LayerSource, loadImage } from '../frames';
+import { hasLivery } from '../livery';
+import { LiveryPreview } from './liveryPreview';
 import { fileUrl, type DynamicLayer, type TextureChannel, type WeaponPreview } from '../protocol';
-import { editorOf, useStore } from '../store';
+import { editorOf, materialOf, useStore } from '../store';
 import { poseWith, unityDirToThree, unityToThree } from '../space';
 import { releaseTextures } from './textures';
 import { editableMaterials, paintMaterial, restoreUnityNames } from './weaponScene';
@@ -19,7 +21,7 @@ class Compositor {
   private sources = new Map<string, { key: string; src: LayerSource }>();
   private order: LayerSource[] = [];
   private basePath: string | null = null;
-  private base: HTMLImageElement | null = null;
+  private base: CanvasImageSource | null = null;
   private fill = '#ffffff';
   private start = performance.now();
 
@@ -29,14 +31,18 @@ class Compositor {
     this.canvas.width = this.canvas.height = 1024;
   }
 
-  /** Takes the document's current base and layers; placement and timing edits keep the loaded sources (no reload, no flicker). */
-  set(ch: TextureChannel, basePath: string | null, layers: DynamicLayer[]) {
+  /** Takes the document's current base (a texture path, or the livery's live canvas) and layers; placement and timing edits keep the loaded sources (no reload, no flicker). */
+  set(ch: TextureChannel, base: string | HTMLCanvasElement | null, layers: DynamicLayer[]) {
     // Without a base texture the plugin draws on white (albedo) or black, so the preview does too.
     this.fill = ch === 'albedo' ? '#ffffff' : '#000000';
-    if (basePath !== this.basePath) {
+    if (typeof base !== 'string') {
+      this.basePath = null;
+      this.base = base;
+    } else if (base !== this.basePath) {
+      const basePath = base;
       this.basePath = basePath;
       this.base = null;
-      if (basePath) void loadImage(basePath).then((img) => this.basePath === basePath && (this.base = img), () => undefined);
+      void loadImage(basePath).then((img) => this.basePath === basePath && (this.base = img), () => undefined);
     }
     const next = new Map<string, { key: string; src: LayerSource }>();
     this.order = layers.map((l) => {
@@ -85,6 +91,7 @@ export function WeaponModel({ preview }: { preview: WeaponPreview }) {
   const select = useStore((s) => s.select);
   const materials = useRef(new Map<string, MeshStandardMaterial>());
   const compositors = useRef(new Map<string, Compositor>());
+  const liveries = useRef(new Map<string, LiveryPreview>());
   /** Meshes the part layout hides (restored before each re-apply). */
   const layoutHidden = useRef(new Set<Mesh>());
 
@@ -167,7 +174,19 @@ export function WeaponModel({ preview }: { preview: WeaponPreview }) {
     const keep = new Set<string>();
     const loads: Promise<unknown>[] = [];
     const used = new Set<string>();
+    // Livery redraws follow the part layout too (a decal sits on its part's root).
+    const layout = JSON.stringify(doc.parts ?? []);
     for (const [name, mat] of materials.current) {
+      const m = materialOf(doc, name);
+      let livery = liveries.current.get(name);
+      if (hasLivery(m)) {
+        if (!livery) liveries.current.set(name, (livery = new LiveryPreview(name)));
+        livery.update(m!, baseTexturePath(doc, preview, name, 'albedo'), layout);
+      } else if (livery) {
+        livery.dispose();
+        liveries.current.delete(name);
+        livery = undefined;
+      }
       loads.push(
         ...paintMaterial(
           mat,
@@ -181,10 +200,11 @@ export function WeaponModel({ preview }: { preview: WeaponPreview }) {
             const key = `${name}|${ch}`;
             let c = compositors.current.get(key);
             if (!c) compositors.current.set(key, (c = new Compositor()));
-            c.set(ch, base, layers);
+            c.set(ch, ch === 'albedo' && livery ? livery.albedo : base, layers);
             used.add(key);
             return c.texture;
           },
+          livery && ((ch) => livery.texture(ch)),
         ),
       );
     }
@@ -204,6 +224,7 @@ export function WeaponModel({ preview }: { preview: WeaponPreview }) {
     () => () => {
       compositors.current.forEach((c) => c.dispose());
       compositors.current.clear();
+      liveries.current.forEach((l) => l.dispose());
     },
     [],
   );

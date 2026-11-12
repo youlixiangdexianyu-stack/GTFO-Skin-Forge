@@ -5,6 +5,8 @@ import { pickSound } from './SkinInspector';
 import { baseName, type Attachment, CHANNELS, type DynamicLayer, type SkinSound } from '../protocol';
 import { editorOf, materialOf, partTransformOf, pendingKey, useItem, useStore } from '../store';
 import { PartAddMenu } from './AddMenu';
+import { kindOf } from './LiveryPanel';
+import { layersOf } from '../livery';
 import { FEATURE, Info } from './Features';
 import { hiddenMeshes, partTarget, useSceneVersion } from '../viewport/refs';
 import { partLabel, t } from '../i18n';
@@ -147,6 +149,23 @@ function PartTree() {
                 </ActionIcon>
               </PartAddMenu>
             </div>
+            {p.materials.flatMap((m) =>
+              [...layersOf(materialOf(doc, m))].reverse().map((l) => {
+                const K = kindOf(l.kind);
+                return (
+                  <div
+                    key={l.id}
+                    className={`part layer ${l.visible === false ? 'off' : ''}`}
+                    style={{ paddingLeft: 30 }}
+                    aria-selected={selection?.kind === 'livery' && selection.id === l.id}
+                    onClick={() => select({ kind: 'livery', material: m, id: l.id! })}
+                  >
+                    <K.icon size={13} color={FEATURE.livery.color} />
+                    <span className="label">{l.name}</span>
+                  </div>
+                );
+              }),
+            )}
             {p.materials.flatMap((m) =>
               ((materialOf(doc, m)?.layers ?? []).filter(Boolean) as DynamicLayer[]).map((l) => (
                 <div

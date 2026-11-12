@@ -16,6 +16,7 @@ import {
 } from 'three';
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
 import { baseTexturePath } from '../frames';
+import { liveryParams } from '../livery';
 import { CHANNELS, type DynamicLayer, type PreviewMaterial, type SkinDocument, type TextureChannel, type WeaponPreview } from '../protocol';
 import { materialOf } from '../store';
 import { loadTexture, textureKey } from './textures';
@@ -92,7 +93,8 @@ export function editableMaterials(scene: Object3D, mats: Map<string, MeshStandar
 /**
  * Applies one material from the document over the game's own: base textures, parameters and blend mode. A channel
  * with dynamic layers gets the texture `layered` returns (the 3D view's live composite); without `layered` the layers
- * are left out. Adds the cache keys of the textures it uses to `keep` and returns the pending loads.
+ * are left out. `livery` gives the textures a livery paints (the 3D view's live livery), over which those layers then play.
+ * Adds the cache keys of the textures it uses to `keep` and returns the pending loads.
  */
 export function paintMaterial(
   mat: MeshStandardMaterial,
@@ -103,6 +105,7 @@ export function paintMaterial(
   cancelled: () => boolean,
   onError: (path: string) => void,
   layered?: (ch: TextureChannel, base: string | null, layers: DynamicLayer[]) => Texture,
+  livery?: (ch: TextureChannel) => Texture | null,
 ): Promise<unknown>[] {
   const info = preview.params[name];
   if (info?.kind === 'reticle') {
@@ -114,6 +117,7 @@ export function paintMaterial(
   const override = materialOf(doc, name);
   const params = {
     ...info,
+    ...(livery ? liveryParams(override) : {}),
     ...Object.fromEntries(Object.entries(override?.params ?? {}).filter(([, v]) => v != null)),
   };
   const layers = (override?.layers ?? []).filter((l): l is DynamicLayer => !!l && l.visible !== false);
@@ -122,6 +126,11 @@ export function paintMaterial(
     const chLayers = layers.filter((l) => (l.channel ?? 'albedo') === ch);
     if (chLayers.length && layered) {
       setSlot(mat, ch, layered(ch, path, chLayers));
+      continue;
+    }
+    const painted = livery?.(ch);
+    if (painted) {
+      setSlot(mat, ch, painted);
       continue;
     }
     if (!path) {
@@ -139,7 +148,7 @@ export function paintMaterial(
   const tint = params.tint ?? [1, 1, 1, 1];
   mat.color.setRGB(tint[0], tint[1], tint[2]);
   // With a MetallicSmoothness map the scalars multiply it; without one, fall back to a neutral finish.
-  const hasMs = !!baseTexturePath(doc, preview, name, 'metallicSmoothness');
+  const hasMs = !!baseTexturePath(doc, preview, name, 'metallicSmoothness') || !!livery?.('metallicSmoothness');
   mat.metalness = params.metallic ?? (hasMs ? 1 : 0.4);
   mat.roughness = params.smoothness != null ? 1 - params.smoothness : hasMs ? 1 : 0.55;
   const on = params.emissiveEnabled ?? !!mat.emissiveMap;

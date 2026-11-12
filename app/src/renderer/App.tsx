@@ -11,6 +11,7 @@ import { AttachInspector } from './ui/AttachInspector';
 import { LayerInspector, layerFromFiles } from './ui/DynamicInspector';
 import { ExportModDialog } from './ui/ExportModDialog';
 import { LeftRail } from './ui/LeftRail';
+import { LiveryInspector } from './ui/LiveryPanel';
 import { nativeFiles, SkinInspector, SoundInspector } from './ui/SkinInspector';
 import { Stage } from './ui/Stage';
 import { TopBar } from './ui/TopBar';
@@ -170,6 +171,7 @@ function Inspector() {
   const kind = useStore((s) => s.selection?.kind);
   if (kind === 'attachment') return <AttachInspector />;
   if (kind === 'layer') return <LayerInspector />;
+  if (kind === 'livery') return <LiveryInspector />;
   if (kind === 'sound') return <SoundInspector />;
   return <SkinInspector />;
 }

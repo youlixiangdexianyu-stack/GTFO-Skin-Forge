@@ -36,14 +36,19 @@ function finish(t: Texture, channel: TextureChannel): Texture {
   return t;
 }
 
-// Unity packs metallic in R and smoothness in A; three.js reads metalness from B and roughness from G.
 function metallicSmoothness(img: ImageBitmap): Texture {
   const c = document.createElement('canvas');
   c.width = img.width;
   c.height = img.height;
-  const ctx = c.getContext('2d', { willReadFrequently: true })!;
-  ctx.drawImage(img, 0, 0);
+  c.getContext('2d', { willReadFrequently: true })!.drawImage(img, 0, 0);
   img.close();
+  repackMetallicSmoothness(c);
+  return new CanvasTexture(c);
+}
+
+/** Unity packs metallic in R and smoothness in A; three.js reads metalness from B and roughness from G. In place. */
+export function repackMetallicSmoothness(c: HTMLCanvasElement) {
+  const ctx = c.getContext('2d', { willReadFrequently: true })!;
   const data = ctx.getImageData(0, 0, c.width, c.height);
   const p = data.data;
   for (let i = 0; i < p.length; i += 4) {
@@ -55,7 +60,6 @@ function metallicSmoothness(img: ImageBitmap): Texture {
     p[i + 3] = 255;
   }
   ctx.putImageData(data, 0, 0);
-  return new CanvasTexture(c);
 }
 
 export function textureKey(path: string, channel: TextureChannel | 'reticle'): string {

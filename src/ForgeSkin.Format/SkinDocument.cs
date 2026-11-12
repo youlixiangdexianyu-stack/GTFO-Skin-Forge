@@ -77,6 +77,43 @@ public sealed class MaterialOverride
 
     // Animated layers composited into one channel of this material.
     public List<DynamicLayer> Layers { get; set; } = new();
+
+    // Livery (editor only): a paint finish and paint layers, bottom first. The editor bakes them into the Albedo (and, for
+    // a finish, MetallicSmoothness and Emissive) textures when packing, so a pack never carries them.
+    public Finish? Finish { get; set; }
+    public List<LiveryLayer>? Livery { get; set; }
+}
+
+public enum Finish { Matte, Gloss, Satin, Metal, BrushedMetal, Chrome, Rubber, Plastic, CarbonFibre, PaintedSteel, WornMetal, Glow }
+public enum LiveryKind { Fill, Decal, Brush }
+public enum BlendMode { Normal, Multiply, Screen, Overlay, Add }
+
+// One paint layer of a material: a fill over the whole surface, an image decal projected onto the surface, or brush strokes.
+public sealed class LiveryLayer
+{
+    public string Id { get; set; } = "";
+    public string Name { get; set; } = "";
+    public LiveryKind Kind { get; set; }
+    public bool Visible { get; set; } = true;
+    public float[] Color { get; set; } = { 1, 1, 1, 1 }; // fill and brush colour; a decal's tint (multiplies its image)
+    public float Opacity { get; set; } = 1;
+    public BlendMode Blend { get; set; }
+
+    // Decal: the image projected along the frame's -Z (frame +Z is the surface normal where it was placed). The frame is in
+    // the part root's local space (Unity, metres, Euler degrees), then turned by Angle about its Z; Size is width and height,
+    // Depth how far in front of and behind the frame plane it reaches, so it does not paint the far side.
+    public string? Image { get; set; }
+    public float[]? Position { get; set; }
+    public float[]? Rotation { get; set; }
+    public float Angle { get; set; }
+    public float[] Size { get; set; } = { 0.04f, 0.04f };
+    public float Depth { get; set; } = 0.01f;
+    public bool Mirror { get; set; }
+
+    // Brush strokes and the mask (strokes that hide this layer): each a polyline in texture UV space as u, v, width
+    // triples (UV 0..1, top-left origin; width in UV units).
+    public List<float[]> Strokes { get; set; } = new();
+    public List<float[]> Mask { get; set; } = new();
 }
 
 public sealed class MaterialParams

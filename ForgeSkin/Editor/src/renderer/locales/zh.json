@@ -266,6 +266,7 @@
   "skinInspector.k37": "音量 %",
   "skinInspector.k38": "低于",
   "skinInspector.soundWeight": "权重",
+  "skinInspector.soundCount": "{{v0}} 个音效",
   "skinInspector.soundGroup": "同一事件（{{v0}}）的音效",
   "skinInspector.soundGroupInfo": "同一事件的音效都在下面展开，可以直接调各自的音量、权重；触发时按权重随机播放一个，百分比是每个音效被抽中的概率。右上角可以再加一个。",
   "skinInspector.k39": "换皮",

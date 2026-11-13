@@ -266,6 +266,7 @@
   "skinInspector.k37": "Volume %",
   "skinInspector.k38": "Below",
   "skinInspector.soundWeight": "Weight",
+  "skinInspector.soundCount": "{{v0}} sound(s)",
   "skinInspector.soundGroup": "Sounds on “{{v0}}”",
   "skinInspector.soundGroupInfo": "All sounds on this event are open below, each with its own volume and weight; when it fires, one plays at random by weight, and the percent is each sound's chance. The button on the right adds another.",
   "skinInspector.k39": "Skin",

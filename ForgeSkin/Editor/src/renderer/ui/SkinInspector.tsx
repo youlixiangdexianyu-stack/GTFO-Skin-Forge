@@ -290,31 +290,60 @@ export function useSoundsTab(): InspectorTab {
   return { id: 'sounds', label: t('tabs.sounds'), icon: FEATURE.sound.icon, color: FEATURE.sound.color, count, content: <Sounds /> };
 }
 
-/** The skin's sounds as a list; clicking one opens it. */
+/** The skin's sounds, one row per event; clicking a row opens every sound of that event. */
 function Sounds() {
   const sounds = useStore((s) => s.doc.sounds ?? []).filter((x): x is SkinSound => !!x);
   const triggers = triggersFor(useItem());
   const { select } = useStore.getState();
+  // A trigger's sounds are one thing to the player (one plays per firing), so the list shows the event, not each file.
+  const groups: { trigger: Trigger; sounds: SkinSound[] }[] = [];
+  for (const x of sounds) {
+    const trigger = x.trigger ?? 'kill';
+    const group = groups.find((g) => g.trigger === trigger);
+    if (group) group.sounds.push(x);
+    else groups.push({ trigger, sounds: [x] });
+  }
+  const label = (trigger: Trigger) => triggers.find((g) => g.value === trigger)?.label ?? trigger;
+  // Preview plays one of the event's sounds at random by weight, like the game does.
+  const preview = (set: SkinSound[]) => {
+    const total = set.reduce((a, s) => a + Math.max(0.1, s.weight ?? 1), 0);
+    let pick = Math.random() * total;
+    for (const s of set) if ((pick -= Math.max(0.1, s.weight ?? 1)) <= 0) return playSound(s);
+    playSound(set[set.length - 1]);
+  };
   return (
     <div className="section">
       <FeatureHead feature="sound" title={t('skinInspector.k31')} info={`${t('skinInspector.k33')} ${MAX_SECONDS} ${t('skinInspector.k34')}`}>
-        <Button size="compact-xs" variant="light" color="green" leftSection={<IconPlus size={12} />} onClick={() => void pickSound()}>
-          {t('skinInspector.k32')}
-        </Button>
+        {/* The event is chosen first: a sound joins that event's group, it is not moved into one afterwards. */}
+        <Menu position="bottom-end" withinPortal>
+          <Menu.Target>
+            <Button size="compact-xs" variant="light" color="green" leftSection={<IconPlus size={12} />}>
+              {t('skinInspector.k32')}
+            </Button>
+          </Menu.Target>
+          <Menu.Dropdown>
+            <Menu.Label>{t('skinInspector.soundWhen')}</Menu.Label>
+            {triggers.filter((g) => g.value !== 'always').map((g) => (
+              <Menu.Item key={g.value} onClick={() => void pickSound(g.value as Trigger)}>
+                {g.label}
+              </Menu.Item>
+            ))}
+          </Menu.Dropdown>
+        </Menu>
       </FeatureHead>
-      {!sounds.length && <p className="hint">{t('skinInspector.noSounds')}</p>}
+      {!groups.length && <p className="hint">{t('skinInspector.noSounds')}</p>}
       <div className="list">
-        {sounds.map((x) => (
-          <UnstyledButton key={x.id} className="item" onClick={() => select({ kind: 'sound', id: x.id! })}>
-            <ActionIcon size="sm" variant="subtle" color="green" aria-label={t('skinInspector.k35')} onClick={(e) => (e.stopPropagation(), playSound(x))}>
+        {groups.map((g) => (
+          <UnstyledButton key={g.trigger} component="div" role="button" tabIndex={0} className="item" onClick={() => select({ kind: 'sound', id: g.sounds[0].id! })}>
+            <ActionIcon size="sm" variant="subtle" color="green" aria-label={t('skinInspector.k35')} onClick={(e) => (e.stopPropagation(), preview(g.sounds))}>
               <IconPlayerPlay size={14} />
             </ActionIcon>
             <div style={{ minWidth: 0 }}>
               <Text size="sm" truncate>
-                {x.name || baseName(x.file ?? '')}
+                {label(g.trigger)}
               </Text>
               <Text size="xs" c="dimmed">
-                {triggers.find((g) => g.value === (x.trigger ?? 'kill'))?.label}
+                {t('skinInspector.soundCount', { v0: String(g.sounds.length) })}
               </Text>
             </div>
             <IconChevronRight size={14} />

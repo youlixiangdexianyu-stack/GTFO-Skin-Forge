@@ -325,21 +325,29 @@ function Sounds() {
   );
 }
 
-/** One sound: when it plays, how loud, preview and delete. */
+/** One sound: all its settings inline, so a group is edited without switching between sounds. */
 export function SoundInspector() {
   const id = useStore((s) => (s.selection?.kind === 'sound' ? s.selection.id : null));
   const x = useStore((s) => s.doc.sounds?.find((v) => v?.id === id));
   const all = useStore((s) => s.doc.sounds);
   const triggers = triggersFor(useItem()).filter((g) => g.value !== 'always');
-  const { updateSound, removeSound, select } = useStore.getState();
+  const { updateSound, removeSound, select, edit } = useStore.getState();
   if (!x) return null;
   // One sound of a trigger's group plays per firing: its share of the group's weights, shown with the weight.
   const trigger = x.trigger ?? 'kill';
-  const weight = Math.max(0.1, x.weight ?? 1);
   const siblings = (all ?? []).filter((v): v is SkinSound => !!v && (v.trigger ?? 'kill') === trigger);
   const groupTotal = siblings.reduce((a, v) => a + Math.max(0.1, v.weight ?? 1), 0);
-  const share = Math.round((weight / groupTotal) * 100);
   const shareOf = (s: SkinSound) => Math.round((Math.max(0.1, s.weight ?? 1) / groupTotal) * 100);
+  // The event belongs to the whole group: moving it moves every sound in it (one undo step).
+  const setTrigger = (to: Trigger) => edit((d) => {
+    for (const s of d.sounds ?? []) if (s && (s.trigger ?? 'kill') === trigger) s.trigger = to;
+  });
+  const del = (s: SkinSound) => {
+    removeSound(s.id!);
+    if (s.id !== x.id) return;
+    const next = siblings.find((v) => v.id !== x.id);
+    select(next ? { kind: 'sound', id: next.id! } : null);
+  };
   return (
     <>
       <div className="insp-head">
@@ -355,64 +363,55 @@ export function SoundInspector() {
             {t('skinInspector.k32')}
           </Button>
         </FeatureHead>
-        <div className="list">
-          {siblings.map((s) => (
-            <UnstyledButton key={s.id} className="item" onClick={() => select({ kind: 'sound', id: s.id! })}>
-              <ActionIcon size="sm" variant="subtle" color="green" aria-label={t('skinInspector.k35')} onClick={(e) => (e.stopPropagation(), playSound(s))}>
-                <IconPlayerPlay size={14} />
-              </ActionIcon>
-              <div style={{ minWidth: 0 }}>
-                <Text size="sm" truncate>
+        <Field label={t('skinInspector.soundWhen')}>
+          <Select value={trigger} data={triggers} allowDeselect={false} onChange={(v) => v && setTrigger(v as Trigger)} />
+        </Field>
+        {siblings.map((s) => {
+          const weight = Math.max(0.1, s.weight ?? 1);
+          return (
+            <div key={s.id} className="sound-card" aria-selected={s.id === x.id} onClick={() => select({ kind: 'sound', id: s.id! })}>
+              <div className="sound-card-head">
+                <ActionIcon size="sm" variant="subtle" color="green" aria-label={t('skinInspector.k35')} onClick={(e) => (e.stopPropagation(), playSound(s))}>
+                  <IconPlayerPlay size={14} />
+                </ActionIcon>
+                <Text size="sm" truncate className="grow">
                   {s.name || baseName(s.file ?? '')}
                 </Text>
                 <Text size="xs" c="dimmed">
                   {shareOf(s)}%
                 </Text>
+                <ActionIcon size="sm" variant="subtle" color="red" aria-label={t('skinInspector.k36')} onClick={(e) => (e.stopPropagation(), del(s))}>
+                  <IconTrash size={14} />
+                </ActionIcon>
               </div>
-              {s.id === x.id ? <IconCheck size={14} /> : <IconChevronRight size={14} />}
-            </UnstyledButton>
-          ))}
-        </div>
-      </div>
-      <div className="section">
-        <Field label={t('skinInspector.soundWhen')}>
-          <Select value={x.trigger ?? 'kill'} data={triggers} allowDeselect={false} onChange={(v) => v && updateSound(x.id!, (s) => void (s.trigger = v as Trigger))} />
-        </Field>
-        <Field label={t('skinInspector.k37')}>
-          <Slider
-            value={Math.round((x.volume ?? 1) * 100)}
-            min={0}
-            max={100}
-            step={1}
-            label={(v) => `${v}%`}
-            onChange={(v) => updateSound(x.id!, (s) => void (s.volume = Math.min(100, Math.max(0, v)) / 100), 'vol')}
-          />
-        </Field>
-        {x.trigger === 'lowAmmo' && (
-          <Field label={t('skinInspector.k38')}>
-            <Slider value={x.lowAmmoFraction ?? 0.2} min={0.05} max={0.9} step={0.05} onChange={(v) => updateSound(x.id!, (s) => void (s.lowAmmoFraction = v), 'low')} />
-          </Field>
-        )}
-        <Field label={t('skinInspector.soundWeight')}>
-          <Slider
-            value={weight}
-            min={0.1}
-            max={10}
-            step={0.1}
-            label={() => `${weight.toFixed(1)} · ${share}%`}
-            onChange={(v) => updateSound(x.id!, (s) => void (s.weight = v), 'weight')}
-          />
-        </Field>
-      </div>
-      <div className="section">
-        <Group justify="space-between">
-          <Button variant="light" color="green" leftSection={<IconPlayerPlay size={14} />} onClick={() => playSound(x)}>
-            {t('skinInspector.k35')}
-          </Button>
-          <Button variant="default" color="red" leftSection={<IconTrash size={14} />} onClick={() => (removeSound(x.id!), select(null))}>
-            {t('skinInspector.k36')}
-          </Button>
-        </Group>
+              <Field label={t('skinInspector.k37')}>
+                <Slider
+                  value={Math.round((s.volume ?? 1) * 100)}
+                  min={0}
+                  max={100}
+                  step={1}
+                  label={(v) => `${v}%`}
+                  onChange={(v) => updateSound(s.id!, (o) => void (o.volume = Math.min(100, Math.max(0, v)) / 100), 'vol')}
+                />
+              </Field>
+              <Field label={t('skinInspector.soundWeight')}>
+                <Slider
+                  value={weight}
+                  min={0.1}
+                  max={10}
+                  step={0.1}
+                  label={() => `${weight.toFixed(1)} · ${shareOf(s)}%`}
+                  onChange={(v) => updateSound(s.id!, (o) => void (o.weight = v), 'weight')}
+                />
+              </Field>
+              {trigger === 'lowAmmo' && (
+                <Field label={t('skinInspector.k38')}>
+                  <Slider value={s.lowAmmoFraction ?? 0.2} min={0.05} max={0.9} step={0.05} onChange={(v) => updateSound(s.id!, (o) => void (o.lowAmmoFraction = v), 'low')} />
+                </Field>
+              )}
+            </div>
+          );
+        })}
       </div>
     </>
   );

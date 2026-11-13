@@ -267,7 +267,7 @@
   "skinInspector.k38": "Below",
   "skinInspector.soundWeight": "Weight",
   "skinInspector.soundGroup": "Sounds on “{{v0}}”",
-  "skinInspector.soundGroupInfo": "When the event fires, one of these plays at random, picked by weight; the percent is each sound's chance. Click one to edit it; the button on the right adds another.",
+  "skinInspector.soundGroupInfo": "All sounds on this event are open below, each with its own volume and weight; when it fires, one plays at random by weight, and the percent is each sound's chance. The button on the right adds another.",
   "skinInspector.k39": "Skin",
   "skinInspector.k40": "Pick a weapon",
   "skinInspector.k41": "{{v0}} textures replaced",

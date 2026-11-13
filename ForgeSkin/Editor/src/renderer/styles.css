@@ -770,6 +770,32 @@ body {
 .item[aria-selected='true'] {
   border-color: var(--flare);
 }
+.sound-card {
+  display: grid;
+  gap: 6px;
+  margin-top: 8px;
+  padding: 8px 10px 4px;
+  border: 1px solid var(--line-soft);
+  border-radius: var(--mantine-radius-sm);
+  background: var(--ground);
+  color: var(--bone);
+  cursor: pointer;
+}
+.sound-card:hover {
+  border-color: var(--line);
+}
+.sound-card[aria-selected='true'] {
+  border-color: var(--flare);
+}
+.sound-card-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.sound-card-head .grow {
+  flex: 1;
+  min-width: 0;
+}
 .drop-card {
   display: grid;
   justify-items: center;

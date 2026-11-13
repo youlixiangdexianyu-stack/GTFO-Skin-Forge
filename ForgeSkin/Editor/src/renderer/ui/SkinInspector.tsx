@@ -227,9 +227,9 @@ function PartPanel({ part }: { part: CatalogPart }) {
 
 const AUDIO_EXT = ['wav', 'mp3', 'ogg', 'flac', 'm4a', 'aac', 'opus', 'webm'];
 
-async function pickSound() {
+async function pickSound(trigger?: Trigger) {
   const [f] = await window.forge.openDialog('files', [{ get name() { return t('skinInspector.k30'); }, extensions: AUDIO_EXT }]);
-  if (f) await useStore.getState().addSound(f);
+  if (f) await useStore.getState().addSound(f, trigger);
 }
 
 /** 弹药屏 / 导入模型, mounted on the selected part (else the first part; the inspector can move it). */
@@ -334,10 +334,12 @@ export function SoundInspector() {
   const { updateSound, removeSound, select } = useStore.getState();
   if (!x) return null;
   // One sound of a trigger's group plays per firing: its share of the group's weights, shown with the weight.
+  const trigger = x.trigger ?? 'kill';
   const weight = Math.max(0.1, x.weight ?? 1);
-  const groupTotal = (all ?? []).filter((v): v is SkinSound => !!v && (v.trigger ?? 'kill') === (x.trigger ?? 'kill'))
-    .reduce((a, v) => a + Math.max(0.1, v.weight ?? 1), 0);
+  const siblings = (all ?? []).filter((v): v is SkinSound => !!v && (v.trigger ?? 'kill') === trigger);
+  const groupTotal = siblings.reduce((a, v) => a + Math.max(0.1, v.weight ?? 1), 0);
   const share = Math.round((weight / groupTotal) * 100);
+  const shareOf = (s: SkinSound) => Math.round((Math.max(0.1, s.weight ?? 1) / groupTotal) * 100);
   return (
     <>
       <div className="insp-head">
@@ -346,6 +348,31 @@ export function SoundInspector() {
         </UnstyledButton>
         <div className="title">{x.name || baseName(x.file ?? '')}</div>
         <div className="meta">{baseName(x.file ?? '')}</div>
+      </div>
+      <div className="section">
+        <FeatureHead feature="sound" title={t('skinInspector.soundGroup', { v0: triggers.find((g) => g.value === trigger)?.label ?? '' })} info={t('skinInspector.soundGroupInfo')}>
+          <Button size="compact-xs" variant="light" color="green" leftSection={<IconPlus size={12} />} onClick={() => void pickSound(trigger as Trigger)}>
+            {t('skinInspector.k32')}
+          </Button>
+        </FeatureHead>
+        <div className="list">
+          {siblings.map((s) => (
+            <UnstyledButton key={s.id} className="item" onClick={() => select({ kind: 'sound', id: s.id! })}>
+              <ActionIcon size="sm" variant="subtle" color="green" aria-label={t('skinInspector.k35')} onClick={(e) => (e.stopPropagation(), playSound(s))}>
+                <IconPlayerPlay size={14} />
+              </ActionIcon>
+              <div style={{ minWidth: 0 }}>
+                <Text size="sm" truncate>
+                  {s.name || baseName(s.file ?? '')}
+                </Text>
+                <Text size="xs" c="dimmed">
+                  {shareOf(s)}%
+                </Text>
+              </div>
+              {s.id === x.id ? <IconCheck size={14} /> : <IconChevronRight size={14} />}
+            </UnstyledButton>
+          ))}
+        </div>
       </div>
       <div className="section">
         <Field label={t('skinInspector.soundWhen')}>

@@ -22,6 +22,7 @@ import {
   type SkinDocument,
   type SkinSound,
   type TextureChannel,
+  type Trigger,
   type WeaponPreview,
 } from './protocol';
 import { detail, friendly } from './errors';
@@ -265,7 +266,7 @@ interface State {
   updateAttachment(id: string, fn: (a: Attachment) => void, coalesceKey?: string): void;
   removeAttachment(id: string): void;
   /** Converts the picked audio file to Ogg next to the project and adds it as a sound (one undo step). */
-  addSound(file: string): Promise<void>;
+  addSound(file: string, trigger?: Trigger): Promise<void>;
   updateSound(id: string, fn: (s: SkinSound) => void, coalesceKey?: string): void;
   removeSound(id: string): void;
   duplicateAttachment(id: string): void;
@@ -780,7 +781,7 @@ export const useStore = create<State>((set, get) => ({
     });
     set({ selection: null });
   },
-  async addSound(file) {
+  async addSound(file, trigger) {
     const s = get();
     const id = uid();
     set({ busy: t('store.k23') });
@@ -789,8 +790,9 @@ export const useStore = create<State>((set, get) => ({
       const out = `${dirName(s.projectPath ?? autosavePath(s.weaponId!))}\\sounds\\${id}.ogg`;
       await window.forge.writeFile(out, ogg);
       get().edit((d) => {
-        d.sounds = [...(d.sounds ?? []), { id, name: baseName(file).replace(/\.[^.]+$/, ''), trigger: 'kill', file: out, volume: 1, lowAmmoFraction: 0.2, weight: 1 }];
+        d.sounds = [...(d.sounds ?? []), { id, name: baseName(file).replace(/\.[^.]+$/, ''), trigger: trigger ?? 'kill', file: out, volume: 1, lowAmmoFraction: 0.2, weight: 1 }];
       });
+      get().select({ kind: 'sound', id });
     } catch (e) {
       if (e instanceof AudioError) get().toast('error', e.message);
       else get().fail(e, t('store.k24'));

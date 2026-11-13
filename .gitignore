@@ -7,3 +7,4 @@ UserSettings/
 bin/
 obj/
 *.csproj.user
+artifacts/

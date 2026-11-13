@@ -405,6 +405,8 @@
   "trigger.ammoPickup": "捡到弹药",
   "trigger.flashlightOn": "开手电",
   "trigger.flashlightOff": "关手电",
+  "trigger.downed": "倒地",
+  "trigger.revived": "被救起",
   "slot.melee": "近战",
   "slot.tool": "工具",
   "stage.simulate": "模拟{{v0}}",

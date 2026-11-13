@@ -405,6 +405,8 @@
   "trigger.ammoPickup": "Ammo pickup",
   "trigger.flashlightOn": "Flashlight on",
   "trigger.flashlightOff": "Flashlight off",
+  "trigger.downed": "Downed",
+  "trigger.revived": "Revived",
   "slot.melee": "Melee",
   "slot.tool": "Tools",
   "stage.simulate": "{{v0}}",

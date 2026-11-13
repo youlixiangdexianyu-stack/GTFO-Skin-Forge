@@ -191,7 +191,7 @@ sealed class SkinnedGear
         _levelStart = state == eGameStateName.InLevel ? Time.unscaledTime : -1;
         if (state != eGameStateName.Generating) return;
         Wear.Save(Time.unscaledTime, true);
-        _wielded = IntPtr.Zero;
+        _wielded = _lastItem = IntPtr.Zero;
         _inventory = null;
         _local = IntPtr.Zero;
         _playerDamage = null;
@@ -268,7 +268,7 @@ sealed class SkinnedGear
         return gear;
     }
 
-    static IntPtr _wielded;
+    static IntPtr _wielded, _lastItem; // the item in hand now, and the last one held (going down stows it)
     static readonly InventorySlot[] ItemSlots = { InventorySlot.ResourcePack, InventorySlot.Consumable, InventorySlot.InLevelCarry, InventorySlot.HackingTool };
 
     // Items without a gear holder have no spawn point of their own: the local player's wielded item is compared each
@@ -295,6 +295,7 @@ sealed class SkinnedGear
             var item = pointer == IntPtr.Zero ? null : new ItemEquippable(pointer);
             var previous = _wielded;
             _wielded = pointer;
+            if (pointer != IntPtr.Zero) _lastItem = pointer;
             foreach (var gear in Live)
                 if (gear._holder == null && gear._itemPointer == previous) gear.Raise(Trigger.Unequip, gear._on[(int)Trigger.Unequip], time);
             if (item == null || item.GearPartHolder != null || !item.m_isFirstPerson) return;
@@ -1021,6 +1022,15 @@ sealed class SkinnedGear
 
     // Whether a hit's source is the local player, as the wielded-item poll last found them.
     public static bool IsLocal(Agents.Agent? source) => source != null && _local != IntPtr.Zero && source.Pointer == _local;
+
+    // The local player went down or was revived: a state of theirs, not of a gear, so the skin of the item in their hands
+    // hears it. Going down stows the item, so the one held last stands in then.
+    public static void PlayerState(Trigger trigger)
+    {
+        var item = _inventory == null ? IntPtr.Zero : Native.Call(_inventory, WieldedGetter);
+        if (item == IntPtr.Zero) item = _lastItem;
+        if (item != IntPtr.Zero) Event(item, trigger);
+    }
 
     // Damage the local player dealt to a living enemy (the health it lost): a kill when it died, else a hit, for the item
     // in their hands (gun or melee weapon alike).

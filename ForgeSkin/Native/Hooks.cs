@@ -98,6 +98,13 @@ static class SharedHooks
         On(GameHooks.GearSpawnCompleted, () => GameHooks.GearSpawnCompleted.After(static (item, _) => ItemReady(item)));
         On(GameHooks.SyncedGearSpawnCompleted, () => GameHooks.SyncedGearSpawnCompleted.Before(BeforeItemSetup));
         On(GameHooks.SyncedGearSpawnCompleted, () => GameHooks.SyncedGearSpawnCompleted.After(static (item, _) => ItemReady(item)));
+        // The local player goes down (ForgeCore's own event) and their revive completes (GameHooks.PlayerRevived, filtered
+        // to them): player states, not gear states, so the skin of the item in their hands hears them.
+        GameEvents.LocalPlayerDown += static () => SkinnedGear.PlayerState(Trigger.Downed);
+        On(GameHooks.PlayerRevived, () => GameHooks.PlayerRevived.After(static (state, ran) =>
+        {
+            if (ran && SkinnedGear.IsLocal(state.m_owner)) SkinnedGear.PlayerState(Trigger.Revived);
+        }));
         // The game state changes (a level starts generating, the level is entered).
         GameEvents.StateChanged += static () => SkinnedGear.StateChanged(GameStateManager.CurrentStateName);
     }

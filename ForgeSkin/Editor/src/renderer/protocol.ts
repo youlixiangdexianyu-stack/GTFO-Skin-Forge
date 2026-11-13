@@ -51,10 +51,12 @@ export const TRIGGERS: { value: Trigger; label: string; simulate?: boolean }[] =
   { value: 'ammoPickup', get label() { return t('trigger.ammoPickup'); } },
   { value: 'flashlightOn', get label() { return t('trigger.flashlightOn'); } },
   { value: 'flashlightOff', get label() { return t('trigger.flashlightOff'); } },
+  { value: 'downed', get label() { return t('trigger.downed'); } },
+  { value: 'revived', get label() { return t('trigger.revived'); } },
 ];
 
 /** Events a melee weapon raises in the game. */
-const MELEE_TRIGGERS = new Set<Trigger>(['always', 'kill', 'hit', 'fire', 'equip', 'unequip']);
+const MELEE_TRIGGERS = new Set<Trigger>(['always', 'kill', 'hit', 'fire', 'equip', 'unequip', 'downed', 'revived']);
 /** The bio tracker never fires or reloads. */
 const NO_SHOT = new Set<Trigger>(['fire', 'dryFire', 'reloadStart', 'reloadEnd', 'miss']);
 
@@ -64,6 +66,8 @@ const ITEM_TRIGGERS: { value: Trigger; label: string; simulate?: boolean }[] = [
   { value: 'fire', get label() { return t('trigger.use'); }, simulate: true },
   { value: 'equip', get label() { return t('trigger.takeOut'); }, simulate: true },
   { value: 'unequip', get label() { return t('trigger.putAway'); }, simulate: true },
+  { value: 'downed', get label() { return t('trigger.downed'); } },
+  { value: 'revived', get label() { return t('trigger.revived'); } },
 ];
 
 /** The events that can happen on `item` (all of them when unknown). */

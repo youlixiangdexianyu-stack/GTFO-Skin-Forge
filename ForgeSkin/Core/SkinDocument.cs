@@ -294,6 +294,8 @@ public enum Trigger
     Always, Kill, Hit, Fire, DryFire, ReloadStart, ReloadEnd, Equip, Unequip, Aim, AimEnd, LowAmmo, Empty, AmmoPickup,
     FlashlightOn, FlashlightOff,
     Miss, // a gun's shot that hit no enemy
+    Downed,  // the local player went down
+    Revived, // the local player was helped back up
 }
 public enum PlayMode { Loop, Once, LoopFor }
 

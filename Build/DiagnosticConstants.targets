@@ -1,0 +1,21 @@
+<Project>
+  <!-- The diagnostic code constants (catalog/authoring/diagnostic-codes.json) compile in from one generated file per class
+       (Tools/Forge/build-diagnostic-constants.ts). A project lists in ForgeDiagnosticConstants the classes whose hand-written
+       partial declaration it compiles. The files are not tracked: they are written here when one is missing or older than the
+       table. Imported after the project body by Mods/Directory.Build.targets; a project outside Mods imports it itself, last. -->
+  <PropertyGroup>
+    <_ForgeDiagnosticRoot>$([System.IO.Path]::GetFullPath('$(MSBuildThisFileDirectory)../..'))</_ForgeDiagnosticRoot>
+  </PropertyGroup>
+  <ItemGroup>
+    <_ForgeDiagnosticConstantFile Include="@(ForgeDiagnosticConstants->'$(_ForgeDiagnosticRoot)/artifacts/generated/diagnostics/%(Identity).g.cs')" />
+    <Compile Include="@(_ForgeDiagnosticConstantFile)" Link="Generated/%(Filename)%(Extension)" />
+  </ItemGroup>
+  <Target Name="GenerateForgeDiagnosticConstants" BeforeTargets="PrepareForBuild" Condition="'@(_ForgeDiagnosticConstantFile)' != ''"
+          Inputs="$(_ForgeDiagnosticRoot)/catalog/authoring/diagnostic-codes.json;$(_ForgeDiagnosticRoot)/Tools/Forge/build-diagnostic-constants.ts"
+          Outputs="@(_ForgeDiagnosticConstantFile)">
+    <Exec Command="pnpm --config.verify-deps-before-run=false generate:ephemeral" WorkingDirectory="$(_ForgeDiagnosticRoot)" Timeout="120000" />
+    <Error Condition="!Exists('%(_ForgeDiagnosticConstantFile.Identity)')"
+           Text="forge-diagnostic-constants-missing: pnpm generate:ephemeral did not produce %(_ForgeDiagnosticConstantFile.Identity)." />
+    <Touch Files="@(_ForgeDiagnosticConstantFile)" />
+  </Target>
+</Project>

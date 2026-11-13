@@ -1,0 +1,361 @@
+{
+  "kind": "forge-base-release-identity",
+  "schemaVersion": "1.0.0",
+  "author": "NAinfini",
+  "websiteUrl": "https://github.com/NAinfini/GTFO-Forge",
+  "baseDependencies": [
+    {
+      "dependency": "BepInEx-BepInExPack_GTFO-3.2.4",
+      "sources": [
+        "https://thunderstore.io/c/gtfo/p/BepInEx/BepInExPack_GTFO/v/3.2.4/（包页面与版本 3.2.4；清单 dependencies=GTFOModding-GTFO_API-0.6.0）",
+        "BepInEx/core/BepInEx.Unity.IL2CPP.dll（文件版本 6.0.0.0，产品版本 6.0.0-be.665+6aabdb5ff9500fca541dbd66df7fbd7fe1dacd78，sha256 5e7a8e779927f4ffcb8f03500354840e1300483c339ea496ae739800c7888079；它不是 BepInPlugin 插件，没有 pluginGuid，所以不进 assemblies 钉）"
+      ]
+    },
+    {
+      "dependency": "GTFOModding-GTFO_API-0.6.1",
+      "provides": [
+        "dev.gtfomodding.gtfo-api@0.6.1"
+      ],
+      "assemblies": [
+        {
+          "path": "plugins/GTFOModding-GTFO_API/GTFO-API.dll",
+          "assemblyName": "GTFO-API",
+          "assemblyVersion": "0.6.1.0",
+          "pluginGuid": "dev.gtfomodding.gtfo-api",
+          "pluginVersion": "0.6.1",
+          "sha256": "0cb1815d3308581314168126e3b299c40332eabdf67e9641c9c56d0f08c6ec67"
+        }
+      ],
+      "sources": [
+        "https://thunderstore.io/c/gtfo/p/GTFOModding/GTFO_API/v/0.6.1/（包页面与版本 0.6.1；清单 dependencies=[]）",
+        "plugins/GTFO-API.dll（程序集版本 0.6.1.0，独立包提供，sha256 与 assemblies 钉一致）"
+      ]
+    },
+    {
+      "dependency": "dakkhuza-MTFO-4.6.3",
+      "provides": [
+        "com.dak.MTFO@4.6.3"
+      ],
+      "sources": [
+        "https://thunderstore.io/c/gtfo/p/dakkhuza/MTFO/v/4.6.3/（包页面与版本 4.6.3；清单 dependencies=BepInEx-BepInExPack_GTFO-1.5.0）",
+        "MTFO.dll（程序集版本 4.6.3.0，插件 com.dak.MTFO，插件版本串 4.6.3+git169eb91-main，sha256 cd671f3baca0ad275fa11223bdfe76b060e569ced9741b08b3ff4089da77d3bc；插件版本串带 +git 后缀，不符合 assemblies 钉的三段版本格式，所以只记在这里）"
+      ]
+    },
+    {
+      "dependency": "Inas07-LocalProgression-1.4.1",
+      "sources": [
+        "https://thunderstore.io/c/gtfo/p/Inas07/LocalProgression/v/1.4.1/（包页面与版本 1.4.1；清单 dependencies=BepInExPack_GTFO-3.2.4、GTFO_API-0.6.1、MTFO-4.6.3；站点写包依赖的常量见 Web/src/forge/forge-release.ts 的 forgeBaseDependency）",
+        "Inas07.LocalProgression.dll（程序集版本 1.0.0.0，插件 Inas.LocalProgression，插件版本 1.4.0，sha256 1dafc9c6e32ea73d6163bfddd303223f30453b2e7a2ff245219ceab8a235ee33）"
+      ]
+    }
+  ],
+  "packages": [
+    {
+      "packageName": "NAinfini-ForgeEngine",
+      "pluginGuid": "NAinfini.ForgeEngine",
+      "providerId": "forge.runtime",
+      "providerIds": [
+        "forge.contract.combat",
+        "forge.contract.control",
+        "forge.contract.observation",
+        "forge.contract.status",
+        "forge.contract.trigger",
+        "forge.contract.variables",
+        "forge.module.gtfo.enemy",
+        "forge.module.gtfo.map",
+        "forge.module.gtfo.player",
+        "forge.module.gtfo.weapon",
+        "forge.module.gtfo.weapon.holder",
+        "forge.module.presentation",
+        "forge.module.trigger",
+        "forge.runtime"
+      ],
+      "attachmentKinds": [
+        "enemy-type",
+        "gear-block",
+        "level",
+        "map-object",
+        "player"
+      ],
+      "version": "1.0.0",
+      "audience": "player",
+      "dependencies": [
+        "BepInEx-BepInExPack_GTFO-3.2.4",
+        "GTFOModding-GTFO_API-0.6.1",
+        "dakkhuza-MTFO-4.6.3",
+        "NAinfini-ForgeCore-1.0.0"
+      ],
+      "identity": {
+        "csprojs": [
+          "ForgeEngine/ForgeEngine.csproj"
+        ],
+        "plugin": "ForgeEngine/Plugin.cs",
+        "module": null
+      },
+      "files": [
+        "ForgeEngine.dll",
+        "manifest.json",
+        "icon.png",
+        "README.md",
+        "CHANGELOG.md",
+        "LICENSE",
+        "NOTICE",
+        "lang/en.forge",
+        "lang/zh.forge"
+      ]
+    },
+    {
+      "packageName": "NAinfini-ForgeDevelopment",
+      "pluginGuid": "NAinfini.ForgeDevelopment",
+      "providerId": null,
+      "providerIds": [],
+      "version": "1.0.0",
+      "audience": "author",
+      "dependencies": [
+        "GTFOModding-GTFO_API-0.6.1",
+        "NAinfini-ForgeEngine-1.0.0"
+      ],
+      "identity": {
+        "csprojs": [
+          "ForgeDevelopment/Native/ForgeDevelopment.Native.csproj"
+        ],
+        "plugin": "ForgeDevelopment/Native/Host/Plugin.cs",
+        "module": null
+      },
+      "files": [
+        "ForgeDevelopment.Native.dll",
+        "manifest.json",
+        "icon.png",
+        "README.md",
+        "CHANGELOG.md",
+        "LICENSE",
+        "NOTICE",
+        "probes/door-size-clearance.md",
+        "probes/capture-readbacks.forge",
+        "probes/commands/authoring-game-drive.forge",
+        "probes/commands/capture-native-state.forge",
+        "probes/commands/dev-runtime.forge",
+        "probes/commands/door-size-clearance.forge",
+        "probes/commands/elevator-drive.forge",
+        "probes/commands/enemy-population-keys.forge",
+        "probes/commands/exit-scan-observe.forge",
+        "probes/commands/input-drive.forge",
+        "probes/commands/model-workshop-components.forge",
+        "probes/commands/native-bot-slots.forge",
+        "probes/commands/start-exit-rooms.forge",
+        "probes/commands/state-readbacks.forge",
+        "probes/commands/v1-alltest.forge",
+        "probes/commands/v1-observe.forge",
+        "probes/package-manifest.forge",
+        "probes/trace/README.md",
+        "probes/trace/author-door-size-clearance.forge",
+        "probes/trace/author-room-wall.forge",
+        "probes/trace/author-start-exit-rooms.forge",
+        "probes/trace/author-y15-layer-fields.forge",
+        "probes/trace/cov4-mine-foam.forge",
+        "probes/trace/cov4-stamina.forge",
+        "probes/trace/damage.forge",
+        "probes/trace/dimension-landings.forge",
+        "probes/trace/door-terminal.forge",
+        "probes/trace/enemy.forge",
+        "probes/trace/environment.forge",
+        "probes/trace/everything.forge",
+        "probes/trace/gui.forge",
+        "probes/trace/h10-map-overrides.forge",
+        "probes/trace/level.forge",
+        "probes/trace/net.forge",
+        "probes/trace/objects.forge",
+        "probes/trace/player.forge",
+        "probes/trace/sound-isolation-signatures.forge",
+        "probes/trace/weapon.forge",
+        "tools/development_paths.py",
+        "tools/install-probes.py",
+        "tools/rec-merge.py",
+        "tools/rec-query.py",
+        "tools/rec_segments.py",
+        "tools/verify-probe-package.py"
+      ]
+    }
+  ],
+  "libraries": [
+    {
+      "packageName": "NAinfini-ForgeCore",
+      "pluginGuid": "NAinfini.ForgeCore",
+      "providerId": null,
+      "providerIds": [],
+      "version": "1.0.0",
+      "audience": "player",
+      "dependencies": [
+        "BepInEx-BepInExPack_GTFO-3.2.4",
+        "GTFOModding-GTFO_API-0.6.1"
+      ],
+      "identity": { "csprojs": ["ForgeCore/ForgeCore.csproj"], "plugin": "ForgeCore/Native/Plugin.cs", "module": null },
+      "files": ["ForgeCore.dll", "NVorbis.dll", "NVorbis.LICENSE.forge", "manifest.json", "icon.png", "README.md", "CHANGELOG.md", "LICENSE", "NOTICE", "web-manifest.forge", "lang/en.forge", "lang/zh.forge", "fonts/ForgeUI-fonts.bundle", "fonts/OFL-GlowSans.forge", "fonts/OFL-Rajdhani.forge", "forge-visual-fx.bundle", "fx-slots.forge", "fx-licences.forge"],
+      "media": [
+        { "file": "fonts/ForgeUI-fonts.bundle", "source": "Assets/fonts/forgeui-fonts.bundle", "sha256": "4f3d97e2141ff2ce16eeef5237a1f6ff905e6fbbb76df184ca97d3890170fb20" },
+        { "file": "fonts/OFL-GlowSans.forge", "source": "Assets/fonts/OFL-GlowSans.forge", "sha256": "fbacabbdc0b859a77b0fd3f266400a959baf00f428fc64aac33a7f77e1838e40" },
+        { "file": "fonts/OFL-Rajdhani.forge", "source": "Assets/fonts/OFL-Rajdhani.forge", "sha256": "bb36ea0b5e02431f0372edde87b029ceb071806f5296c4ffb38756850a54e2ed" },
+        { "file": "forge-visual-fx.bundle", "source": "Assets/Vfx/forge-visual-fx.bundle", "sha256": "b6d1b7b5afb9b0c6781d0038e34e83e510d1790e3d9903adcbec9bba9d232bc3" },
+        { "file": "fx-slots.forge", "source": "Assets/Vfx/fx-slots.forge", "sha256": "2fe7b25c59b721f01403305c7e1add6d72931d2468e5baa50300645fa1649f22" },
+        { "file": "fx-licences.forge", "source": "Assets/Vfx/fx-licences.forge", "sha256": "60e878738144e7c04bbb58900830f702e06ca8acab200254b7a6e860a5cb097c" }
+      ],
+      "embeddedMedia": [
+        { "assembly": "ForgeCore.dll", "resource": "ForgeVisual.Vfx.forge-vfx.bundle", "source": "Assets/Vfx/forge-vfx.bundle", "sha256": "373f87cbfae94ef4dc473b75c956bf0c2394c1e498095f4319261732de0bef52" }
+      ],
+      "bundledLibraries": [{ "file": "NVorbis.dll", "package": "NVorbis", "version": "0.10.5", "license": "MIT", "licenseFile": "NVorbis.LICENSE.forge", "licenseText": "MIT License\n\nCopyright (c) 2020 Andrew Ward\n\nPermission is hereby granted, free of charge, to any person obtaining a copy\nof this software and associated documentation files (the \"Software\"), to deal\nin the Software without restriction, including without limitation the rights\nto use, copy, modify, merge, publish, distribute, sublicense, and/or sell\ncopies of the Software, and to permit persons to whom the Software is\nfurnished to do so, subject to the following conditions:\n\nThe above copyright notice and this permission notice shall be included in all\ncopies or substantial portions of the Software.\n\nTHE SOFTWARE IS PROVIDED \"AS IS\", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR\nIMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,\nFITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE\nAUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER\nLIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,\nOUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE\nSOFTWARE.\n" }]
+    }
+  ],
+  "standalone": [
+    {
+      "packageName": "NAinfini-ForgeEmote",
+      "pluginGuid": "NAinfini.ForgeEmote",
+      "providerId": null,
+      "providerIds": [],
+      "version": "1.0.0",
+      "audience": "player",
+        "packager": "tools/package_release.py",
+      "dependencies": [
+        "BepInEx-BepInExPack_GTFO-3.2.4",
+        "NAinfini-ForgeCore-1.0.0"
+      ],
+      "identity": {
+        "csprojs": [
+          "ForgeEmote/ForgeEmote.csproj"
+        ],
+        "plugin": "ForgeEmote/Native/Plugin.cs",
+        "module": null
+      }
+    },
+    {
+      "packageName": "NAinfini-ForgeSkin",
+      "pluginGuid": "ForgeSkin",
+      "providerId": null,
+      "providerIds": [],
+      "version": "1.0.3",
+      "audience": "player",
+      "packager": "tools/package_release.py",
+      "dependencies": [
+        "BepInEx-BepInExPack_GTFO-3.2.4",
+        "NAinfini-ForgeCore-1.0.0"
+      ],
+      "identity": {
+        "csprojs": [
+          "ForgeSkin/ForgeSkin.csproj"
+        ],
+        "plugin": "ForgeSkin/Native/Plugin.cs",
+        "module": null
+      }
+    },
+    {
+      "packageName": "NAinfini-ForgeOrdnance",
+      "pluginGuid": "NAinfini.ForgeOrdnance",
+      "providerId": null,
+      "providerIds": [],
+      "version": "1.0.1",
+      "audience": "player",
+      "packager": "tools/package_release.py",
+      "dependencies": [
+        "BepInEx-BepInExPack_GTFO-3.2.4",
+        "GTFOModding-GTFO_API-0.6.1",
+        "dakkhuza-MTFO-4.6.3",
+        "NAinfini-ForgeCore-1.0.0"
+      ],
+      "identity": {
+        "csprojs": [
+          "ForgeOrdnance/ForgeOrdnance.csproj"
+        ],
+        "plugin": "ForgeOrdnance/Plugin.cs",
+        "module": null
+      }
+    },
+    {
+      "packageName": "NAinfini-ForgePerformance",
+      "pluginGuid": "NAinfini.ForgePerformance",
+      "providerId": null,
+      "providerIds": [],
+      "version": "1.0.0",
+      "audience": "player",
+      "packager": "tools/package_release.py",
+      "dependencies": [
+        "BepInEx-BepInExPack_GTFO-3.2.4",
+        "GTFOModding-GTFO_API-0.6.1"
+      ],
+      "identity": {
+        "csprojs": [
+          "ForgePerformance/ForgePerformance.csproj"
+        ],
+        "plugin": "ForgePerformance/Native/Plugin.cs",
+        "module": null
+      }
+    },
+    {
+      "packageName": "NAinfini-ForgeReplay",
+      "pluginGuid": "NAinfini.ForgeReplay",
+      "providerId": null,
+      "providerIds": [],
+      "version": "1.0.0",
+      "audience": "player",
+        "packager": "tools/package_release.py",
+      "dependencies": [
+        "BepInEx-BepInExPack_GTFO-3.2.4",
+        "GTFOModding-GTFO_API-0.6.1",
+        "NAinfini-ForgeCore-1.0.0"
+      ],
+      "identity": {
+        "csprojs": [
+          "ForgeReplay/ForgeReplay.csproj"
+        ],
+        "plugin": "ForgeReplay/Native/Plugin.cs",
+        "module": null
+      }
+    },
+    {
+      "packageName": "NAinfini-ForgeWeapon_EnergyLab",
+      "pluginGuid": "NAinfini.ForgeWeaponEnergyLab",
+      "providerId": null,
+      "providerIds": [],
+      "version": "1.0.1",
+      "audience": "player",
+      "packager": "tools/package_release.py",
+      "dependencies": [
+        "BepInEx-BepInExPack_GTFO-3.2.4",
+        "GTFOModding-GTFO_API-0.6.1",
+        "dakkhuza-MTFO-4.6.3",
+        "NAinfini-ForgeCore-1.0.0"
+      ],
+      "identity": {
+        "csprojs": [
+          "ForgeWeapon_EnergyLab/ForgeWeaponEnergyLab.csproj"
+        ],
+        "plugin": "ForgeWeapon_EnergyLab/Core/EnergyApi.cs",
+        "module": null
+      }
+    }
+  ],
+  "payloads": [
+    {
+      "packageName": "NAinfini-ForgeTestLevel",
+      "pluginGuid": null,
+      "providerId": null,
+      "providerIds": [],
+      "version": "1.0.0",
+      "audience": "author",
+      "dependencies": [
+        "NAinfini-ForgeEngine-1.0.0",
+        "NAinfini-ForgeDevelopment-1.0.0"
+      ],
+      "identity": { "csprojs": [], "plugin": null, "module": null },
+      "files": [
+        "manifest.json",
+        "icon.png",
+        "README.md",
+        "CHANGELOG.md",
+        "LICENSE",
+        "NOTICE",
+        "forge/rundown.forge",
+        "forge/map-generation.forge",
+        "forge/generation-inputs/830fb982216ece8e828ff78540a0edb4e5409654bea65a65b3b517f7f0825acb.forge"
+      ]
+    }
+  ]
+}

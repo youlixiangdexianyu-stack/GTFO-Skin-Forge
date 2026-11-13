@@ -1,0 +1,7 @@
+<Project>
+  <!-- GTFO-API is its own Thunderstore package (GTFOModding-GTFO_API); r2modman installs it beside BepInExPack_GTFO. -->
+  <PropertyGroup>
+    <GTFOBepInExPath Condition="'$(GTFOBepInExPath)' == ''">$(GTFO_BEPINEX_PATH)</GTFOBepInExPath>
+    <GTFOApiPath Condition="'$(GTFOApiPath)' == ''">$(GTFOBepInExPath)/plugins/GTFOModding-GTFO_API/GTFO-API.dll</GTFOApiPath>
+  </PropertyGroup>
+</Project>

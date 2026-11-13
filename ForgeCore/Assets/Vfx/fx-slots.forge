@@ -1,0 +1,21 @@
+{
+ "Slots": {
+  "heavy.gl.blast": {
+   "AlwaysDraw": true,
+   "Item": "Compose_heavy_gl_blast_c3489c49",
+   "Scale": 0.55,
+   "AxisUp": true,
+   "Light": {
+    "Colour": [
+     1.0,
+     0.6471,
+     0.3216
+    ],
+    "Range": 6,
+    "Peak": 4.5,
+    "Life": 0.35,
+    "Flicker": 0.15
+   }
+  }
+ }
+}

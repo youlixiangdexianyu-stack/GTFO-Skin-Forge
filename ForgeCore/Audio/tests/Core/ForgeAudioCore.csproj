@@ -1,0 +1,21 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <RootNamespace>ForgeAudio.Tests</RootNamespace>
+    <AssemblyName>ForgeAudio.Core.Tests</AssemblyName>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net6.0</TargetFramework>
+    <LangVersion>latest</LangVersion>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <CheckEolTargetFramework>false</CheckEolTargetFramework>
+    <IsPackable>false</IsPackable>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="../../../Once/PosixPath.cs;../../../Once/Fnv.cs" Link="ForgeCore/%(Filename)%(Extension)" />
+    <PackageReference Include="NVorbis" Version="0.10.5" />
+    <Compile Include="../../Core/*.cs" Link="Core/%(Filename)%(Extension)" />
+    <None Include="../fixtures/*.ogg" Link="fixtures/%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
+    <Compile Include="Program.cs;CatalogChecks.cs;DecodeChecks.cs" />
+  </ItemGroup>
+</Project>

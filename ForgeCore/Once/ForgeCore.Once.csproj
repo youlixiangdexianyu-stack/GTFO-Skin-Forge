@@ -1,0 +1,12 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <Import Project="../../Build/Common.props" />
+  <PropertyGroup>
+    <AssemblyName>ForgeCore.Once</AssemblyName>
+    <RootNamespace>ForgeCore</RootNamespace>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <NoWarn>$(NoWarn);CS1591</NoWarn>
+    <!-- Line numbers in error logs without the builder's local paths. -->
+    <DebugType>embedded</DebugType>
+    <PathMap>$(MSBuildProjectDirectory)=/ForgeCore.Once</PathMap>
+  </PropertyGroup>
+</Project>

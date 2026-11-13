@@ -1,0 +1,25 @@
+ForgeCore - notices and credits
+Copyright (c) 2026 NAinfini. Licensed under the MIT License (see LICENSE), except for the third-party material listed below,
+which keeps its own licence.
+
+This is an unofficial fan-made mod for GTFO. It is not made, endorsed or supported by 10 Chambers Collective.
+GTFO and its game data belong to their owners; no file taken from the game is included in this package.
+
+Fonts (fonts/ForgeUI-fonts.bundle), SIL Open Font License 1.1; the full licence texts are in fonts/OFL-GlowSans.forge and fonts/OFL-Rajdhani.forge:
+- Rajdhani, Copyright (c) 2014, Indian Type Foundry (info@indiantypefoundry.com).
+- Glow Sans SC Condensed, Copyright (c) 2021 Project Welai. Only the common-character subset is packed into the bundle.
+- "ForgeUI Symbols" (the infinity sign) is drawn for this project and is MIT like the rest of the package.
+
+Bundled library (NVorbis.dll), MIT:
+- NVorbis 0.10.5, Copyright (c) 2020 Andrew Ward, https://github.com/NVorbis/NVorbis, used unmodified as the Ogg Vorbis decoder.
+  Its licence text is shipped in this package as NVorbis.LICENSE.forge.
+
+Effect bundle (forge-vfx.bundle, embedded in ForgeCore.dll), CC0 1.0 (https://creativecommons.org/publicdomain/zero/1.0/):
+- The effect prefabs, particle shaders, textures, materials and meshes were all made for this project by NAinfini with Unity 2019.4.21f1
+  (Tools/Vfx/ForgeVfx); the bundle contains no third-party file. Credit is not required; it is given for completeness.
+The shared heavy-blast bundle (forge-visual-fx.bundle) lists its sources in fx-licences.forge beside it.
+
+Everything else in the zip is written for this project: the assembly built from this repository, the interface art, shaders and
+HUD templates, manifest.json, icon.png and the documentation. No sound recording is included; audio comes from the mods that use ForgeCore.
+The package is compiled against BepInEx, HarmonyX, Il2CppInterop, GTFO-API and the game's interop assemblies, which the mod manager installs
+separately as the dependencies named in manifest.json; none of them is included here.

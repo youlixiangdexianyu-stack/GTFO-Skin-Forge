@@ -1,0 +1,8 @@
+# Independent package (own lockfile, not part of the site workspace). The editor's current dependency versions are younger than the site's 7-day rule (10080), so a release must be 1 day old here (pnpm default); raise it once the versions age. No transitive dependency may come from git or a tarball URL.
+minimumReleaseAge: 1440
+blockExoticSubdeps: true
+allowBuilds:
+  electron: true
+  electron-winstaller: true
+  esbuild: true
+nodeLinker: hoisted

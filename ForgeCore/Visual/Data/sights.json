@@ -1,0 +1,10 @@
+{
+  "format": "forge-sights",
+  "schemaVersion": "1.0.0",
+  "about": "The sights ForgeVisual ships, self-made in Blender on 11-06 (Assets/Sights/LICENSE.txt): each model is Assets/Sights/<id>.model.json (Forge model package descriptor) with its local mesh <id>.forgemesh and textures <id>.t<index>.png. look is the point the eye lines up through (the reticle's centre), in the sight's own frame: Unity axes, front +Z, up +Y, origin at the middle of its base, metres at real size. magnification sets the aim field of view (gun-hold.json sight). A package puts a sight on a model with its forge-gun-sights table (GunSights).",
+  "sights": {
+    "red-dot-1x": { "look": [0, 0.032, 0.017], "magnification": 1, "about": "Micro tube red dot on a riser and rail clamp with two cross bolts: 2.2 cm clear aperture, elevation and windage turrets, a brightness dial, a front flip cap swung open to the side, a 0.9 mm lit dot at the front lens." },
+    "holo-1x": { "look": [0, 0.025, 0.016], "magnification": 1, "about": "Holographic sight: a chamfered tunnel hood with raked front and rear windows (2.7 x 2.2 cm), a side battery tube, three rear-deck buttons, a thumbscrew clamp, a lit 6 mm ring with a centre dot." },
+    "scope-2x": { "look": [0, 0.036, 0], "magnification": 2, "about": "Compact 2x prism scope: objective bell, rounded prism body with a through bore, elevation and windage turrets, a rubber eyecup and focus ring; a lit chevron at the centre and no crosshair lines, a lit fibre strip on top." }
+  }
+}

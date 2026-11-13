@@ -1,0 +1,21 @@
+ForgeSkin - notices and credits
+Copyright (c) 2026 NAinfini. Licensed under the MIT License, except for the third-party material listed below, which keeps its own licence.
+
+This is an unofficial fan-made mod for GTFO. It is not made, endorsed or supported by 10 Chambers Collective.
+GTFO and its game data belong to their owners; no file taken from the game is included in this package. The editor reads the game
+installed on the user's own machine and never ships its files.
+
+The plugin (the zip on Thunderstore) carries no third-party code. It depends on the ForgeCore package (MIT, NAinfini), which
+decodes the skins' sounds and carries its own notices.
+
+The editor (the installer, built from Mods/ForgeSkin/Editor and Mods/ForgeSkin/Backend) carries:
+- Authors of the font families named in the asset table: SIL Open Font License 1.1, packaged by Fontsource (npm @fontsource/*): Audiowide, Bungee, IBM Plex Mono, JetBrains Mono, Monoton,
+  Orbitron, Pacifico, Press Start 2P, Rajdhani, Roboto Mono, Saira Stencil One, Share Tech Mono, Silkscreen, VT323. Each family keeps the
+  copyright line of its authors; the full licence texts ship with the installer in licenses/fonts/.
+- Authors of the npm packages named in the asset table (catalog/resources/asset-licences.json, package ForgeSkin): MIT License, Copyright (c)
+  their authors (Mantine, pmndrs react-three-fiber/drei/postprocessing, Tabler, camera-controls, i18next, immer, konva, React, three.js,
+  zustand and the others listed there); postprocessing is under the Zlib licence (Raoul van Ruschen); electron-squirrel-startup is under the
+  Apache License 2.0 (Lucas Hrabovsky). Electron itself (MIT) brings Chromium and Node.js with their own licence files inside the installer.
+- Authors of the NuGet packages named in the asset table: AssetsTools.NET and AssetsTools.NET.Texture (MIT, nesrak1), BCnEncoder.Net (MIT or
+  Unlicense, Nominom), LibTessDotNet (MIT, speps), SkiaSharp (MIT, Microsoft and contributors).
+- The Unity class database Backend/classdata.tpk: from UABEA by nesrak1 and UABEA contributors (https://github.com/nesrak1/UABEA, MIT), ReleaseFiles/classdata.tpk at commit 5adb448; it holds engine class layouts only.

@@ -1,0 +1,89 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net6.0</TargetFramework>
+    <LangVersion>latest</LangVersion>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <AssemblyName>ForgeCore</AssemblyName>
+    <IsPackable>false</IsPackable>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <NoWarn>$(NoWarn);CS1591</NoWarn>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <CopyLocalLockFileAssemblies>true</CopyLocalLockFileAssemblies>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+    <!-- Line numbers in error logs without the builder's local paths. -->
+    <DebugType>embedded</DebugType>
+    <PathMap>$(MSBuildProjectDirectory)=/ForgeCore</PathMap>
+    <GTFOBepInExPath Condition="'$(GTFOBepInExPath)' == ''">$(GTFO_BEPINEX_PATH)</GTFOBepInExPath>
+  </PropertyGroup>
+  <Target Name="RequireGameReferences" BeforeTargets="ResolveReferences">
+    <Error Condition="!Exists('$(GTFOBepInExPath)/core/BepInEx.Unity.IL2CPP.dll') or !Exists('$(GTFOBepInExPath)/interop/Modules-ASM.dll') or !Exists('$(GTFOApiPath)')"
+           Text="Set GTFOBepInExPath to a GTFO BepInEx IL2CPP profile with generated interop assemblies and GTFO-API." />
+  </Target>
+  <ItemGroup>
+    <!-- One assembly: the core (Core/, Net/, Native/, and Once/, which offline tools and tests also build alone as ForgeCore.Once) and the
+         UI, audio and visual parts (UI/, Audio/, Visual/; namespaces ForgeUI, ForgeAudio, ForgeVisual). tests/ and tools/ hold standalone projects. -->
+    <Compile Include="Core/*.cs;Net/*.cs;Native/**/*.cs;Once/*.cs" />
+    <Compile Include="UI/Core/*.cs;UI/Native/**/*.cs;Audio/Core/*.cs;Audio/Native/**/*.cs;Visual/Core/*.cs;Visual/Native/**/*.cs" />
+    <!-- The audio part decodes Ogg Vorbis; NVorbis.dll ships beside ForgeCore.dll and no package that references ForgeCore compiles against it. -->
+    <PackageReference Include="NVorbis" Version="0.10.5" PrivateAssets="all" />
+    <Reference Include="BepInEx.Core" HintPath="$(GTFOBepInExPath)/core/BepInEx.Core.dll" Private="false" />
+    <Reference Include="BepInEx.Unity.IL2CPP" HintPath="$(GTFOBepInExPath)/core/BepInEx.Unity.IL2CPP.dll" Private="false" />
+    <Reference Include="BepInEx.Unity.Common" HintPath="$(GTFOBepInExPath)/core/BepInEx.Unity.Common.dll" Private="false" />
+    <Reference Include="SemanticVersioning" HintPath="$(GTFOBepInExPath)/core/SemanticVersioning.dll" Private="false" />
+    <Reference Include="0Harmony" HintPath="$(GTFOBepInExPath)/core/0Harmony.dll" Private="false" />
+    <Reference Include="GTFO-API" HintPath="$(GTFOApiPath)" Private="false" />
+    <Reference Include="Il2CppInterop.Runtime" HintPath="$(GTFOBepInExPath)/core/Il2CppInterop.Runtime.dll" Private="false" />
+    <!-- Hooks and HookBridge: run-time targets through the public Harmony API, and the by-reference bridge repair. -->
+    <Reference Include="Il2CppInterop.Common" HintPath="$(GTFOBepInExPath)/core/Il2CppInterop.Common.dll" Private="false" />
+    <Reference Include="Iced" HintPath="$(GTFOBepInExPath)/core/Iced.dll" Private="false" />
+    <Reference Include="Mono.Cecil" HintPath="$(GTFOBepInExPath)/core/Mono.Cecil.dll" Private="false" />
+    <Reference Include="MonoMod.Utils" HintPath="$(GTFOBepInExPath)/core/MonoMod.Utils.dll" Private="false" />
+    <Reference Include="MonoMod.RuntimeDetour" HintPath="$(GTFOBepInExPath)/core/MonoMod.RuntimeDetour.dll" Private="false" />
+    <Reference Include="Il2Cppmscorlib" HintPath="$(GTFOBepInExPath)/interop/Il2Cppmscorlib.dll" Private="false" />
+    <Reference Include="Il2CppSystem" HintPath="$(GTFOBepInExPath)/interop/Il2CppSystem.dll" Private="false" />
+    <Reference Include="Il2CppSystem.Core" HintPath="$(GTFOBepInExPath)/interop/Il2CppSystem.Core.dll" Private="false" />
+    <Reference Include="Modules-ASM" HintPath="$(GTFOBepInExPath)/interop/Modules-ASM.dll" Private="false" />
+    <Reference Include="Plugins-ASM" HintPath="$(GTFOBepInExPath)/interop/Plugins-ASM.dll" Private="false" />
+    <Reference Include="GameData-ASM" HintPath="$(GTFOBepInExPath)/interop/GameData-ASM.dll" Private="false" />
+    <Reference Include="SNet_ASM" HintPath="$(GTFOBepInExPath)/interop/SNet_ASM.dll" Private="false" />
+    <Reference Include="Shards-ASM" HintPath="$(GTFOBepInExPath)/interop/Shards-ASM.dll" Private="false" />
+    <Reference Include="Utils-ASM" HintPath="$(GTFOBepInExPath)/interop/Utils-ASM.dll" Private="false" />
+    <Reference Include="GlobalFramework-ASM" HintPath="$(GTFOBepInExPath)/interop/GlobalFramework-ASM.dll" Private="false" />
+    <Reference Include="CellSound-ASM" HintPath="$(GTFOBepInExPath)/interop/CellSound-ASM.dll" Private="false" />
+    <Reference Include="Wwise-ASM" HintPath="$(GTFOBepInExPath)/interop/Wwise-ASM.dll" Private="false" />
+    <Reference Include="UnityEngine.CoreModule" HintPath="$(GTFOBepInExPath)/interop/UnityEngine.CoreModule.dll" Private="false" />
+    <Reference Include="UnityEngine.PhysicsModule" HintPath="$(GTFOBepInExPath)/interop/UnityEngine.PhysicsModule.dll" Private="false" />
+    <Reference Include="UnityEngine.AnimationModule" HintPath="$(GTFOBepInExPath)/interop/UnityEngine.AnimationModule.dll" Private="false" />
+    <Reference Include="UnityEngine.Physics2DModule" HintPath="$(GTFOBepInExPath)/interop/UnityEngine.Physics2DModule.dll" Private="false" />
+    <Reference Include="UnityEngine.AIModule" HintPath="$(GTFOBepInExPath)/interop/UnityEngine.AIModule.dll" Private="false" />
+    <Reference Include="UnityEngine.AssetBundleModule" HintPath="$(GTFOBepInExPath)/interop/UnityEngine.AssetBundleModule.dll" Private="false" />
+    <Reference Include="UnityEngine.ImageConversionModule" HintPath="$(GTFOBepInExPath)/interop/UnityEngine.ImageConversionModule.dll" Private="false" />
+    <Reference Include="UnityEngine.AudioModule" HintPath="$(GTFOBepInExPath)/interop/UnityEngine.AudioModule.dll" Private="false" />
+    <Reference Include="UnityEngine.InputLegacyModule" HintPath="$(GTFOBepInExPath)/interop/UnityEngine.InputLegacyModule.dll" Private="false" />
+    <Reference Include="UnityEngine.TextRenderingModule" HintPath="$(GTFOBepInExPath)/interop/UnityEngine.TextRenderingModule.dll" Private="false" />
+    <Reference Include="UnityEngine.TextCoreModule" HintPath="$(GTFOBepInExPath)/interop/UnityEngine.TextCoreModule.dll" Private="false" />
+    <Reference Include="UnityEngine.ParticleSystemModule" HintPath="$(GTFOBepInExPath)/interop/UnityEngine.ParticleSystemModule.dll" Private="false" />
+    <Reference Include="UnityEngine.UI" HintPath="$(GTFOBepInExPath)/interop/UnityEngine.UI.dll" Private="false" />
+    <Reference Include="Unity.TextMeshPro" HintPath="$(GTFOBepInExPath)/interop/Unity.TextMeshPro.dll" Private="false" />
+  </ItemGroup>
+  <ItemGroup>
+    <!-- The one gun-holding rule (Visual/Core/GunHold.cs); a website implementation reads the same file. -->
+    <EmbeddedResource Include="Visual/Data/gun-hold.json" LogicalName="ForgeVisual.Data.gun-hold.json" />
+    <!-- Forge's effect bundle (CC0, Assets/Vfx/LICENSE.txt): the one copy every Forge mod draws its effects from; local media, not in Git. -->
+    <EmbeddedResource Include="$(ForgeModsRoot)ForgeCore/Assets/Vfx/forge-vfx.bundle" LogicalName="ForgeVisual.Vfx.forge-vfx.bundle" />
+    <!-- The sights a package may put on its guns (Visual/Data/sights.json; self-made, Assets/Sights/LICENSE.txt): descriptors here; meshes and textures (<id>.t<index>.png, the descriptor's textures in order) local media, not in Git. -->
+    <EmbeddedResource Include="Visual/Data/sights.json" LogicalName="ForgeVisual.Data.sights.json" />
+    <EmbeddedResource Include="Assets/Sights/*.model.json" LogicalName="ForgeVisual.Sights.%(Filename)%(Extension)" />
+    <EmbeddedResource Include="$(ForgeModsRoot)ForgeCore/Assets/Sights/*.forgemesh" LogicalName="ForgeVisual.Sights.%(Filename)%(Extension)" />
+    <EmbeddedResource Include="$(ForgeModsRoot)ForgeCore/Assets/Sights/*.t*.png" LogicalName="ForgeVisual.Sights.%(Filename)%(Extension)" />
+    <!-- The shader bundles the screen effects, the power-on panel, the effect shaders and the trigger zones load (built by the tools/*shaders* scripts, tracked). -->
+    <EmbeddedResource Include="Assets/Shaders/*.shaderbundle" LogicalName="ForgeCore.Shaders.%(Filename)%(Extension)" />
+  </ItemGroup>
+  <Target Name="RequireVfxBundle" BeforeTargets="BeforeBuild">
+    <Error Condition="!Exists('$(ForgeModsRoot)ForgeCore/Assets/Sights/red-dot-1x.forgemesh') or !Exists('$(ForgeModsRoot)ForgeCore/Assets/Sights/holo-1x.forgemesh') or !Exists('$(ForgeModsRoot)ForgeCore/Assets/Sights/scope-2x.forgemesh') or !Exists('$(ForgeModsRoot)ForgeCore/Assets/Sights/red-dot-1x.t1.png') or !Exists('$(ForgeModsRoot)ForgeCore/Assets/Sights/holo-1x.t1.png') or !Exists('$(ForgeModsRoot)ForgeCore/Assets/Sights/scope-2x.t1.png')"
+           Text="ForgeCore embeds its sight meshes from local media: $(ForgeModsRoot)ForgeCore/Assets/Sights/*.forgemesh or *.t&lt;index&gt;.png is missing a sight file. Pass -p:ForgeModsRoot=&lt;the Mods folder that holds the local media, trailing slash&gt;." />
+    <Error Condition="!Exists('$(ForgeModsRoot)ForgeCore/Assets/Vfx/forge-vfx.bundle')"
+           Text="ForgeCore embeds its effect bundle from local media: $(ForgeModsRoot)ForgeCore/Assets/Vfx/forge-vfx.bundle is missing. Pass -p:ForgeModsRoot=&lt;the Mods folder that holds the local media, trailing slash&gt;." />
+  </Target>
+</Project>

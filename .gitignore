@@ -1,0 +1,9 @@
+# Unity
+Library/
+Temp/
+Logs/
+UserSettings/
+# .NET
+bin/
+obj/
+*.csproj.user

@@ -1,0 +1,35 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net6.0</TargetFramework>
+    <LangVersion>latest</LangVersion>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <!-- The assembly keeps its published name: other plugins call ForgeSkin.Plugin.SkinPacks.Register from it. -->
+    <AssemblyName>ForgeSkin.Plugin</AssemblyName>
+    <RootNamespace>ForgeSkin.Plugin</RootNamespace>
+    <IsPackable>false</IsPackable>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+    <!-- Line numbers in error logs without the builder's local paths. -->
+    <DebugType>embedded</DebugType>
+    <PathMap>$(MSBuildProjectDirectory)=/ForgeSkin</PathMap>
+    <GTFOBepInExPath Condition="'$(GTFOBepInExPath)' == ''">$(GTFO_BEPINEX_PATH)</GTFOBepInExPath>
+  </PropertyGroup>
+  <Target Name="RequireGameReferences" BeforeTargets="ResolveReferences">
+    <Error Condition="!Exists('$(GTFOBepInExPath)/core/BepInEx.Unity.IL2CPP.dll') or !Exists('$(GTFOBepInExPath)/interop/Modules-ASM.dll')"
+           Text="Set GTFOBepInExPath to a GTFO BepInEx IL2CPP profile with generated interop assemblies." />
+  </Target>
+  <ItemGroup>
+    <!-- Core/ is the pack format (no game reference); the backend compiles the same files. -->
+    <Compile Include="Core/*.cs;Native/**/*.cs" />
+    <!-- The in-game texts, beside the DLL where ForgeCore's UI reads them. -->
+    <None Update="lang/*.forge" CopyToOutputDirectory="PreserveNewest" />
+    <ProjectReference Include="../ForgeCore/ForgeCore.csproj" Private="false" />
+    <Reference Include="$(GTFOBepInExPath)/core/0Harmony.dll" Private="false" />
+    <Reference Include="$(GTFOBepInExPath)/core/BepInEx.Core.dll" Private="false" />
+    <Reference Include="$(GTFOBepInExPath)/core/BepInEx.Unity.IL2CPP.dll" Private="false" />
+    <Reference Include="$(GTFOBepInExPath)/core/Il2CppInterop.Common.dll" Private="false" />
+    <Reference Include="$(GTFOBepInExPath)/core/Il2CppInterop.Runtime.dll" Private="false" />
+    <Reference Include="$(GTFOBepInExPath)/interop/*.dll" Exclude="$(GTFOBepInExPath)/interop/netstandard.dll" Private="false" />
+  </ItemGroup>
+</Project>

@@ -1,0 +1,30 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <RootNamespace>ForgeCore.Tests</RootNamespace>
+    <AssemblyName>ForgeCore.Core.Tests</AssemblyName>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net6.0</TargetFramework>
+    <LangVersion>latest</LangVersion>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <CheckEolTargetFramework>false</CheckEolTargetFramework>
+    <IsPackable>false</IsPackable>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+  </PropertyGroup>
+  <ItemGroup Condition="'$(GTFOBepInExPath)' != ''">
+    <AssemblyAttribute Include="System.Reflection.AssemblyMetadataAttribute">
+      <_Parameter1>Interop</_Parameter1>
+      <_Parameter2>$([System.IO.Path]::Combine('$(GTFOBepInExPath)', 'interop'))</_Parameter2>
+    </AssemblyAttribute>
+  </ItemGroup>
+  <ItemGroup>
+    <!-- Core references no game or Unity assembly; -->
+    <Compile Include="../../Core/*.cs" Exclude="../../Core/CameraLeaseBook.cs;../../Core/Observers.cs" Link="Core/%(Filename)%(Extension)" />
+    <Compile Include="../../Net/*.cs" Link="Net/%(Filename)%(Extension)" />
+    <Compile Include="../../Visual/Core/JointClip*.cs" Link="Visual/%(Filename)%(Extension)" />
+    <Compile Include="*.cs" />
+    <None Include="../fixtures/*.glb" Link="fixtures/%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
+    <ProjectReference Include="../../../ForgeCore/Once/ForgeCore.Once.csproj" />
+  </ItemGroup>
+</Project>

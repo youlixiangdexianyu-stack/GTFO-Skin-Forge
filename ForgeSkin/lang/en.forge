@@ -1,0 +1,19 @@
+{
+  "keys.group": "Weapon skins",
+  "keys.picker": "Open the skin picker (lobby)",
+  "lobby.button": "SKINS",
+  "picker.slots": "GEAR",
+  "picker.skins": "SKINS",
+  "picker.colours": "COLOURS",
+  "picker.original": "ORIGINAL LOOK",
+  "picker.originalBody": "The gear as the game made it, without a skin.",
+  "picker.by": "By {0}",
+  "picker.colourCount": "Colours you can change: {0}",
+  "picker.noColours": "This skin has no colours you can change.",
+  "picker.pickSkinFirst": "Pick a skin for this gear first, then change its colours here.",
+  "picker.none": "No skins are installed. Install skins with the ForgeSkin editor, or a skin mod from your mod manager.",
+  "picker.default": "The skin's own colour",
+  "picker.suggested": "Suggested by the skin's author",
+  "picker.more": "More colours",
+  "picker.colourBody": "Changes {0} on this skin. Your colour is kept for the next game."
+}

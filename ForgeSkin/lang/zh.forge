@@ -1,0 +1,19 @@
+{
+  "keys.group": "武器皮肤",
+  "keys.picker": "打开皮肤选择（大厅）",
+  "lobby.button": "皮肤",
+  "picker.slots": "装备",
+  "picker.skins": "皮肤",
+  "picker.colours": "颜色",
+  "picker.original": "原版外观",
+  "picker.originalBody": "游戏原本的样子，不用皮肤。",
+  "picker.by": "作者：{0}",
+  "picker.colourCount": "可以调的颜色：{0} 种",
+  "picker.noColours": "这款皮肤没有可以调的颜色。",
+  "picker.pickSkinFirst": "先给这件装备选一款皮肤，再到这里调它的颜色。",
+  "picker.none": "还没有安装皮肤。可以用 ForgeSkin 编辑器安装，或在模组管理器里装皮肤模组。",
+  "picker.default": "皮肤原本的颜色",
+  "picker.suggested": "作者推荐的颜色",
+  "picker.more": "更多颜色",
+  "picker.colourBody": "改的是这款皮肤的「{0}」。你选的颜色下次进游戏还在。"
+}

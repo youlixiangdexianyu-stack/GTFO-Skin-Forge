@@ -1,0 +1,22 @@
+# Dead-code rescan for Mods (contract §4.5 Z1). It is only valid in a build that resolves every game and interop type:
+# with unresolved types Roslyn reports a needed using (IDE0005) or a member (IDE0051) as unused. Run it with the command below
+# and a BepInEx profile that holds the game and interop assemblies (GTFOBepInExPath), never without one; Mods/verify.py does not
+# pass the scan switch. Applied only when a build passes -p:ForgeDeadCodeScan=true, so the
+# normal build keeps these rules silent. IDE0005 is reported on build only when the project generates its documentation file, so a scan also
+# passes -p:GenerateDocumentationFile=true (and the environment variable of the same name, which reaches the API-fingerprint tool build)
+# and -p:TreatWarningsAsErrors=false. A source file is compiled by several projects (Core and Native, source-double tests): a using or
+# member is dead only when every project that compiles the file reports it. The scan command, run from the repository root:
+#   dotnet build Mods/Forge.Architecture.sln -c Release --artifacts-path artifacts/dotnet -p:GTFOBepInExPath=<profile>/BepInEx
+#     -p:ForgeDeadCodeScan=true -p:TreatWarningsAsErrors=false --no-incremental --disable-build-servers -m:1
+# The test projects are scanned the same way with their own build input (-p:ForgeFrameworkAssembly). Members the engine calls by reflection are not dead: Harmony patch methods (Prepare,
+# TargetMethod, Prefix, Postfix, Finalizer) and Unity messages (Awake, Update, LateUpdate, OnGUI, OnDestroy ...) are
+# reported by IDE0051 and stay.
+is_global = true
+
+# IDE0051: private member is never used.
+dotnet_diagnostic.IDE0051.severity = warning
+# IDE0052: private member is assigned but its value is never read.
+dotnet_diagnostic.IDE0052.severity = warning
+# CS8019 (unnecessary using) is hidden in command-line builds; IDE0005 reports the same usings as a warning.
+dotnet_diagnostic.CS8019.severity = warning
+dotnet_diagnostic.IDE0005.severity = warning

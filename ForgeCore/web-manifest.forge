@@ -1,0 +1,3260 @@
+{
+  "kind": "forge-library-manifest",
+  "schemaVersion": "1.0.0",
+  "library": "ForgeCore",
+  "packageName": "NAinfini-ForgeCore",
+  "version": "1.0.0",
+  "parts": [
+    {
+      "id": "core",
+      "title": "Core",
+      "namespace": "ForgeCore",
+      "groups": [
+        {
+          "id": "modules",
+          "title": "Modules",
+          "entries": [
+            {
+              "id": "Assets",
+              "summary": "Loads asset bundles (each file once, reused afterwards, or over several frames for a caller that unloads), returns assets and shader bytes; a bad bundle or a missing asset fails explicitly and is logged."
+            },
+            {
+              "id": "Log",
+              "summary": "A log source per mod ID; only errors are written, the same error once with counts at 1, 10 and 100; formats a number or a position for a message."
+            },
+            {
+              "id": "Settings",
+              "summary": "Binds BepInEx configuration entries per mod ID and tells the mod when one changes at run time."
+            },
+            {
+              "id": "Pool",
+              "summary": "A fixed-capacity object pool that prewarms on demand and allocates nothing on take or return."
+            },
+            {
+              "id": "Net",
+              "summary": "Per-mod network channels with automatic message-format fingerprints (a mismatching player is refused on both sides), reliable or droppable delivery, host broadcast, point to point, per-player lobby data and late-join resend.",
+              "patches": [
+                {
+                  "module": "Net.ReplicationMisses",
+                  "type": "SNetwork.SNet_Replication",
+                  "method": "RecieveBytes"
+                },
+                {
+                  "module": "Net.ReplicationMisses",
+                  "type": "SNetwork.SNet_Replication",
+                  "method": "AssignReplicatorKey"
+                }
+              ]
+            },
+            {
+              "id": "Store",
+              "summary": "Local progress as one JSON file per mod; a file that cannot be read is reported and never overwritten."
+            },
+            {
+              "id": "InputLease",
+              "summary": "Takes over game input actions for the local player; leases stack and are released at level cleanup and when the player goes down.",
+              "patches": [
+                {
+                  "module": "InputLease.Interactions",
+                  "type": "PlayerInteraction",
+                  "method": "set_CameraRayInteractionEnabled"
+                },
+                {
+                  "module": "InputLease.Interactions",
+                  "type": "PlayerInteraction",
+                  "method": "set_SphereCheckInteractionEnabled"
+                },
+                {
+                  "module": "InputLease.Interactions",
+                  "type": "PlayerInteraction",
+                  "method": "set_LadderInteractionEnabled"
+                }
+              ]
+            },
+            {
+              "id": "GameEvents",
+              "summary": "Main-thread events for host change, text language, end of a level, checkpoint reload, the local player going down, the lobby opening or closing and the expedition being chosen (host and clients).",
+              "patches": [
+                {
+                  "module": "GameEvents.Language",
+                  "type": "Localization.GameDataTextLocalizationService",
+                  "method": "SetCurrentLanguage"
+                },
+                {
+                  "module": "GameEvents.ExpeditionSelected",
+                  "type": "RundownManager",
+                  "method": "MasterSelectActiveExpedition"
+                },
+                {
+                  "module": "GameEvents.ExpeditionSelected",
+                  "type": "RundownManager",
+                  "method": "SetActiveExpedition"
+                }
+              ]
+            },
+            {
+              "id": "Enemies",
+              "summary": "Tracks live enemies, queries nearby enemies (also only those in sight, with their aim point), reads the four alert levels, requests enemy spawns, leases slowdowns and slows every enemy inside a zone for a time."
+            },
+            {
+              "id": "ColliderQuery",
+              "summary": "Sphere queries over colliders with a reusable buffer; a full buffer is reported as truncated, never as complete."
+            },
+            {
+              "id": "Level",
+              "summary": "Finds the course node and dimension of a position, finds a free stand spot near an object, finds a walkable path, a line of sight and a blocked move between points, looks up dimensions, zones and areas, finds the in-level agent of a player by lookup, and reads the active expedition.",
+              "patches": [
+                {
+                  "module": "Level.StackedVolumes",
+                  "type": "AIGraph.AIG_GeomorphNodeVolume",
+                  "method": "TryGetGeomorphVolume"
+                }
+              ]
+            },
+            {
+              "id": "HoldPoint",
+              "summary": "The game's timed hold point (Interact_Timed): sets up the prompt, duration and callbacks, and shuts a point so it stays shut when the game switches it on again, until it is opened.",
+              "patches": [
+                {
+                  "module": "HoldPoint.Shut",
+                  "type": "Interact_Timed",
+                  "method": "SetActive"
+                }
+              ]
+            },
+            {
+              "id": "Il2CppArrays",
+              "summary": "Copies whole game arrays to and from managed arrays and uploads texture pixels in one write."
+            },
+            {
+              "id": "PlayerStats",
+              "summary": "The local player's walk speed, carry slowdown, jump, stamina cost and hit flinch through the game's own paths; each hook goes on with its first subscriber and every subscriber is asked.",
+              "patches": [
+                {
+                  "module": "PlayerStats.Walk",
+                  "type": "PLOC_Base",
+                  "method": "GetHorizontalVelocityFromInput"
+                },
+                {
+                  "module": "PlayerStats.Jump",
+                  "type": "PLOC_Jump",
+                  "method": "Enter"
+                },
+                {
+                  "module": "PlayerStats.Rise",
+                  "type": "PLOC_Base",
+                  "method": "UpdateVerticalVelocityInAir"
+                },
+                {
+                  "module": "PlayerStats.Stamina",
+                  "type": "PlayerStamina",
+                  "method": "UseStamina"
+                },
+                {
+                  "module": "PlayerStats.Flinch",
+                  "type": "Dam_PlayerDamageLocal",
+                  "method": "Hitreact"
+                }
+              ]
+            },
+            {
+              "id": "CarrySlot",
+              "summary": "Moves the heavy object of the in-level carry slot between the local player's hands and back through the game's synced wield request, drops one on the back when the player falls, shows another player's on their body, and sets a heavy object's pick-up hold time."
+            },
+            {
+              "id": "PlayerNoise",
+              "summary": "Makes sleeping enemies hear a player's movement noise as a multiple of its distance; leases end with the level.",
+              "patches": [
+                {
+                  "module": "PlayerNoise",
+                  "type": "Enemies.EnemyDetection",
+                  "method": "UpdateDirectionDistanceToTarget_Hibernate"
+                }
+              ]
+            },
+            {
+              "id": "Combat",
+              "summary": "The game's own damage, push, melee, explosion, force and noise requests, reporting what the game actually settled, a bullet kill event, a shot from a point at a collider settled as a stock bullet, the bullet ray that steps over the shooter's own colliders, plus which receiver a collider belongs to."
+            },
+            {
+              "id": "Gear",
+              "summary": "Swaps the local player's gun with its assets preloaded, writes ammunition back through the game, arbitrates the special weapon slot, and limits which gears players may choose (one patch on the game's slot offer and its local equip entry for every package).",
+              "patches": [
+                {
+                  "module": "Gear.SpecialSlot",
+                  "type": "Player.PlayerAmmoStorage",
+                  "method": "PickupAmmo"
+                },
+                {
+                  "module": "Gear.SpecialSlot",
+                  "type": "Player.PlayerAmmoStorage",
+                  "method": "NeedWeaponAmmo"
+                },
+                {
+                  "module": "Gear.Reload",
+                  "type": "Gear.BulletWeapon",
+                  "method": "get_ReloadTime"
+                },
+                {
+                  "module": "Gear.Offers",
+                  "type": "Gear.GearManager",
+                  "method": "GetAllGearForSlot"
+                },
+                {
+                  "module": "Gear.Offers",
+                  "type": "Player.PlayerBackpackManager",
+                  "method": "EquipLocalGear"
+                },
+                {
+                  "module": "Gear.Parts",
+                  "type": "Gear.GearPartSpawner+_SpawnAllParts_d__15",
+                  "method": "MoveNext"
+                }
+              ]
+            },
+            {
+              "id": "PlayerHits",
+              "summary": "The one patch on the game's player hit path (OnIncomingDamage, ModifyInfection): mods redirect the damage of a hit, refuse an infection write or read both through registrations instead of patching the methods themselves.",
+              "patches": [
+                {
+                  "module": "PlayerHits",
+                  "type": "Dam_PlayerDamageBase",
+                  "method": "OnIncomingDamage"
+                },
+                {
+                  "module": "PlayerHits",
+                  "type": "Dam_PlayerDamageBase",
+                  "method": "ModifyInfection"
+                }
+              ]
+            },
+            {
+              "id": "Compact",
+              "summary": "Allocation-free compact encoding: variable-length and zig-zag integers, deltas, range quantization and smallest-three quaternions; a malformed read throws, never guesses."
+            },
+            {
+              "id": "ChunkLog",
+              "summary": "An append-only file of independently compressed, checksummed chunks with a trailing index; after a crash the reader scans chunk headers and keeps every whole chunk, and another format version is refused with the difference named."
+            },
+            {
+              "id": "Items",
+              "summary": "Spawns an item pickup the way the game does, in play as well as before it; the Spawned event reports every item the game spawns, so no other package patches the game's spawn method.",
+              "patches": [
+                {
+                  "module": "Items.Spawned",
+                  "type": "ItemReplicationManager",
+                  "method": "OnItemSpawn"
+                }
+              ]
+            },
+            {
+              "id": "SoloDrop",
+              "summary": "Starts one chosen expedition as a private host with chosen seeds, alone or with up to three of the game's bots, through the game's own menu calls; stops at the first unexpected state and never retries."
+            },
+            {
+              "id": "InstalledPlugins",
+              "summary": "The loaded BepInEx plugins with version and DLL hash, and one fingerprint over them."
+            },
+            {
+              "id": "DataBlocks",
+              "summary": "Adds new gear and item data blocks to the game's tables; an ID already in use is refused."
+            },
+            {
+              "id": "Frame",
+              "summary": "Per-frame callbacks for mods (update, late update, quit) run from ForgeCore's one driver; a callback that throws is reported once and never stops the others."
+            },
+            {
+              "id": "Patches",
+              "summary": "Puts a mod's own Harmony patches on at first use and keeps them, so a session that never uses the feature never pays for them."
+            },
+            {
+              "id": "StrictJson",
+              "summary": "Strict reading of a JSON object: unknown or repeated fields are refused, a wrong type names its field, a number outside its range is refused, never clamped; also canonical JSON."
+            },
+            {
+              "id": "GameHooks",
+              "summary": "The game methods that more than one package reads, each patched here once and handed to every subscriber around the game's own body: door, reactor, scan, container, generator, pickup and terminal state callbacks, noise, scout and wave events, a player's damage receive entries, a revive, the four firing bodies and the weapon ray casts, push, sentry placement and every sentry lifecycle step, mine placement, item spawn, level cleanup, marker and prefab placement, survival waves, the end and the failure check of an expedition, enemy setup, death, despawn, destruction, mode change, spawn sync, limb break, received damage and the bullet and melee receive entries, the local player's death, the bullet hit entry, weapon wield and item unwield, dry fire, gear assembly (also a synced gun's), reload start and end, the attached flashlight switch, the C-foam burst, a throwable's throw, the deployed marker, sentry spawn, the objective panel and intel messages, host migration, and the game event log; no package patches these methods itself.",
+              "patches": [
+                {
+                  "module": "GameHooks.EnemyBulletReceived",
+                  "type": "Dam_EnemyDamageBase",
+                  "method": "ReceiveBulletDamage"
+                },
+                {
+                  "module": "GameHooks.EnemyMeleeReceived",
+                  "type": "Dam_EnemyDamageBase",
+                  "method": "ReceiveMeleeDamage"
+                },
+                {
+                  "module": "GameHooks.WeakDoorState",
+                  "type": "LevelGeneration.LG_WeakDoor",
+                  "method": "OnSyncDoorStateChange"
+                },
+                {
+                  "module": "GameHooks.ReactorState",
+                  "type": "LevelGeneration.LG_WardenObjective_Reactor",
+                  "method": "OnStateChange"
+                },
+                {
+                  "module": "GameHooks.ReactorMessage",
+                  "type": "LevelGeneration.LG_WardenObjective_Reactor",
+                  "method": "SetGUIMessage"
+                },
+                {
+                  "module": "GameHooks.PuzzleState",
+                  "type": "ChainedPuzzles.ChainedPuzzleInstance",
+                  "method": "OnStateChange"
+                },
+                {
+                  "module": "GameHooks.ResourceContainerState",
+                  "type": "LevelGeneration.LG_ResourceContainer_Sync",
+                  "method": "OnStateChange"
+                },
+                {
+                  "module": "GameHooks.GeneratorState",
+                  "type": "LevelGeneration.LG_PowerGenerator_Core",
+                  "method": "OnStateChange"
+                },
+                {
+                  "module": "GameHooks.PickupItemState",
+                  "type": "LevelGeneration.LG_PickupItem_Sync",
+                  "method": "OnStateChange"
+                },
+                {
+                  "module": "GameHooks.TerminalCommand",
+                  "type": "LevelGeneration.LG_ComputerTerminalCommandInterpreter",
+                  "method": "ReceiveCommand"
+                },
+                {
+                  "module": "GameHooks.NoiseMade",
+                  "type": "NoiseManager",
+                  "method": "MakeNoise"
+                },
+                {
+                  "module": "GameHooks.ScoutScreamActivated",
+                  "type": "Enemies.ES_ScoutScream",
+                  "method": "ActivateState"
+                },
+                {
+                  "module": "GameHooks.ScoutDetectionEntered",
+                  "type": "ES_ScoutDetection",
+                  "method": "CommonEnter"
+                },
+                {
+                  "module": "GameHooks.EnemyExplosionReceived",
+                  "type": "Dam_EnemyDamageBase",
+                  "method": "ReceiveExplosionDamage"
+                },
+                {
+                  "module": "GameHooks.WaveStopped",
+                  "type": "SurvivalWave",
+                  "method": "StopEvent"
+                },
+                {
+                  "module": "GameHooks.FirstPersonHolderLateUpdate",
+                  "type": "FirstPersonItemHolder",
+                  "method": "LateUpdate"
+                },
+                {
+                  "module": "GameHooks.SyncIkSolved",
+                  "type": "Player.PlayerSyncIK",
+                  "method": "UpdateIK"
+                },
+                {
+                  "module": "GameHooks.EnemyAttackStarted",
+                  "type": "Enemies.ES_EnemyAttackBase",
+                  "method": "DoStartAttack"
+                },
+                {
+                  "module": "GameHooks.EnemyHitreacted",
+                  "type": "ES_Hitreact",
+                  "method": "DoHitReact"
+                },
+                {
+                  "module": "GameHooks.AnimatorCrossFaded",
+                  "type": "UnityEngine.Animator",
+                  "method": "CrossFadeInFixedTime"
+                },
+                {
+                  "module": "GameHooks.HibernateWakeActivated",
+                  "type": "Enemies.ES_HibernateWakeUp",
+                  "method": "ActivateState"
+                },
+                {
+                  "module": "GameHooks.EnemyScreamStarted",
+                  "type": "Enemies.ES_Scream",
+                  "method": "ActivateState"
+                },
+                {
+                  "module": "GameHooks.EnemyScreamed",
+                  "type": "Enemies.ES_Scream",
+                  "method": "OnStateShouldBeActivated"
+                },
+                {
+                  "module": "GameHooks.PlayerReceived",
+                  "type": "Dam_PlayerDamageBase",
+                  "method": "ReceiveBulletDamage"
+                },
+                {
+                  "module": "GameHooks.PlayerReceived",
+                  "type": "Dam_PlayerDamageBase",
+                  "method": "ReceiveMeleeDamage"
+                },
+                {
+                  "module": "GameHooks.PlayerReceived",
+                  "type": "Dam_PlayerDamageBase",
+                  "method": "ReceiveExplosionDamage"
+                },
+                {
+                  "module": "GameHooks.PlayerReceived",
+                  "type": "Dam_PlayerDamageBase",
+                  "method": "ReceiveTentacleAttackDamage"
+                },
+                {
+                  "module": "GameHooks.PlayerReceived",
+                  "type": "Dam_PlayerDamageBase",
+                  "method": "ReceiveShooterProjectileDamage"
+                },
+                {
+                  "module": "GameHooks.PlayerReceived",
+                  "type": "Dam_PlayerDamageBase",
+                  "method": "ReceiveFallDamage"
+                },
+                {
+                  "module": "GameHooks.PlayerReceived",
+                  "type": "Dam_PlayerDamageLocal",
+                  "method": "ReceiveBulletDamage"
+                },
+                {
+                  "module": "GameHooks.PlayerReceived",
+                  "type": "Dam_PlayerDamageLocal",
+                  "method": "ReceiveMeleeDamage"
+                },
+                {
+                  "module": "GameHooks.PlayerReceived",
+                  "type": "Dam_PlayerDamageLocal",
+                  "method": "ReceiveExplosionDamage"
+                },
+                {
+                  "module": "GameHooks.PlayerReceived",
+                  "type": "Dam_PlayerDamageLocal",
+                  "method": "ReceiveTentacleAttackDamage"
+                },
+                {
+                  "module": "GameHooks.PlayerReceived",
+                  "type": "Dam_PlayerDamageLocal",
+                  "method": "ReceiveShooterProjectileDamage"
+                },
+                {
+                  "module": "GameHooks.PlayerReceived",
+                  "type": "Dam_PlayerDamageLocal",
+                  "method": "ReceiveFallDamage"
+                },
+                {
+                  "module": "GameHooks.PlayerRevived",
+                  "type": "PLOC_Downed",
+                  "method": "OnPlayerRevived"
+                },
+                {
+                  "module": "GameHooks.HealthSetReceived",
+                  "type": "Dam_PlayerDamageBase",
+                  "method": "ReceiveSetHealth"
+                },
+                {
+                  "module": "GameHooks.HealthSetReceived",
+                  "type": "Dam_EnemyDamageBase",
+                  "method": "ReceiveSetHealth"
+                },
+                {
+                  "module": "GameHooks.Fire.BulletWeapon",
+                  "type": "Gear.BulletWeapon",
+                  "method": "Fire"
+                },
+                {
+                  "module": "GameHooks.Fire.Shotgun",
+                  "type": "Gear.Shotgun",
+                  "method": "Fire"
+                },
+                {
+                  "module": "GameHooks.Fire.BulletWeaponSynced",
+                  "type": "Gear.BulletWeaponSynced",
+                  "method": "Fire"
+                },
+                {
+                  "module": "GameHooks.Fire.ShotgunSynced",
+                  "type": "Gear.ShotgunSynced",
+                  "method": "Fire"
+                },
+                {
+                  "module": "GameHooks.MuzzleRay",
+                  "type": "Weapon",
+                  "method": "CastWeaponRay"
+                },
+                {
+                  "module": "GameHooks.AlignedRay",
+                  "type": "Weapon",
+                  "method": "CastWeaponRay"
+                },
+                {
+                  "module": "GameHooks.PushEntered",
+                  "type": "Gear.MWS_Push",
+                  "method": "Enter"
+                },
+                {
+                  "module": "GameHooks.SentryFired",
+                  "type": "SentryGunInstance_Firing_Bullets",
+                  "method": "FireBullet"
+                },
+                {
+                  "module": "GameHooks.SentryLifecycle",
+                  "type": "SentryGunInstance",
+                  "method": "OnGearSpawnComplete"
+                },
+                {
+                  "module": "GameHooks.SentryLifecycle",
+                  "type": "SentryGunInstance",
+                  "method": "PickUp"
+                },
+                {
+                  "module": "GameHooks.SentryLifecycle",
+                  "type": "SentryGunInstance",
+                  "method": "SyncedPickup"
+                },
+                {
+                  "module": "GameHooks.SentryLifecycle",
+                  "type": "SentryGunInstance",
+                  "method": "OnDespawn"
+                },
+                {
+                  "module": "GameHooks.SentryLifecycle",
+                  "type": "SentryGunInstance",
+                  "method": "OnDestroy"
+                },
+                {
+                  "module": "GameHooks.SentryLifecycle",
+                  "type": "SentryGunInstance",
+                  "method": "OnBackpackCleanupCallback"
+                },
+                {
+                  "module": "GameHooks.SentryLifecycle",
+                  "type": "SentryGunInstance",
+                  "method": "CleanUp"
+                },
+                {
+                  "module": "GameHooks.MineSpawned",
+                  "type": "MineDeployerInstance",
+                  "method": "OnSpawn"
+                },
+                {
+                  "module": "GameHooks.MinePickedUp",
+                  "type": "MineDeployerInstance",
+                  "method": "SyncedPickup"
+                },
+                {
+                  "module": "GameHooks.LevelCleanup",
+                  "type": "LevelGeneration.Builder",
+                  "method": "OnLevelCleanup"
+                },
+                {
+                  "module": "GameHooks.MarkerSpawned",
+                  "type": "LG_MarkerSpawner",
+                  "method": "TrySpawnRandomPrefab"
+                },
+                {
+                  "module": "GameHooks.PrefabBuilt",
+                  "type": "LevelGeneration.LG_PrefabSpawner",
+                  "method": "OnBuild"
+                },
+                {
+                  "module": "GameHooks.SurvivalWaveStarted",
+                  "type": "Mastermind",
+                  "method": "TriggerSurvivalWave"
+                },
+                {
+                  "module": "GameHooks.ExpeditionEnded",
+                  "type": "RundownManager",
+                  "method": "OnExpeditionEnded"
+                },
+                {
+                  "module": "GameHooks.ExpeditionFailedChecked",
+                  "type": "WardenObjectiveManager",
+                  "method": "CheckExpeditionFailed"
+                },
+                {
+                  "module": "GameHooks.ExpeditionSuccessCheck",
+                  "type": "WardenObjectiveManager",
+                  "method": "CheckExpeditionSuccess"
+                },
+                {
+                  "module": "GameHooks.ChainedPuzzleInteract",
+                  "type": "ChainedPuzzles.ChainedPuzzleInstance",
+                  "method": "AttemptInteract"
+                },
+                {
+                  "module": "GameHooks.PlayerDespawned",
+                  "type": "Player.PlayerManager",
+                  "method": "OnPlayerDespawned"
+                },
+                {
+                  "module": "GameHooks.EnemySetup",
+                  "type": "Enemies.EnemyAgent",
+                  "method": "Setup"
+                },
+                {
+                  "module": "GameHooks.EnemyDead",
+                  "type": "Enemies.EnemyAgent",
+                  "method": "OnDead"
+                },
+                {
+                  "module": "GameHooks.EnemyDespawned",
+                  "type": "Enemies.EnemyAgent",
+                  "method": "OnDeSpawn"
+                },
+                {
+                  "module": "GameHooks.EnemyDestroyed",
+                  "type": "Enemies.EnemyAgent",
+                  "method": "OnDestroy"
+                },
+                {
+                  "module": "GameHooks.EnemyModeChanged",
+                  "type": "Enemies.EnemyAI",
+                  "method": "ModeChange"
+                },
+                {
+                  "module": "GameHooks.EnemySyncSpawned",
+                  "type": "Enemies.EnemySync",
+                  "method": "OnSpawn"
+                },
+                {
+                  "module": "GameHooks.EnemySyncDespawned",
+                  "type": "Enemies.EnemySync",
+                  "method": "OnDespawn"
+                },
+                {
+                  "module": "GameHooks.EnemyDamageReceived",
+                  "type": "Dam_EnemyDamageBase",
+                  "method": "ProcessReceivedDamage"
+                },
+                {
+                  "module": "GameHooks.EnemyLimbDestroyed",
+                  "type": "Dam_EnemyDamageLimb",
+                  "method": "DestroyLimb"
+                },
+                {
+                  "module": "GameHooks.EnemyCustomLimbDestroyed",
+                  "type": "Dam_EnemyDamageLimb_Custom",
+                  "method": "DestroyLimb"
+                },
+                {
+                  "module": "GameHooks.LocalPlayerDied",
+                  "type": "Dam_PlayerDamageLocal",
+                  "method": "ReceiveSetDead"
+                },
+                {
+                  "module": "GameHooks.BulletHit",
+                  "type": "Gear.BulletWeapon",
+                  "method": "BulletHit"
+                },
+                {
+                  "module": "GameHooks.BulletWeaponWielded",
+                  "type": "Gear.BulletWeapon",
+                  "method": "OnWield"
+                },
+                {
+                  "module": "GameHooks.BulletWeaponUnwielded",
+                  "type": "Gear.BulletWeapon",
+                  "method": "OnUnWield"
+                },
+                {
+                  "module": "GameHooks.MagazineVisibility",
+                  "type": "Gear.BulletWeapon",
+                  "method": "SetMagazineVisibile"
+                },
+                {
+                  "module": "GameHooks.AutoDryFired",
+                  "type": "Gear.BWA_Auto",
+                  "method": "OnFireShotEmptyClip"
+                },
+                {
+                  "module": "GameHooks.SemiDryFired",
+                  "type": "Gear.BWA_Semi",
+                  "method": "OnFireShotEmptyClip"
+                },
+                {
+                  "module": "GameHooks.GearPartsSpawned",
+                  "type": "Gear.GearPartHolder",
+                  "method": "OnAllPartsSpawned"
+                },
+                {
+                  "module": "GameHooks.GearSpawnCompleted",
+                  "type": "ItemEquippable",
+                  "method": "OnGearSpawnComplete"
+                },
+                {
+                  "module": "GameHooks.ResourcePackApplied",
+                  "type": "Gear.ResourcePackFirstPerson",
+                  "method": "ApplyPack"
+                },
+                {
+                  "module": "GameHooks.ReloadTriggered",
+                  "type": "ItemEquippable",
+                  "method": "TryTriggerReloadAnimationSequence"
+                },
+                {
+                  "module": "GameHooks.ReloadDone",
+                  "type": "ItemEquippable",
+                  "method": "_TryTriggerReloadAnimationSequence_b__145_0"
+                },
+                {
+                  "module": "GameHooks.BackpackDeployed",
+                  "type": "Player.PlayerBackpack",
+                  "method": "SetDeployed"
+                },
+                {
+                  "module": "GameHooks.SentrySpawned",
+                  "type": "SentryGunInstance",
+                  "method": "OnSpawn"
+                },
+                {
+                  "module": "GameHooks.ItemUnwielded",
+                  "type": "ItemEquippable",
+                  "method": "OnUnWield"
+                },
+                {
+                  "module": "GameHooks.SyncedGearSpawnCompleted",
+                  "type": "Gear.BulletWeaponSynced",
+                  "method": "OnGearSpawnComplete"
+                },
+                {
+                  "module": "GameHooks.FlashlightSet",
+                  "type": "ItemEquippable",
+                  "method": "SetAttachedFlashlightEnabled"
+                },
+                {
+                  "module": "GameHooks.GlueBurstFired",
+                  "type": "GlueGun",
+                  "method": "FireBurst"
+                },
+                {
+                  "module": "GameHooks.ThrowableThrown",
+                  "type": "ThrowingWeapon",
+                  "method": "Throw"
+                },
+                {
+                  "module": "GameHooks.ProgressionObjectiveSet",
+                  "type": "PUI_GameObjectives",
+                  "method": "SetProgressionObjective"
+                },
+                {
+                  "module": "GameHooks.ProgressionObjectiveRemoved",
+                  "type": "PUI_GameObjectives",
+                  "method": "RemoveProgressionObjective"
+                },
+                {
+                  "module": "GameHooks.ObjectivesCleaned",
+                  "type": "PUI_GameObjectives",
+                  "method": "OnLevelCleanup"
+                },
+                {
+                  "module": "GameHooks.SubObjectiveShown",
+                  "type": "PUI_WardenIntel",
+                  "method": "ShowSubObjectiveMessage"
+                },
+                {
+                  "module": "GameHooks.PrioritySubObjectiveShown",
+                  "type": "PUI_WardenIntel",
+                  "method": "ShowPrioritySubObjectiveMessage"
+                },
+                {
+                  "module": "GameHooks.ExpeditionWindowVisible",
+                  "type": "CellMenu.CM_ExpeditionWindow",
+                  "method": "SetVisible"
+                },
+                {
+                  "module": "GameHooks.MasterMigrationFound",
+                  "type": "SNetwork.SNet_SyncManager",
+                  "method": "OnFoundNewMasterDuringMigration"
+                },
+                {
+                  "module": "GameHooks.MasterFound",
+                  "type": "SNetwork.SNet_SyncManager",
+                  "method": "OnFoundMaster"
+                },
+                {
+                  "module": "GameHooks.GameEventPosted",
+                  "type": "GameEvent.GameEventManager",
+                  "method": "PostEvent"
+                },
+                {
+                  "module": "GameHooks.PlayerReplicationSpawned",
+                  "type": "Player.PlayerReplicationManager",
+                  "method": "OnSpawn"
+                },
+                {
+                  "module": "GameHooks.PlayerReplicationDespawned",
+                  "type": "Player.PlayerReplicationManager",
+                  "method": "OnDeSpawn"
+                },
+                {
+                  "module": "GameHooks.PlayerManagerSpawned",
+                  "type": "Player.PlayerManager",
+                  "method": "OnPlayerSpawned"
+                },
+                {
+                  "module": "GameHooks.GameLogAdded",
+                  "type": "PUI_GameEventLog",
+                  "method": "AddLogItem"
+                }
+              ]
+            },
+            {
+              "id": "Puppets",
+              "summary": "Holds an enemy or a non-local player agent as a puppet: its own control is switched off and the caller drives place, animation, states and actions through the game's own entries (an enemy's sleep, heartbeat, light sleep and exact wake-up animation among them); an enemy puppet's own projectile and tentacle launches are held off; a take-back by the game is put right and counted.",
+              "patches": [
+                {
+                  "module": "Puppets.MovementHold",
+                  "type": "Player.PlayerLocomotion",
+                  "method": "UpdateMovementFromSync"
+                },
+                {
+                  "module": "Puppets.AttackHold",
+                  "type": "EAB_ProjectileShooter",
+                  "method": "FireBurst"
+                },
+                {
+                  "module": "Puppets.AttackHold",
+                  "type": "EAB_MovingEnemeyTentacle",
+                  "method": "Attack"
+                },
+                {
+                  "module": "Puppets.AttackHold",
+                  "type": "EAB_MovingEnemyTentacleMultiple",
+                  "method": "Attack"
+                }
+              ]
+            },
+            {
+              "id": "Fnv",
+              "summary": "FNV-1a 32 and 64 bit over UTF-8 text or bytes, the one hash behind wire formats and saved keys."
+            },
+            {
+              "id": "DeterministicRandom",
+              "summary": "Random numbers that are a pure function of their keys (SplitMix64): every peer and a replay draw the same value, and the game's own random sequence is untouched."
+            },
+            {
+              "id": "Hash",
+              "summary": "SHA-256 as lowercase hex over bytes, UTF-8 text or a stream, the one spelling of a content hash."
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "ui",
+      "title": "UI",
+      "namespace": "ForgeUI",
+      "groups": [
+        {
+          "id": "regions",
+          "title": "HUD regions",
+          "entries": [
+            {
+              "id": "WeaponList",
+              "summary": "Under the game's weapon list, right-aligned, stacking downwards.",
+              "details": {
+                "flowX": -1,
+                "flowY": -1
+              }
+            },
+            {
+              "id": "Vitals",
+              "summary": "Above the game's health bar and vitals, centred on the bar, stacking upwards.",
+              "details": {
+                "flowX": 0,
+                "flowY": 1
+              }
+            },
+            {
+              "id": "CenterBanner",
+              "summary": "A little above the middle of the screen: one element at a time (the highest priority one that is shown).",
+              "details": {
+                "flowX": 0,
+                "flowY": 0
+              }
+            },
+            {
+              "id": "TopCenter",
+              "summary": "The top edge of the screen, centred, stacking downwards.",
+              "details": {
+                "flowX": 0,
+                "flowY": -1
+              }
+            },
+            {
+              "id": "Notices",
+              "summary": "The top left corner under the game's own objective text, stacking downwards.",
+              "details": {
+                "flowX": 1,
+                "flowY": -1
+              }
+            },
+            {
+              "id": "RightColumn",
+              "summary": "The right edge in the middle of the screen, right-aligned, stacking downwards.",
+              "details": {
+                "flowX": -1,
+                "flowY": -1
+              }
+            },
+            {
+              "id": "BottomLeft",
+              "summary": "The bottom left corner, stacking upwards.",
+              "details": {
+                "flowX": 1,
+                "flowY": 1
+              }
+            },
+            {
+              "id": "BottomRight",
+              "summary": "The bottom right corner, right-aligned, stacking upwards.",
+              "details": {
+                "flowX": -1,
+                "flowY": 1
+              }
+            },
+            {
+              "id": "World",
+              "summary": "Free: the element's root is the middle of the screen and it follows places in the world (markers, hit ticks, damage numbers). It takes no room and is not laid out.",
+              "details": {
+                "flowX": 0,
+                "flowY": 0
+              }
+            },
+            {
+              "id": "TopRight",
+              "summary": "The top right corner, right-aligned, stacking downwards.",
+              "details": {
+                "flowX": -1,
+                "flowY": -1
+              }
+            },
+            {
+              "id": "TopLeft",
+              "summary": "The top left corner, stacking downwards (above Notices, which leaves room for the game's own objective text).",
+              "details": {
+                "flowX": 1,
+                "flowY": -1
+              }
+            }
+          ]
+        },
+        {
+          "id": "registrations",
+          "title": "Registrations",
+          "entries": [
+            {
+              "id": "AddCrosshairAttachment(string)",
+              "summary": "Marks drawn on the game's crosshair layer: a thin ring, ticks, an optional dot and a landing circle (see CrosshairAttachment). Null (logged) when the name cannot be used or is taken.",
+              "name": "AddCrosshairAttachment",
+              "parameters": [
+                {
+                  "name": "name",
+                  "type": "string",
+                  "summary": "",
+                  "required": true
+                }
+              ],
+              "details": {
+                "returns": "CrosshairAttachment"
+              }
+            },
+            {
+              "id": "AddEnemyHealthBars(string, EnemyHealthBarStyle?)",
+              "summary": "Adds a switch for enemy health bars: while it is Active, an enemy the local player hits gets a thin bar over its head showing the health the game holds for it (on every machine the game applies every player's hits, so a teammate's damage shows too). The piece each hit takes flashes and then shrinks away. Bars show only for enemies in sight (a wall between hides the bar), fade a few seconds after the last hit and go at once when the enemy dies. Damage numbers and kill marks are the hit feedback's (AddHitFeedback). The player can turn every bar off in ForgeUI's config (EnemyHealthBars / Enabled).",
+              "name": "AddEnemyHealthBars",
+              "parameters": [
+                {
+                  "name": "name",
+                  "type": "string",
+                  "summary": "",
+                  "required": true
+                },
+                {
+                  "name": "style",
+                  "type": "EnemyHealthBarStyle?",
+                  "summary": "",
+                  "default": "null"
+                }
+              ],
+              "details": {
+                "returns": "EnemyHealthBar"
+              }
+            },
+            {
+              "id": "AddInteractPrompt(string)",
+              "summary": "A claim on the game's interaction prompt (the line near the middle of the screen with a key in brackets). Call Show every frame the prompt should be up (the game's own prompts replace it between frames) and Hide when it should go. Null (logged) when the name cannot be used or is taken.",
+              "name": "AddInteractPrompt",
+              "parameters": [
+                {
+                  "name": "name",
+                  "type": "string",
+                  "summary": "",
+                  "required": true
+                }
+              ],
+              "details": {
+                "returns": "InteractPrompt"
+              }
+            },
+            {
+              "id": "AddCountdownMarker(Vector3, UIText, float, Color)",
+              "summary": "One of the game's world markers that counts down to arriveAt (ForgeCore.Frame.GameTime) at position: name small and pale, then the seconds left in large digits (one decimal) in accent and, over the last three seconds, red and larger. Call Update every frame: it keeps the marker beside the position and changes the text only when a tenth of a second passes. Null (logged) when the game's marker layer refuses the marker.",
+              "name": "AddCountdownMarker",
+              "parameters": [
+                {
+                  "name": "position",
+                  "type": "Vector3",
+                  "summary": "",
+                  "required": true
+                },
+                {
+                  "name": "name",
+                  "type": "UIText",
+                  "summary": "",
+                  "required": true
+                },
+                {
+                  "name": "arriveAt",
+                  "type": "float",
+                  "summary": "",
+                  "required": true
+                },
+                {
+                  "name": "accent",
+                  "type": "Color",
+                  "summary": "",
+                  "required": true
+                }
+              ],
+              "details": {
+                "returns": "NavMarkerHandle"
+              }
+            },
+            {
+              "id": "AddHitFeedback(string, HitFeedbackStyle?)",
+              "summary": "Adds a switch for hit feedback: while it is Active, damage numbers float up from where hits land (hits on one target close together add up into one number), a marker flashes round the crosshair on a hit (stronger for a weak spot, larger and red for a kill), a kill leaves a short mark where the target was and a small confirmation beside the crosshair. With LocalHits the local player's hits on enemies drive it on their own; Pulse, Show and ShowAt drive it from your own code. The player can turn all hit feedback off in ForgeUI's config (HitFeedback / Enabled).",
+              "name": "AddHitFeedback",
+              "parameters": [
+                {
+                  "name": "name",
+                  "type": "string",
+                  "summary": "",
+                  "required": true
+                },
+                {
+                  "name": "style",
+                  "type": "HitFeedbackStyle?",
+                  "summary": "",
+                  "default": "null"
+                }
+              ],
+              "details": {
+                "returns": "HitFeedback"
+              }
+            },
+            {
+              "id": "AddKeyAction(string, string, string, string, KeyMode, string, KeyModes)",
+              "summary": "Registers a key action the player can rebind in the game's settings (Controls, under your group's heading). Read it every frame through the handle. Keys the player never changed follow defaultKey, also when you change the default in a later version; the same goes for the trigger mode, which the player picks from allowed in the same settings row group, together with the action's long-press and double-press times. Two actions whose same press would both fire (same key, overlapping contexts, any modes but a Tap with a Hold of at least its time, or a Tap with a Double), or an action on a key the game itself uses, are shown in the settings and logged; ForgeUI never moves anyone's key. A Tap, Hold or Double action alone on a game button's key hands every press that is not its own to that button (KeyMode; a Double action hands back the first press, the second is its own), so it shares the key without a conflict, unless the player sets it to fire together with the game (the settings' same-key row). All key reading and press timing lives here: a mod only reads the handle. Use the game's own bindings (InputAction) for what the game already has a key for, rather than a second action.",
+              "name": "AddKeyAction",
+              "parameters": [
+                {
+                  "name": "name",
+                  "type": "string",
+                  "summary": "",
+                  "required": true
+                },
+                {
+                  "name": "nameKey",
+                  "type": "string",
+                  "summary": "",
+                  "required": true
+                },
+                {
+                  "name": "groupKey",
+                  "type": "string",
+                  "summary": "",
+                  "required": true
+                },
+                {
+                  "name": "defaultKey",
+                  "type": "string",
+                  "summary": "",
+                  "required": true
+                },
+                {
+                  "name": "mode",
+                  "type": "KeyMode",
+                  "summary": "",
+                  "default": "KeyMode.Press"
+                },
+                {
+                  "name": "context",
+                  "type": "string",
+                  "summary": "",
+                  "default": "\"\""
+                },
+                {
+                  "name": "allowed",
+                  "type": "KeyModes",
+                  "summary": "",
+                  "default": "KeyModes.All"
+                }
+              ],
+              "details": {
+                "returns": "KeyAction"
+              }
+            },
+            {
+              "id": "AddLobbyStrip(string, Func<SNet_Player, IReadOnlyList<LobbyStripItem>?>, int)",
+              "summary": "A row of slot cells on every lobby bar with a player (the local one and everyone else's), one button step under the APPAREL button and the lobby buttons and exactly as wide as they are: each cell a chamfered tile in one muted dark tone with a light outline and a light band along its cut corner, the picture in its own colours. items gives each player's cells in slot order (null or empty shows no row); pass Empty for a free slot. Called once per bar per frame; it may return the same list it keeps, and the row is redrawn only when that content changes. Null (logged) when the name cannot be used or is taken.",
+              "name": "AddLobbyStrip",
+              "parameters": [
+                {
+                  "name": "name",
+                  "type": "string",
+                  "summary": "",
+                  "required": true
+                },
+                {
+                  "name": "items",
+                  "type": "Func<SNet_Player, IReadOnlyList<LobbyStripItem>?>",
+                  "summary": "",
+                  "required": true
+                },
+                {
+                  "name": "maxItems",
+                  "type": "int",
+                  "summary": "",
+                  "default": 6
+                }
+              ],
+              "details": {
+                "returns": "LobbyStrip"
+              }
+            },
+            {
+              "id": "AddPowerOn(string, PowerOnSpec)",
+              "summary": "A screen power-on and power-down played over the whole picture (see ScreenPowerOn): your panels and seams cut the screen, each panel comes on in its block's turn of Timeline with ForgeUI's glitch (the picture in your tint, banding, scanlines, split into your three channel colours with torn bands and noise bars in them) settling to the plain picture, and the seams fade once every block has settled; powering down runs the blocks in reverse to black and clears. An exclusive layer at Priority. Built and compiled by WarmNextLayer (or Warm). Null (logged) when the name is taken or the panels do not match the timeline.",
+              "name": "AddPowerOn",
+              "parameters": [
+                {
+                  "name": "name",
+                  "type": "string",
+                  "summary": "",
+                  "required": true
+                },
+                {
+                  "name": "spec",
+                  "type": "PowerOnSpec",
+                  "summary": "",
+                  "required": true
+                }
+              ],
+              "details": {
+                "returns": "ScreenPowerOn"
+              }
+            },
+            {
+              "id": "AddHitEdge(string)",
+              "summary": "Hit-direction flashes on the screen edge (an overlay layer, see HitEdge). Null (logged) when the name is taken.",
+              "name": "AddHitEdge",
+              "parameters": [
+                {
+                  "name": "name",
+                  "type": "string",
+                  "summary": "",
+                  "required": true
+                }
+              ],
+              "details": {
+                "returns": "HitEdge"
+              }
+            },
+            {
+              "id": "AddVisor(string)",
+              "summary": "A helmet visor over the screen (an overlay layer, see Visor). Null (logged) when the name is taken.",
+              "name": "AddVisor",
+              "parameters": [
+                {
+                  "name": "name",
+                  "type": "string",
+                  "summary": "",
+                  "required": true
+                }
+              ],
+              "details": {
+                "returns": "Visor"
+              }
+            },
+            {
+              "id": "AddTeammateTag(string, Func<SNet_Player, TeammateTag>, TeammateTagPlace)",
+              "summary": "Adds a tag to every teammate row of every teammates panel (HudTeammates, whichever mod made it): per player, a status picture and a short value at the row's right before the health, and a hairline share under the health. read runs once per row per frame while a panel is drawn; return None for a player the tag does not apply to, and the same string while the value is the same. A callback that throws is turned off (logged once).",
+              "name": "AddTeammateTag",
+              "parameters": [
+                {
+                  "name": "name",
+                  "type": "string",
+                  "summary": "",
+                  "required": true
+                },
+                {
+                  "name": "read",
+                  "type": "Func<SNet_Player, TeammateTag>",
+                  "summary": "",
+                  "required": true
+                },
+                {
+                  "name": "place",
+                  "type": "TeammateTagPlace",
+                  "summary": "",
+                  "default": "TeammateTagPlace.Row"
+                }
+              ],
+              "details": {
+                "returns": "TeammateTagSource"
+              }
+            },
+            {
+              "id": "AddLoadout(string, HudSlot?)",
+              "summary": "The game's whole inventory in the cockpit style (see HudLoadout). Default slot: bottom right, above a moved chat. It stands in for the game's weapon list: while a mod hides that list, every mod's WeaponList elements stack on past the loadout.",
+              "name": "AddLoadout",
+              "parameters": [
+                {
+                  "name": "name",
+                  "type": "string",
+                  "summary": "",
+                  "required": true
+                },
+                {
+                  "name": "slot",
+                  "type": "HudSlot?",
+                  "summary": "",
+                  "default": "null"
+                }
+              ],
+              "details": {
+                "returns": "HudLoadout"
+              }
+            },
+            {
+              "id": "AddSegmentBar(string, Func<float>, int, HudSlot?)",
+              "summary": "A compact segmented bar for the top of the screen (see HudSegmentBar). Default slot: top centre.",
+              "name": "AddSegmentBar",
+              "parameters": [
+                {
+                  "name": "name",
+                  "type": "string",
+                  "summary": "",
+                  "required": true
+                },
+                {
+                  "name": "value",
+                  "type": "Func<float>",
+                  "summary": "",
+                  "required": true
+                },
+                {
+                  "name": "segments",
+                  "type": "int",
+                  "summary": "",
+                  "required": true
+                },
+                {
+                  "name": "slot",
+                  "type": "HudSlot?",
+                  "summary": "",
+                  "default": "null"
+                }
+              ],
+              "details": {
+                "returns": "HudSegmentBar"
+              }
+            },
+            {
+              "id": "AddArcGauge(string, Func<float>, ArcSide)",
+              "summary": "A half arc beside the crosshair (see HudArcGauge; region World).",
+              "name": "AddArcGauge",
+              "parameters": [
+                {
+                  "name": "name",
+                  "type": "string",
+                  "summary": "",
+                  "required": true
+                },
+                {
+                  "name": "value",
+                  "type": "Func<float>",
+                  "summary": "",
+                  "required": true
+                },
+                {
+                  "name": "side",
+                  "type": "ArcSide",
+                  "summary": "",
+                  "required": true
+                }
+              ],
+              "details": {
+                "returns": "HudArcGauge"
+              }
+            },
+            {
+              "id": "AddBearingArc(string, int, HudSlot?)",
+              "summary": "Contacts round the crosshair (see HudBearingArc; region World).",
+              "name": "AddBearingArc",
+              "parameters": [
+                {
+                  "name": "name",
+                  "type": "string",
+                  "summary": "",
+                  "required": true
+                },
+                {
+                  "name": "capacity",
+                  "type": "int",
+                  "summary": "",
+                  "default": 24
+                },
+                {
+                  "name": "slot",
+                  "type": "HudSlot?",
+                  "summary": "",
+                  "default": "null"
+                }
+              ],
+              "details": {
+                "returns": "HudBearingArc"
+              }
+            },
+            {
+              "id": "AddSilhouette(string, IReadOnlyList<Sprite?>, HudSlot?)",
+              "summary": "A hull status disc of same-size layers (see HudSilhouette). Default slot: bottom left. A missing picture (null, for example an art file that was not found) is logged as an error and its layer is not drawn; the other layers keep their index.",
+              "name": "AddSilhouette",
+              "parameters": [
+                {
+                  "name": "name",
+                  "type": "string",
+                  "summary": "",
+                  "required": true
+                },
+                {
+                  "name": "layers",
+                  "type": "IReadOnlyList<Sprite?>",
+                  "summary": "",
+                  "required": true
+                },
+                {
+                  "name": "slot",
+                  "type": "HudSlot?",
+                  "summary": "",
+                  "default": "null"
+                }
+              ],
+              "details": {
+                "returns": "HudSilhouette"
+              }
+            },
+            {
+              "id": "AddObjectives(string, HudSlot?)",
+              "summary": "The game's objectives in the kit's style (see HudObjectives). Default slot: the notices corner.",
+              "name": "AddObjectives",
+              "parameters": [
+                {
+                  "name": "name",
+                  "type": "string",
+                  "summary": "",
+                  "required": true
+                },
+                {
+                  "name": "slot",
+                  "type": "HudSlot?",
+                  "summary": "",
+                  "default": "null"
+                }
+              ],
+              "details": {
+                "returns": "HudObjectives"
+              }
+            },
+            {
+              "id": "AddInteraction(string)",
+              "summary": "The game's interaction prompt under the crosshair (see HudInteraction; region World).",
+              "name": "AddInteraction",
+              "parameters": [
+                {
+                  "name": "name",
+                  "type": "string",
+                  "summary": "",
+                  "required": true
+                }
+              ],
+              "details": {
+                "returns": "HudInteraction"
+              }
+            },
+            {
+              "id": "AddSubtitles(string)",
+              "summary": "The game's subtitles low in the middle (see HudSubtitles; region World).",
+              "name": "AddSubtitles",
+              "parameters": [
+                {
+                  "name": "name",
+                  "type": "string",
+                  "summary": "",
+                  "required": true
+                }
+              ],
+              "details": {
+                "returns": "HudSubtitles"
+              }
+            },
+            {
+              "id": "AddTeammates(string, HudSlot?)",
+              "summary": "The other players (see HudTeammates). Default slot: bottom left.",
+              "name": "AddTeammates",
+              "parameters": [
+                {
+                  "name": "name",
+                  "type": "string",
+                  "summary": "",
+                  "required": true
+                },
+                {
+                  "name": "slot",
+                  "type": "HudSlot?",
+                  "summary": "",
+                  "default": "null"
+                }
+              ],
+              "details": {
+                "returns": "HudTeammates"
+              }
+            },
+            {
+              "id": "AddLabel(string, Func<string>[])",
+              "summary": "A few short lines of small text (see HudLabel). Default slot: top left.",
+              "name": "AddLabel",
+              "parameters": [
+                {
+                  "name": "name",
+                  "type": "string",
+                  "summary": "",
+                  "required": true
+                },
+                {
+                  "name": "lines",
+                  "type": "Func<string>[]",
+                  "summary": "",
+                  "required": true
+                }
+              ],
+              "details": {
+                "returns": "HudLabel"
+              }
+            },
+            {
+              "id": "AddLabel(string, HudSlot?, Func<string>[])",
+              "summary": "A few short lines of small text in slot (null: the top left corner; see HudLabel).",
+              "name": "AddLabel",
+              "parameters": [
+                {
+                  "name": "name",
+                  "type": "string",
+                  "summary": "",
+                  "required": true
+                },
+                {
+                  "name": "slot",
+                  "type": "HudSlot?",
+                  "summary": "",
+                  "required": true
+                },
+                {
+                  "name": "lines",
+                  "type": "Func<string>[]",
+                  "summary": "",
+                  "required": true
+                }
+              ],
+              "details": {
+                "returns": "HudLabel"
+              }
+            },
+            {
+              "id": "AddTimeline(string)",
+              "summary": "A time bar across the bottom of the screen (HudTimeline), hidden until you set Visible. Null (logged) when the name cannot be used or is taken.",
+              "name": "AddTimeline",
+              "parameters": [
+                {
+                  "name": "name",
+                  "type": "string",
+                  "summary": "",
+                  "required": true
+                }
+              ],
+              "details": {
+                "returns": "HudTimeline"
+              }
+            },
+            {
+              "id": "AddWheel(string, KeyAction)",
+              "summary": "A radial wheel opened by key (see HudWheel); give it pages with SetPages and listen to Chosen. Hidden until the key opens it. Register the key with Hold as its default to get \"hold to open, release to choose\".",
+              "name": "AddWheel",
+              "parameters": [
+                {
+                  "name": "name",
+                  "type": "string",
+                  "summary": "",
+                  "required": true
+                },
+                {
+                  "name": "key",
+                  "type": "KeyAction",
+                  "summary": "",
+                  "required": true
+                }
+              ],
+              "details": {
+                "returns": "HudWheel"
+              }
+            },
+            {
+              "id": "AddBootMessage(string, BootMessageBeats, BootMessageLook, HudSlot?)",
+              "summary": "A power-on message with your beats, colours and words (see HudBootMessage). Default slot: the centre banner, priority 100, sized by look.",
+              "name": "AddBootMessage",
+              "parameters": [
+                {
+                  "name": "name",
+                  "type": "string",
+                  "summary": "",
+                  "required": true
+                },
+                {
+                  "name": "beats",
+                  "type": "BootMessageBeats",
+                  "summary": "",
+                  "required": true
+                },
+                {
+                  "name": "look",
+                  "type": "BootMessageLook",
+                  "summary": "",
+                  "required": true
+                },
+                {
+                  "name": "slot",
+                  "type": "HudSlot?",
+                  "summary": "",
+                  "default": "null"
+                }
+              ],
+              "details": {
+                "returns": "HudBootMessage"
+              }
+            },
+            {
+              "id": "AddSkillSlot(string, Func<float>, float, UIText?, HudSlot?)",
+              "summary": "An ability slot (see HudSkillSlot). remaining is read every frame and returns the seconds left (0 when ready); cooldown is the full length. Default slot: bottom left.",
+              "name": "AddSkillSlot",
+              "parameters": [
+                {
+                  "name": "name",
+                  "type": "string",
+                  "summary": "",
+                  "required": true
+                },
+                {
+                  "name": "remaining",
+                  "type": "Func<float>",
+                  "summary": "",
+                  "required": true
+                },
+                {
+                  "name": "cooldown",
+                  "type": "float",
+                  "summary": "",
+                  "required": true
+                },
+                {
+                  "name": "key",
+                  "type": "UIText?",
+                  "summary": "",
+                  "default": "null"
+                },
+                {
+                  "name": "slot",
+                  "type": "HudSlot?",
+                  "summary": "",
+                  "default": "null"
+                }
+              ],
+              "details": {
+                "returns": "HudSkillSlot"
+              }
+            },
+            {
+              "id": "AddKeyHint(string, KeyCode, UIText, HudSlot?)",
+              "summary": "A key prompt for a keyboard or mouse key (named the way the game names it). Default slot: under the weapon list.",
+              "name": "AddKeyHint",
+              "parameters": [
+                {
+                  "name": "name",
+                  "type": "string",
+                  "summary": "",
+                  "required": true
+                },
+                {
+                  "name": "key",
+                  "type": "KeyCode",
+                  "summary": "",
+                  "required": true
+                },
+                {
+                  "name": "label",
+                  "type": "UIText",
+                  "summary": "",
+                  "required": true
+                },
+                {
+                  "name": "slot",
+                  "type": "HudSlot?",
+                  "summary": "",
+                  "default": "null"
+                }
+              ],
+              "details": {
+                "returns": "HudKeyHint"
+              }
+            },
+            {
+              "id": "AddKeyHint(string, InputAction, UIText, HudSlot?)",
+              "summary": "A key prompt for a game action, showing whatever the player has bound to it. Default slot: under the weapon list.",
+              "name": "AddKeyHint",
+              "parameters": [
+                {
+                  "name": "name",
+                  "type": "string",
+                  "summary": "",
+                  "required": true
+                },
+                {
+                  "name": "action",
+                  "type": "InputAction",
+                  "summary": "",
+                  "required": true
+                },
+                {
+                  "name": "label",
+                  "type": "UIText",
+                  "summary": "",
+                  "required": true
+                },
+                {
+                  "name": "slot",
+                  "type": "HudSlot?",
+                  "summary": "",
+                  "default": "null"
+                }
+              ],
+              "details": {
+                "returns": "HudKeyHint"
+              }
+            },
+            {
+              "id": "AddKeyHint(string, KeyAction, UIText, HudSlot?)",
+              "summary": "A key prompt for one of your key actions (AddKeyAction), showing the key the player gave it. Default slot: under the weapon list.",
+              "name": "AddKeyHint",
+              "parameters": [
+                {
+                  "name": "name",
+                  "type": "string",
+                  "summary": "",
+                  "required": true
+                },
+                {
+                  "name": "action",
+                  "type": "KeyAction",
+                  "summary": "",
+                  "required": true
+                },
+                {
+                  "name": "label",
+                  "type": "UIText",
+                  "summary": "",
+                  "required": true
+                },
+                {
+                  "name": "slot",
+                  "type": "HudSlot?",
+                  "summary": "",
+                  "default": "null"
+                }
+              ],
+              "details": {
+                "returns": "HudKeyHint"
+              }
+            },
+            {
+              "id": "AddHintLine(string, HudSlot?)",
+              "summary": "A line of mixed words and key boxes (\"Release [F] to cancel\"); give the parts with Set. Default slot: under the weapon list. To put the same line inside an element of your own, use HintRow.",
+              "name": "AddHintLine",
+              "parameters": [
+                {
+                  "name": "name",
+                  "type": "string",
+                  "summary": "",
+                  "required": true
+                },
+                {
+                  "name": "slot",
+                  "type": "HudSlot?",
+                  "summary": "",
+                  "default": "null"
+                }
+              ],
+              "details": {
+                "returns": "HudHintLine"
+              }
+            },
+            {
+              "id": "AddPlaced(string, HudPlacement)",
+              "summary": "A readout at a place you choose (see HudPlaced): text, a thin bar, a row of cells or a clock in the game's HUD look. It takes no room in any region: it may overlap the game's HUD or other elements.",
+              "name": "AddPlaced",
+              "parameters": [
+                {
+                  "name": "name",
+                  "type": "string",
+                  "summary": "",
+                  "required": true
+                },
+                {
+                  "name": "placement",
+                  "type": "HudPlacement",
+                  "summary": "",
+                  "required": true
+                }
+              ],
+              "details": {
+                "returns": "HudPlaced"
+              }
+            },
+            {
+              "id": "AddCommandList(string, UIText, UIText, UIText, int, int)",
+              "summary": "The list of commands called by typing an arrow code (see HudCommandList). Hidden until you call Show. It stands at the right edge of the screen, its middle on the middle of the screen, clear of the rest of the HUD (CommandDock); while it shows, the game's glass reflection is held off (a hide claim named name + Glass).",
+              "name": "AddCommandList",
+              "parameters": [
+                {
+                  "name": "name",
+                  "type": "string",
+                  "summary": "",
+                  "required": true
+                },
+                {
+                  "name": "title",
+                  "type": "UIText",
+                  "summary": "",
+                  "required": true
+                },
+                {
+                  "name": "heldTitle",
+                  "type": "UIText",
+                  "summary": "",
+                  "required": true
+                },
+                {
+                  "name": "heldLabel",
+                  "type": "UIText",
+                  "summary": "",
+                  "required": true
+                },
+                {
+                  "name": "maxItems",
+                  "type": "int",
+                  "summary": "",
+                  "required": true
+                },
+                {
+                  "name": "maxSteps",
+                  "type": "int",
+                  "summary": "",
+                  "required": true
+                }
+              ],
+              "details": {
+                "returns": "HudCommandList"
+              }
+            },
+            {
+              "id": "AddBanner(string, int)",
+              "summary": "A claim on the shared banner (big text a little above the middle of the screen). Banners of every mod share one slot: priority decides against other mods' banners (higher takes the slot, equal or lower waits).",
+              "name": "AddBanner",
+              "parameters": [
+                {
+                  "name": "name",
+                  "type": "string",
+                  "summary": "",
+                  "required": true
+                },
+                {
+                  "name": "priority",
+                  "type": "int",
+                  "summary": "",
+                  "default": 0
+                }
+              ],
+              "details": {
+                "returns": "HudBanner"
+              }
+            },
+            {
+              "id": "AddNotices(string)",
+              "summary": "A claim on the shared notice list in the top left corner (under where the game draws its objective).",
+              "name": "AddNotices",
+              "parameters": [
+                {
+                  "name": "name",
+                  "type": "string",
+                  "summary": "",
+                  "required": true
+                }
+              ],
+              "details": {
+                "returns": "HudNotices"
+              }
+            },
+            {
+              "id": "AddWaypoints(string, int)",
+              "summary": "World points this mod places (see HudWaypoints): up to capacity (1..64) marks with a label, distance and an arrow on the screen's edge while off screen, and, for points that ask, a mark on every bearing ring that shows the compass. Region World.",
+              "name": "AddWaypoints",
+              "parameters": [
+                {
+                  "name": "name",
+                  "type": "string",
+                  "summary": "",
+                  "required": true
+                },
+                {
+                  "name": "capacity",
+                  "type": "int",
+                  "summary": "",
+                  "default": 16
+                }
+              ],
+              "details": {
+                "returns": "HudWaypoints"
+              }
+            },
+            {
+              "id": "AddLobbyButton(string, UIText, Action<CM_PlayerLobbyBar>, Func<string>?, Func<CM_PlayerLobbyBar, bool>?)",
+              "summary": "Adds a button to the lobby player bar, under the game's APPAREL button. Buttons from all mods stack downwards in the order of their full IDs.",
+              "name": "AddLobbyButton",
+              "parameters": [
+                {
+                  "name": "name",
+                  "type": "string",
+                  "summary": "",
+                  "required": true
+                },
+                {
+                  "name": "title",
+                  "type": "UIText",
+                  "summary": "",
+                  "required": true
+                },
+                {
+                  "name": "onClick",
+                  "type": "Action<CM_PlayerLobbyBar>",
+                  "summary": "",
+                  "required": true
+                },
+                {
+                  "name": "note",
+                  "type": "Func<string>?",
+                  "summary": "",
+                  "default": "null"
+                },
+                {
+                  "name": "visible",
+                  "type": "Func<CM_PlayerLobbyBar, bool>?",
+                  "summary": "",
+                  "default": "null"
+                }
+              ],
+              "details": {
+                "returns": "LobbyButton"
+              }
+            },
+            {
+              "id": "AddMenuBarButton(string, UIText, Action)",
+              "summary": "Adds a button to the top menu bar of every page, after the game's left-hand buttons (SETTINGS, RUNDOWN, LOADOUT). Buttons from all mods follow in the order of their full IDs.",
+              "name": "AddMenuBarButton",
+              "parameters": [
+                {
+                  "name": "name",
+                  "type": "string",
+                  "summary": "",
+                  "required": true
+                },
+                {
+                  "name": "title",
+                  "type": "UIText",
+                  "summary": "",
+                  "required": true
+                },
+                {
+                  "name": "onClick",
+                  "type": "Action",
+                  "summary": "",
+                  "required": true
+                }
+              ],
+              "details": {
+                "returns": "MenuBarButton"
+              }
+            },
+            {
+              "id": "AddMenuBarPage(string, UIText, Action<MenuBarPage>, Action?)",
+              "summary": "Adds a menu bar button (as AddMenuBarButton) that opens and closes a page: a window under the menu bar with title as its heading, closed by its close box, a click outside it or the button again. Its content is yours: build is called the first time the page is opened from a page's menu bar (so once per game page it is opened on) and fills Root, for example with AddText. When the language changes the page is built again, so text keys given to the page show in the new language.",
+              "name": "AddMenuBarPage",
+              "parameters": [
+                {
+                  "name": "name",
+                  "type": "string",
+                  "summary": "",
+                  "required": true
+                },
+                {
+                  "name": "title",
+                  "type": "UIText",
+                  "summary": "",
+                  "required": true
+                },
+                {
+                  "name": "build",
+                  "type": "Action<MenuBarPage>",
+                  "summary": "",
+                  "required": true
+                },
+                {
+                  "name": "clicked",
+                  "type": "Action?",
+                  "summary": "",
+                  "default": "null"
+                }
+              ],
+              "details": {
+                "returns": "MenuBarButton"
+              }
+            },
+            {
+              "id": "AddMenuBarScreen(string, UIText, Action<MenuScreen>, Action?)",
+              "summary": "Adds a menu bar button that opens a full screen on the game's settings page, built from that page's own pieces (see MenuScreen): build adds sections, windows, rows and buttons every time it opens, so what it shows is current. Call Rebuild to build it again while it is open; any page change closes it.",
+              "name": "AddMenuBarScreen",
+              "parameters": [
+                {
+                  "name": "name",
+                  "type": "string",
+                  "summary": "",
+                  "required": true
+                },
+                {
+                  "name": "title",
+                  "type": "UIText",
+                  "summary": "",
+                  "required": true
+                },
+                {
+                  "name": "build",
+                  "type": "Action<MenuScreen>",
+                  "summary": "",
+                  "required": true
+                },
+                {
+                  "name": "clicked",
+                  "type": "Action?",
+                  "summary": "",
+                  "default": "null"
+                }
+              ],
+              "details": {
+                "returns": "MenuBarButton"
+              }
+            },
+            {
+              "id": "AddHud(string, HudSlot, Action<HudElement>)",
+              "summary": "Adds an element to the in-level HUD in slot's region. ForgeUI places the elements of every mod: a region stacks its elements by priority with a gap, keeps them clear of each other and of the game's weapon list and vitals, and collapses (and logs) the lowest priority ones when it is full. build runs each time the game creates its HUD (every level) and puts your pieces under Root with AddText and AddSprite, which copy the game's own HUD text and sprites, so they are drawn by the game's HUD camera, sway with the HUD and hide with it. Draw from the root in the region's direction (FlowX, FlowY).",
+              "name": "AddHud",
+              "parameters": [
+                {
+                  "name": "name",
+                  "type": "string",
+                  "summary": "",
+                  "required": true
+                },
+                {
+                  "name": "slot",
+                  "type": "HudSlot",
+                  "summary": "",
+                  "required": true
+                },
+                {
+                  "name": "build",
+                  "type": "Action<HudElement>",
+                  "summary": "",
+                  "required": true
+                }
+              ],
+              "details": {
+                "returns": "HudElement"
+              }
+            }
+          ]
+        },
+        {
+          "id": "icons",
+          "title": "Game icons",
+          "entries": [
+            {
+              "id": "Game:symbol_hostile",
+              "summary": "The hollow triangle on an enemy's tag marker."
+            },
+            {
+              "id": "Game:cellUI_SmallTriangleFill",
+              "summary": "A small filled triangle."
+            },
+            {
+              "id": "Game:CircleBigMiddleSize_Fill",
+              "summary": "A filled circle."
+            },
+            {
+              "id": "Game:GUIX_Detail_BoxFilled_AA_Centered",
+              "summary": "A filled square."
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "audio",
+      "title": "Audio",
+      "namespace": "ForgeAudio",
+      "groups": [
+        {
+          "id": "categories",
+          "title": "Categories",
+          "entries": [
+            {
+              "id": "ui",
+              "summary": "menus, prompts, confirmations and warnings",
+              "details": {
+                "limit": 8
+              }
+            },
+            {
+              "id": "weapon",
+              "summary": "gunfire, reloads and weapon handling",
+              "details": {
+                "limit": 16
+              }
+            },
+            {
+              "id": "explosion",
+              "summary": "blasts and impacts",
+              "details": {
+                "limit": 10
+              }
+            },
+            {
+              "id": "debris",
+              "summary": "falling debris, shrapnel and settling rubble",
+              "details": {
+                "limit": 12
+              }
+            },
+            {
+              "id": "ambience",
+              "summary": "beds, hums and room tones",
+              "details": {
+                "limit": 8
+              }
+            },
+            {
+              "id": "voice",
+              "summary": "speech and radio voices",
+              "details": {
+                "limit": 4
+              }
+            },
+            {
+              "id": "vehicle",
+              "summary": "suits, drop pods and other vehicles: steps, servos, engines",
+              "details": {
+                "limit": 48
+              }
+            },
+            {
+              "id": "device",
+              "summary": "machines in the world: beacons, turrets, supply pods, terminals",
+              "details": {
+                "limit": 10
+              }
+            },
+            {
+              "id": "music",
+              "summary": "music",
+              "details": {
+                "limit": 2
+              }
+            }
+          ]
+        },
+        {
+          "id": "settings",
+          "title": "cues.forge",
+          "entries": [
+            {
+              "id": "buses",
+              "summary": "A bus groups cues and names their global category; defined under \"buses\" and referenced by each cue.",
+              "parameters": [
+                {
+                  "name": "category",
+                  "type": "choice",
+                  "summary": "The global category the bus belongs to; all mods share each category's voice limit.",
+                  "required": true,
+                  "values": [
+                    "ui",
+                    "weapon",
+                    "explosion",
+                    "debris",
+                    "ambience",
+                    "voice",
+                    "vehicle",
+                    "device",
+                    "music"
+                  ]
+                },
+                {
+                  "name": "gain",
+                  "type": "number",
+                  "summary": "Volume of every cue on the bus, linear. Use either gain or gainDb.",
+                  "min": 0,
+                  "max": 4,
+                  "default": 1
+                },
+                {
+                  "name": "gainDb",
+                  "type": "number",
+                  "summary": "Volume of every cue on the bus, in decibels. Use either gain or gainDb.",
+                  "min": -60,
+                  "max": 12,
+                  "unit": "dB"
+                },
+                {
+                  "name": "seats",
+                  "type": "integer",
+                  "summary": "How many sounds of the bus may play at once from one emitter; the weakest are faded out for a stronger newcomer.",
+                  "min": 1,
+                  "max": 64,
+                  "default": 0,
+                  "unit": "sounds"
+                },
+                {
+                  "name": "duck",
+                  "type": "object",
+                  "summary": "Lowers other categories while a sound of this bus plays."
+                },
+                {
+                  "name": "duck.categories",
+                  "type": "list",
+                  "summary": "The categories to lower.",
+                  "required": true,
+                  "min": 1,
+                  "max": 9,
+                  "values": [
+                    "ui",
+                    "weapon",
+                    "explosion",
+                    "debris",
+                    "ambience",
+                    "voice",
+                    "vehicle",
+                    "device",
+                    "music"
+                  ]
+                },
+                {
+                  "name": "duck.db",
+                  "type": "number",
+                  "summary": "How far to lower them.",
+                  "min": 0.5,
+                  "max": 48,
+                  "default": 6,
+                  "unit": "dB"
+                }
+              ]
+            },
+            {
+              "id": "cues",
+              "summary": "One playable sound; defined under \"cues\".",
+              "parameters": [
+                {
+                  "name": "bus",
+                  "type": "name",
+                  "summary": "The bus the cue plays on; it must be defined in \"buses\". The bus decides the category.",
+                  "required": true
+                },
+                {
+                  "name": "layers",
+                  "type": "list",
+                  "summary": "The layers mixed into the cue. Without it the cue plays the .ogg file of the same name.",
+                  "min": 1,
+                  "max": 8
+                },
+                {
+                  "name": "gain",
+                  "type": "number-or-range",
+                  "summary": "Volume, linear; a [min, max] pair lets each play pick between them. Use either gain or gainDb.",
+                  "min": 0,
+                  "max": 4,
+                  "default": 1
+                },
+                {
+                  "name": "gainDb",
+                  "type": "number-or-range",
+                  "summary": "Volume in decibels; a [min, max] pair lets each play pick between them.",
+                  "min": -60,
+                  "max": 12,
+                  "unit": "dB"
+                },
+                {
+                  "name": "pitch",
+                  "type": "number-or-range",
+                  "summary": "Playback speed as a factor; a [min, max] pair lets each play pick between them.",
+                  "min": 0.1,
+                  "max": 3,
+                  "default": 1
+                },
+                {
+                  "name": "loop",
+                  "type": "boolean",
+                  "summary": "Repeats seamlessly. A loop has exactly one layer with only clips and gain.",
+                  "default": false
+                },
+                {
+                  "name": "priority",
+                  "type": "integer",
+                  "summary": "Higher priority wins when voices run out; 200 and up counts as a warning.",
+                  "min": 0,
+                  "max": 255,
+                  "default": 100
+                },
+                {
+                  "name": "maxVoices",
+                  "type": "integer",
+                  "summary": "How many plays of the cue may sound at once.",
+                  "min": 1,
+                  "max": 256,
+                  "default": 8
+                },
+                {
+                  "name": "maxPerEmitter",
+                  "type": "integer",
+                  "summary": "How many plays of the cue may sound at once from one emitter; at most maxVoices.",
+                  "min": 1,
+                  "max": 256,
+                  "default": 8
+                },
+                {
+                  "name": "minInterval",
+                  "type": "number",
+                  "summary": "The shortest gap between two plays of the cue.",
+                  "min": 0,
+                  "max": 60,
+                  "default": 0,
+                  "unit": "s"
+                },
+                {
+                  "name": "environment",
+                  "type": "boolean",
+                  "summary": "Whether room acoustics (occlusion, room tone) apply.",
+                  "default": true
+                },
+                {
+                  "name": "maxSeconds",
+                  "type": "number",
+                  "summary": "The longest the cue may last; the mix is cut there and fades out. 0 means no cap.",
+                  "min": 0.05,
+                  "max": 60,
+                  "default": 0,
+                  "unit": "s"
+                },
+                {
+                  "name": "place",
+                  "type": "choice",
+                  "summary": "Where the sound sits: in the listener's head (2d), at a world point (world) or following an object (follow); auto keeps what the caller supplied. A { \"self\", \"other\" } pair sets the local player's own sounds and everyone else's separately.",
+                  "default": "auto",
+                  "values": [
+                    "auto",
+                    "2d",
+                    "world",
+                    "follow"
+                  ]
+                },
+                {
+                  "name": "space",
+                  "type": "object",
+                  "summary": "How the cue is heard in space; see the space settings."
+                }
+              ]
+            },
+            {
+              "id": "layers",
+              "summary": "One layer of a cue, listed in the cue's \"layers\".",
+              "parameters": [
+                {
+                  "name": "clips",
+                  "type": "list",
+                  "summary": "The .ogg files of the layer; each play picks one.",
+                  "required": true,
+                  "min": 1,
+                  "max": 32
+                },
+                {
+                  "name": "offsetMs",
+                  "type": "number",
+                  "summary": "Delay before the layer starts.",
+                  "min": 0,
+                  "max": 60000,
+                  "default": 0,
+                  "unit": "ms"
+                },
+                {
+                  "name": "gain",
+                  "type": "number",
+                  "summary": "Layer volume, linear. Use either gain or gainDb.",
+                  "min": 0,
+                  "max": 4,
+                  "default": 1
+                },
+                {
+                  "name": "gainDb",
+                  "type": "number",
+                  "summary": "Layer volume in decibels. Use either gain or gainDb.",
+                  "min": -60,
+                  "max": 12,
+                  "unit": "dB"
+                },
+                {
+                  "name": "range",
+                  "type": "list",
+                  "summary": "[start, end] seconds of the clip to use.",
+                  "min": 0,
+                  "max": 600,
+                  "unit": "s"
+                },
+                {
+                  "name": "fadeInMs",
+                  "type": "number",
+                  "summary": "Fade-in length.",
+                  "min": 0,
+                  "max": 10000,
+                  "default": 0,
+                  "unit": "ms"
+                },
+                {
+                  "name": "fadeOutMs",
+                  "type": "number",
+                  "summary": "Fade-out length.",
+                  "min": 0,
+                  "max": 10000,
+                  "default": 0,
+                  "unit": "ms"
+                },
+                {
+                  "name": "pitch",
+                  "type": "number-or-range",
+                  "summary": "Layer playback speed as a factor.",
+                  "min": 0.1,
+                  "max": 3,
+                  "default": 1
+                },
+                {
+                  "name": "distance",
+                  "type": "object",
+                  "summary": "The listener distances inside which the layer plays, so a far layer can replace the near one."
+                },
+                {
+                  "name": "distance.min",
+                  "type": "number",
+                  "summary": "Nearest distance.",
+                  "min": 0,
+                  "max": 100000,
+                  "default": 0,
+                  "unit": "m"
+                },
+                {
+                  "name": "distance.max",
+                  "type": "number",
+                  "summary": "Farthest distance; unbounded when omitted.",
+                  "min": 0,
+                  "max": 100000,
+                  "unit": "m"
+                },
+                {
+                  "name": "lowpassHz",
+                  "type": "number",
+                  "summary": "Low-pass cutoff; 0 leaves the layer unfiltered.",
+                  "min": 50,
+                  "max": 20000,
+                  "default": 0,
+                  "unit": "Hz"
+                }
+              ]
+            },
+            {
+              "id": "space",
+              "summary": "How a cue is heard in space; the cue's \"space\".",
+              "parameters": [
+                {
+                  "name": "near",
+                  "type": "number",
+                  "summary": "Distance up to which the sound is at full volume.",
+                  "min": 0.01,
+                  "max": 10000,
+                  "default": 2,
+                  "unit": "m"
+                },
+                {
+                  "name": "far",
+                  "type": "number",
+                  "summary": "Distance beyond which the sound is silent (when cull is on); greater than near.",
+                  "min": 0.01,
+                  "max": 10000,
+                  "default": 30,
+                  "unit": "m"
+                },
+                {
+                  "name": "curve",
+                  "type": "choice",
+                  "summary": "Loudness by distance: \"linear\", \"log\", or 2 to 32 [metres, gain] points with increasing metres.",
+                  "default": "linear",
+                  "values": [
+                    "linear",
+                    "log"
+                  ]
+                },
+                {
+                  "name": "blend",
+                  "type": "number",
+                  "summary": "0 hears the sound flat (no distance loss, no panning), 1 fully positioned.",
+                  "min": 0,
+                  "max": 1,
+                  "default": 1
+                },
+                {
+                  "name": "spread",
+                  "type": "number",
+                  "summary": "How much the sound widens, which reduces panning.",
+                  "min": 0,
+                  "max": 180,
+                  "default": 0,
+                  "unit": "degrees"
+                },
+                {
+                  "name": "doppler",
+                  "type": "number",
+                  "summary": "How strongly relative motion shifts the pitch.",
+                  "min": 0,
+                  "max": 5,
+                  "default": 0
+                },
+                {
+                  "name": "cull",
+                  "type": "boolean",
+                  "summary": "Beyond far the sound is silent and takes no voice.",
+                  "default": true
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "visual",
+      "title": "Visual",
+      "namespace": "ForgeVisual",
+      "groups": [
+        {
+          "id": "gameEffects",
+          "title": "Game effects",
+          "entries": [
+            {
+              "id": "Game:FX_Tripmine",
+              "summary": "A game effect played at a point.",
+              "details": {
+                "line": false,
+                "native": "FX_Tripmine",
+                "source": "PreloadedPool"
+              }
+            },
+            {
+              "id": "Game:FX_TripmineGlue",
+              "summary": "A game effect played at a point.",
+              "details": {
+                "line": false,
+                "native": "FX_TripmineGlue",
+                "source": "PreloadedPool"
+              }
+            },
+            {
+              "id": "Game:FX_Tracer",
+              "summary": "A game effect drawn along a line from a start to an end.",
+              "details": {
+                "line": true,
+                "native": "FX_Tracer",
+                "source": "PreloadedPool"
+              }
+            },
+            {
+              "id": "Game:FX_BulletImpact_Concrete",
+              "summary": "A game effect played at a point.",
+              "details": {
+                "line": false,
+                "native": "FX_BulletImpact_Concrete",
+                "source": "PreloadedPool"
+              }
+            },
+            {
+              "id": "Game:FX_BulletImpact_Metal",
+              "summary": "A game effect played at a point.",
+              "details": {
+                "line": false,
+                "native": "FX_BulletImpact_Metal",
+                "source": "PreloadedPool"
+              }
+            },
+            {
+              "id": "Game:FX_BulletImpact_SheetMetal",
+              "summary": "A game effect played at a point.",
+              "details": {
+                "line": false,
+                "native": "FX_BulletImpact_SheetMetal",
+                "source": "PreloadedPool"
+              }
+            },
+            {
+              "id": "Game:FX_BulletImpact_Glass",
+              "summary": "A game effect played at a point.",
+              "details": {
+                "line": false,
+                "native": "FX_BulletImpact_Glass",
+                "source": "PreloadedPool"
+              }
+            },
+            {
+              "id": "Game:FX_BulletImpact_Wood",
+              "summary": "A game effect played at a point.",
+              "details": {
+                "line": false,
+                "native": "FX_BulletImpact_Wood",
+                "source": "PreloadedPool"
+              }
+            },
+            {
+              "id": "Game:FX_BulletImpact_Plastic",
+              "summary": "A game effect played at a point.",
+              "details": {
+                "line": false,
+                "native": "FX_BulletImpact_Plastic",
+                "source": "PreloadedPool"
+              }
+            },
+            {
+              "id": "Game:FX_BulletImpact_Mud",
+              "summary": "A game effect played at a point.",
+              "details": {
+                "line": false,
+                "native": "FX_BulletImpact_Mud",
+                "source": "PreloadedPool"
+              }
+            },
+            {
+              "id": "Game:FX_BulletImpact_Gravel",
+              "summary": "A game effect played at a point.",
+              "details": {
+                "line": false,
+                "native": "FX_BulletImpact_Gravel",
+                "source": "PreloadedPool"
+              }
+            },
+            {
+              "id": "Game:FX_3D_Blood_Impact",
+              "summary": "A game effect played at a point.",
+              "details": {
+                "line": false,
+                "native": "FX_3D Blood Impact",
+                "source": "PreloadedPool"
+              }
+            },
+            {
+              "id": "Game:FXC_MeshBloodBomb",
+              "summary": "A game effect played at a point.",
+              "details": {
+                "line": false,
+                "native": "FXC_MeshBloodBomb",
+                "source": "PreloadedPool"
+              }
+            },
+            {
+              "id": "Game:FX_TorchCutting",
+              "summary": "A game effect played at a point.",
+              "details": {
+                "line": false,
+                "native": "FX_TorchCutting",
+                "source": "PreloadedPool"
+              }
+            },
+            {
+              "id": "Game:FX_ElevatorSparks",
+              "summary": "A game effect played at a point.",
+              "details": {
+                "line": false,
+                "native": "FX_ElevatorSparks",
+                "source": "PreloadedPool"
+              }
+            },
+            {
+              "id": "Game:FX_LockMelter",
+              "summary": "A game effect played at a point.",
+              "details": {
+                "line": false,
+                "native": "FX_LockMelter",
+                "source": "PreloadedPool"
+              }
+            },
+            {
+              "id": "Game:FX_InfectionSpit",
+              "summary": "A game effect played at a point.",
+              "details": {
+                "line": false,
+                "native": "FX_InfectionSpit",
+                "source": "PreloadedPool"
+              }
+            },
+            {
+              "id": "Game:fxc_flyerdeath",
+              "summary": "A game effect played at a point.",
+              "details": {
+                "line": false,
+                "native": "fxc_flyerdeath",
+                "source": "ResourcePrefab"
+              }
+            },
+            {
+              "id": "Game:fxc_flyerbigdeath",
+              "summary": "A game effect played at a point.",
+              "details": {
+                "line": false,
+                "native": "fxc_flyerbigdeath",
+                "source": "ResourcePrefab"
+              }
+            },
+            {
+              "id": "Game:fx_flyer_teleport",
+              "summary": "A game effect played at a point.",
+              "details": {
+                "line": false,
+                "native": "fx_flyer_teleport",
+                "source": "ResourcePrefab"
+              }
+            },
+            {
+              "id": "Game:fx_flyer_big_teleport",
+              "summary": "A game effect played at a point.",
+              "details": {
+                "line": false,
+                "native": "fx_flyer_big_teleport",
+                "source": "ResourcePrefab"
+              }
+            },
+            {
+              "id": "Game:fxc_fleshbulb_pop",
+              "summary": "A game effect played at a point.",
+              "details": {
+                "line": false,
+                "native": "fxc_fleshbulb_pop",
+                "source": "ResourcePrefab"
+              }
+            },
+            {
+              "id": "Game:fxc_fleshbulb_pop_boss",
+              "summary": "A game effect played at a point.",
+              "details": {
+                "line": false,
+                "native": "fxc_fleshbulb_pop_boss",
+                "source": "ResourcePrefab"
+              }
+            },
+            {
+              "id": "Game:AssaultRifle_MuzzleFlash_3RD",
+              "summary": "A game effect played at a point.",
+              "details": {
+                "line": false,
+                "native": "Assets/AssetPrefabs/Effects/Weapon/MuzzleFlash/AssaultRifle_MuzzleFlash_3RD.prefab",
+                "source": "MuzzleFlash"
+              }
+            },
+            {
+              "id": "Game:Pistol_MuzzleFlash_3RD",
+              "summary": "A game effect played at a point.",
+              "details": {
+                "line": false,
+                "native": "Assets/AssetPrefabs/Effects/Weapon/MuzzleFlash/Pistol_MuzzleFlash_3RD.prefab",
+                "source": "MuzzleFlash"
+              }
+            },
+            {
+              "id": "Game:Shotgun_MuzzleFlash_3RD",
+              "summary": "A game effect played at a point.",
+              "details": {
+                "line": false,
+                "native": "Assets/AssetPrefabs/Effects/Weapon/MuzzleFlash/Shotgun_MuzzleFlash_3RD.prefab",
+                "source": "MuzzleFlash"
+              }
+            },
+            {
+              "id": "Game:SubMachine_MuzzleFlash_3RD",
+              "summary": "A game effect played at a point.",
+              "details": {
+                "line": false,
+                "native": "Assets/AssetPrefabs/Effects/Weapon/MuzzleFlash/SubMachine_MuzzleFlash_3RD.prefab",
+                "source": "MuzzleFlash"
+              }
+            },
+            {
+              "id": "Game:Sentrygun_MuzzleFlash_3RD",
+              "summary": "A game effect played at a point.",
+              "details": {
+                "line": false,
+                "native": "Assets/AssetPrefabs/Effects/Weapon/MuzzleFlash/Sentrygun_MuzzleFlash_3RD.prefab",
+                "source": "MuzzleFlash"
+              }
+            }
+          ]
+        },
+        {
+          "id": "forgeSprites",
+          "title": "Built-in sprites",
+          "entries": [
+            {
+              "id": "Forge:soft-dot",
+              "summary": "A round soft-edged dot: glows, sparks, smoke puffs and light spots; tinted and sized per use."
+            },
+            {
+              "id": "Forge:soft-line",
+              "summary": "A soft-edged streak across its length: tracers, beams and trails; tinted and sized per use."
+            }
+          ]
+        },
+        {
+          "id": "fx",
+          "title": "Fx calls",
+          "entries": [
+            {
+              "id": "Play(FxHandle, Vector3, Vector3)",
+              "summary": "Plays fx once at position, facing direction (zero: unrotated).",
+              "name": "Fx.Play",
+              "parameters": [
+                {
+                  "name": "fx",
+                  "type": "FxHandle",
+                  "summary": "",
+                  "required": true
+                },
+                {
+                  "name": "position",
+                  "type": "Vector3",
+                  "summary": "",
+                  "required": true
+                },
+                {
+                  "name": "direction",
+                  "type": "Vector3",
+                  "summary": "",
+                  "required": true
+                }
+              ]
+            },
+            {
+              "id": "Play(FxHandle, Vector3, Vector3, float, Color)",
+              "summary": "Plays fx with a size (m) and a tint. A Game: effect keeps the game's own size and colour; a pack's effect without a DefaultSize ignores the size. The tint goes to the prefab's renderers as _Color (a library layer converted with @tint takes its hue from it at its own brightness, Tools/Vfx; other layers keep their colour).",
+              "name": "Fx.Play",
+              "parameters": [
+                {
+                  "name": "fx",
+                  "type": "FxHandle",
+                  "summary": "",
+                  "required": true
+                },
+                {
+                  "name": "position",
+                  "type": "Vector3",
+                  "summary": "",
+                  "required": true
+                },
+                {
+                  "name": "direction",
+                  "type": "Vector3",
+                  "summary": "",
+                  "required": true
+                },
+                {
+                  "name": "size",
+                  "type": "float",
+                  "summary": "",
+                  "required": true
+                },
+                {
+                  "name": "colour",
+                  "type": "Color",
+                  "summary": "",
+                  "required": true
+                }
+              ]
+            },
+            {
+              "id": "Line(FxHandle, Vector3, Vector3)",
+              "summary": "Plays a line effect once from from to to (the game's tracer reads its far end from FX_Manager.EffectTargetPosition, which is written first, the way a weapon does). A line effect registered with HoldSeconds is held and takes the key form (Line(FxHandle, int, Vector3, Vector3, bool, Color)).",
+              "name": "Fx.Line",
+              "parameters": [
+                {
+                  "name": "fx",
+                  "type": "FxHandle",
+                  "summary": "",
+                  "required": true
+                },
+                {
+                  "name": "from",
+                  "type": "Vector3",
+                  "summary": "",
+                  "required": true
+                },
+                {
+                  "name": "to",
+                  "type": "Vector3",
+                  "summary": "",
+                  "required": true
+                }
+              ]
+            },
+            {
+              "id": "Line(FxHandle, Vector3, Vector3, bool)",
+              "summary": "The same line; head false leaves a laser line's LaserHead out (the line ends in the air, it hit nothing).",
+              "name": "Fx.Line",
+              "parameters": [
+                {
+                  "name": "fx",
+                  "type": "FxHandle",
+                  "summary": "",
+                  "required": true
+                },
+                {
+                  "name": "from",
+                  "type": "Vector3",
+                  "summary": "",
+                  "required": true
+                },
+                {
+                  "name": "to",
+                  "type": "Vector3",
+                  "summary": "",
+                  "required": true
+                },
+                {
+                  "name": "head",
+                  "type": "bool",
+                  "summary": "",
+                  "required": true
+                }
+              ]
+            },
+            {
+              "id": "Line(FxHandle, Vector3, Vector3, bool, Color)",
+              "summary": "The same line in a tint (a pack's effect only: it goes to the renderers as _Color, see Play(FxHandle, Vector3, Vector3, float, Color); a Game: line keeps its own colour).",
+              "name": "Fx.Line",
+              "parameters": [
+                {
+                  "name": "fx",
+                  "type": "FxHandle",
+                  "summary": "",
+                  "required": true
+                },
+                {
+                  "name": "from",
+                  "type": "Vector3",
+                  "summary": "",
+                  "required": true
+                },
+                {
+                  "name": "to",
+                  "type": "Vector3",
+                  "summary": "",
+                  "required": true
+                },
+                {
+                  "name": "head",
+                  "type": "bool",
+                  "summary": "",
+                  "required": true
+                },
+                {
+                  "name": "colour",
+                  "type": "Color",
+                  "summary": "",
+                  "required": true
+                }
+              ]
+            },
+            {
+              "id": "Line(FxHandle, int, Vector3, Vector3, bool, Color)",
+              "summary": "A line effect registered with HoldSeconds is held like Hold: calling this again every frame with the same key moves and stretches that one live copy, and another key has a copy of its own, however close the lines are (the key comes from NewKey, one per thing that carries the line; any other key is refused). A line that is not held ignores the key.",
+              "name": "Fx.Line",
+              "parameters": [
+                {
+                  "name": "fx",
+                  "type": "FxHandle",
+                  "summary": "",
+                  "required": true
+                },
+                {
+                  "name": "key",
+                  "type": "int",
+                  "summary": "",
+                  "required": true
+                },
+                {
+                  "name": "from",
+                  "type": "Vector3",
+                  "summary": "",
+                  "required": true
+                },
+                {
+                  "name": "to",
+                  "type": "Vector3",
+                  "summary": "",
+                  "required": true
+                },
+                {
+                  "name": "head",
+                  "type": "bool",
+                  "summary": "",
+                  "required": true
+                },
+                {
+                  "name": "colour",
+                  "type": "Color",
+                  "summary": "",
+                  "required": true
+                }
+              ]
+            },
+            {
+              "id": "Tracer(Vector3, Vector3)",
+              "summary": "The game's bullet tracer from from to to (Game:FX_Tracer); very short shots (under half a metre) draw nothing.",
+              "name": "Fx.Tracer",
+              "parameters": [
+                {
+                  "name": "from",
+                  "type": "Vector3",
+                  "summary": "",
+                  "required": true
+                },
+                {
+                  "name": "to",
+                  "type": "Vector3",
+                  "summary": "",
+                  "required": true
+                }
+              ]
+            },
+            {
+              "id": "Hold(FxHandle, int, Vector3, Vector3, float, Color)",
+              "summary": "Holds a sustained effect at a point: a hold with the key of a live copy moves it and keeps it emitting; a copy not held again within HoldSeconds stops emitting, lets its particles finish and is free again. The key comes from NewKey (any other is refused): each key has its own copy, so two things standing next to each other stay two, and a thing that is moving stays one.",
+              "name": "Fx.Hold",
+              "parameters": [
+                {
+                  "name": "fx",
+                  "type": "FxHandle",
+                  "summary": "",
+                  "required": true
+                },
+                {
+                  "name": "key",
+                  "type": "int",
+                  "summary": "",
+                  "required": true
+                },
+                {
+                  "name": "position",
+                  "type": "Vector3",
+                  "summary": "",
+                  "required": true
+                },
+                {
+                  "name": "direction",
+                  "type": "Vector3",
+                  "summary": "",
+                  "required": true
+                },
+                {
+                  "name": "size",
+                  "type": "float",
+                  "summary": "",
+                  "required": true
+                },
+                {
+                  "name": "colour",
+                  "type": "Color",
+                  "summary": "",
+                  "required": true
+                }
+              ]
+            },
+            {
+              "id": "Attach(FxHandle, Transform)",
+              "summary": "A copy of a Game: muzzle flash under parent (a gun hand, a muzzle), played with Play; null (logged once) when the flash is not loaded or fx is not a muzzle flash.",
+              "name": "Fx.Attach",
+              "parameters": [
+                {
+                  "name": "fx",
+                  "type": "FxHandle",
+                  "summary": "",
+                  "required": true
+                },
+                {
+                  "name": "parent",
+                  "type": "Transform",
+                  "summary": "",
+                  "required": true
+                }
+              ]
+            },
+            {
+              "id": "FxOptions",
+              "summary": "The options an effect registered with Fx.Register plays with.",
+              "parameters": [
+                {
+                  "name": "DefaultSize",
+                  "type": "float",
+                  "summary": "The size the prefab is authored at (m); a request's size scales it by size / this. NaN: the effect takes no size."
+                },
+                {
+                  "name": "BaseScale",
+                  "type": "float",
+                  "summary": "An extra factor on whatever size the effect plays at (1: none), for a prefab authored larger or smaller than its use.",
+                  "default": 1
+                },
+                {
+                  "name": "Line",
+                  "type": "bool",
+                  "summary": "The prefab's +Z length is stretched from the point to the end (Line(FxHandle, Vector3, Vector3)): one metre long, or DefaultSize metres when that is set (a line effect then takes no size from the caller).",
+                  "default": false
+                },
+                {
+                  "name": "HoldSeconds",
+                  "type": "float",
+                  "summary": "Above 0: a sustained effect (the prefab loops at its root). A hold keeps emitting this long after the last call. Each caller's key has its own copy.",
+                  "default": 0
+                },
+                {
+                  "name": "Copies",
+                  "type": "int",
+                  "summary": "Copies kept; a play past that restarts the oldest.",
+                  "default": 16
+                },
+                {
+                  "name": "Seconds",
+                  "type": "float",
+                  "summary": "Seconds a one-shot keeps emitting before it stops and lets its particles finish, however its prefab loops. 0: one round of its longest layer, start delay included, at most 8 s (the game's build has stripped MainModule.loop, so a play cannot ask whether the prefab loops: a looping prefab that should play shorter sets this).",
+                  "default": 0
+                },
+                {
+                  "name": "AxisUp",
+                  "type": "bool",
+                  "summary": "The prefab's axis is +Y (a ground effect, a column) rather than +Z (a muzzle, a jet): a request's direction turns +Y onto it.",
+                  "default": false
+                },
+                {
+                  "name": "Centre",
+                  "type": "Vector3",
+                  "summary": "Where a prefab draws its middle, from its root (m, at scale 1, unrotated), when that is not the root (an explosion authored standing on its root): a request's point is where that middle stands, at any size and direction, so what is drawn and what the caller means by the point are one place. Zero: the root."
+                },
+                {
+                  "name": "Spacing",
+                  "type": "float",
+                  "summary": "Above 0: Field covers an area with held copies this many metres apart instead of one copy scaled to it.",
+                  "default": 0
+                },
+                {
+                  "name": "LaserHead",
+                  "type": "string?",
+                  "summary": "A laser line (Line) keeps its uniform BaseScale instead of being stretched as a whole: this child of the prefab (a path below the root) goes to the line's end."
+                },
+                {
+                  "name": "LaserBodies",
+                  "type": "string[]?",
+                  "summary": "The children of a laser line that reach from the point to the end, DefaultSize metres long as authored. A stretched billboard takes the length through its renderer's length scale, which changes its live particles at once (start sizes only reach particles not yet emitted); any other layer, a flat line along its own +X, through its transform's X."
+                },
+                {
+                  "name": "LaserTile",
+                  "type": "float",
+                  "summary": "Above 0: a laser line's bodies repeat their texture every this many metres, so a jagged stroke stays jagged at any length instead of stretching out.",
+                  "default": 0
+                },
+                {
+                  "name": "EndFade",
+                  "type": "float",
+                  "summary": "Above 0: a line that ends in the air (Line(FxHandle, int, Vector3, Vector3, bool, Color) with head false: it hit nothing) fades out over this many metres before its end instead of stopping square; a line that hit something keeps its end. The Forge particle shaders read it (_LineEnd, _LineFade), others ignore it.",
+                  "default": 0
+                },
+                {
+                  "name": "Linger",
+                  "type": "float",
+                  "summary": "Seconds a copy may stay after it stopped emitting. A sustained effect with long-lived particles (a standing vortex, a ring) sets it short, so it ends with its hold instead of standing on where nothing is left.",
+                  "default": 8
+                },
+                {
+                  "name": "Light",
+                  "type": "PointLightSpec?",
+                  "summary": "A point light that goes with every play (FxLights): a one-shot flashes it (peak at once, fading over its life, LightDelay late), a held effect holds it while held. Its colour is multiplied by the caller's hue (FxLights); its range grows with the size the effect plays at. Null: no light."
+                },
+                {
+                  "name": "LightDelay",
+                  "type": "float",
+                  "summary": "Seconds after the play the light flashes.",
+                  "default": 0
+                },
+                {
+                  "name": "Body",
+                  "type": "Bounds?",
+                  "summary": "The box the drawn particles fill (m from the prefab's root, at scale 1, unrotated), as the converter measured it; null: not known. Seat stands a copy by it so it clears floor and ceiling."
+                },
+                {
+                  "name": "AlwaysDraw",
+                  "type": "bool?",
+                  "summary": "True: never culled (drawn at any distance and from any direction); false: always culled; null (the default): culled unless it plays large (its reach is LargeReach metres or more: a blast, an air strike, which people see from far away). Lines are never culled."
+                },
+                {
+                  "name": "CullDistance",
+                  "type": "float",
+                  "summary": "Metres beyond which a copy is paused and hidden; 0 (the default): the player's Culling / Distance setting. Measured to the surface of its reach.",
+                  "default": 0
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "outline",
+          "title": "Enemy outline",
+          "entries": [
+            {
+              "id": "EnemyOutlineStyle",
+              "summary": "How the automatic enemy outline looks and how far it reaches. Every value has a default.",
+              "parameters": [
+                {
+                  "name": "Range",
+                  "type": "number",
+                  "summary": "Enemies farther than this many metres from the camera are not outlined.",
+                  "min": 0,
+                  "max": 500,
+                  "default": 35
+                },
+                {
+                  "name": "FadeDistance",
+                  "type": "number",
+                  "summary": "Over the last this many metres before Range the line fades out instead of popping.",
+                  "min": 0,
+                  "max": 500,
+                  "default": 5
+                },
+                {
+                  "name": "MaxEnemies",
+                  "type": "integer",
+                  "summary": "At most this many enemies, the nearest first, are outlined at once.",
+                  "min": 1,
+                  "max": 128,
+                  "default": 24
+                },
+                {
+                  "name": "Width",
+                  "type": "number",
+                  "summary": "Line width in pixels at 1080p; it scales with the screen height. One width is drawn per screen: this style's while it is on.",
+                  "min": 0,
+                  "max": 16,
+                  "default": 1.6
+                },
+                {
+                  "name": "Sleeping",
+                  "type": "colour",
+                  "summary": "Asleep (hibernating).",
+                  "default": {
+                    "a": 0.4,
+                    "b": 0.44,
+                    "g": 0.4,
+                    "r": 0.23
+                  }
+                },
+                {
+                  "name": "Awake",
+                  "type": "colour",
+                  "summary": "Awake but not hunting: patrolling, scouting.",
+                  "default": {
+                    "a": 0.65,
+                    "b": 0.22,
+                    "g": 0.56,
+                    "r": 0.8
+                  }
+                },
+                {
+                  "name": "Hunting",
+                  "type": "colour",
+                  "summary": "Hunting the players (aggressive).",
+                  "default": {
+                    "a": 0.8,
+                    "b": 0.18,
+                    "g": 0.18,
+                    "r": 0.8
+                  }
+                },
+                {
+                  "name": "XRay",
+                  "type": "boolean",
+                  "summary": "True draws the line through walls too (round the whole silhouette): an opt-in for mods that mean to show what is behind a wall. False (the default) outlines only what the camera sees; Forge Frames' cockpit keeps it false.",
+                  "default": false
+                },
+                {
+                  "name": "Priority",
+                  "type": "integer",
+                  "summary": "Against outlines added to one enemy with Outlines.Add: an added outline of this priority or higher replaces the automatic one on that enemy; a lower one is not drawn while the automatic one is.",
+                  "default": 0
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

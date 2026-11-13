@@ -1,0 +1,2460 @@
+{
+    "bundle": "forge-vfx.bundle",
+    "sha256": "373f87cbfae94ef4dc473b75c956bf0c2394c1e498095f4319261732de0bef52",
+    "bytes": 859631,
+    "unity": "2019.4.21f1",
+    "target": "StandaloneWindows64",
+    "compression": "LZ4",
+    "playback": "A prefab plays at the request position facing the request direction along local +Z (a line member faces its far end and is stretched from one metre along +Z to the far end), scaled by size over the member's default size (size); a sustained member loops until its player stops it, and an instance is recycled once no particle system under it is alive.",
+    "effects": [
+        {
+            "member": "forge_black_hole",
+            "prefab": "Assets/ForgeVfx/Effects/forge_black_hole.prefab",
+            "line": false,
+            "sustained": true,
+            "size": 8.0,
+            "seconds": 2.5999999046325685,
+            "layers": [
+                {
+                    "name": "(root)",
+                    "duration": 1.0,
+                    "lifetime": 0.20000000298023225,
+                    "maxParticles": 8
+                },
+                {
+                    "name": "shadow",
+                    "duration": 1.0,
+                    "lifetime": 0.25,
+                    "maxParticles": 6
+                },
+                {
+                    "name": "photon_ring",
+                    "duration": 1.0,
+                    "lifetime": 0.25,
+                    "maxParticles": 8
+                },
+                {
+                    "name": "swirl",
+                    "duration": 1.0,
+                    "lifetime": 1.5,
+                    "maxParticles": 10
+                },
+                {
+                    "name": "accretion",
+                    "duration": 1.0,
+                    "lifetime": 1.600000023841858,
+                    "maxParticles": 150
+                },
+                {
+                    "name": "infall",
+                    "duration": 1.0,
+                    "lifetime": 1.2999999523162842,
+                    "maxParticles": 44
+                },
+                {
+                    "name": "dust",
+                    "duration": 1.0,
+                    "lifetime": 1.2999999523162842,
+                    "maxParticles": 30
+                },
+                {
+                    "name": "arcs",
+                    "duration": 1.0,
+                    "lifetime": 0.05999999865889549,
+                    "maxParticles": 4
+                },
+                {
+                    "name": "motes",
+                    "duration": 1.0,
+                    "lifetime": 1.600000023841858,
+                    "maxParticles": 40
+                },
+                {
+                    "name": "open",
+                    "duration": 0.10000000149011612,
+                    "lifetime": 0.11999999731779099,
+                    "maxParticles": 2
+                },
+                {
+                    "name": "open_light",
+                    "duration": 0.10000000149011612,
+                    "lifetime": 0.4000000059604645,
+                    "maxParticles": 1
+                },
+                {
+                    "name": "open_ring",
+                    "duration": 0.10000000149011612,
+                    "lifetime": 0.3499999940395355,
+                    "maxParticles": 2
+                },
+                {
+                    "name": "open_arcs",
+                    "duration": 0.20000000298023225,
+                    "lifetime": 0.07999999821186066,
+                    "maxParticles": 4
+                },
+                {
+                    "name": "collapse",
+                    "duration": 0.10000000149011612,
+                    "lifetime": 0.30000001192092898,
+                    "maxParticles": 2
+                },
+                {
+                    "name": "collapse_ring",
+                    "duration": 0.10000000149011612,
+                    "lifetime": 0.2800000011920929,
+                    "maxParticles": 2
+                },
+                {
+                    "name": "collapse_flash",
+                    "duration": 0.4000000059604645,
+                    "lifetime": 0.10000000149011612,
+                    "maxParticles": 2
+                },
+                {
+                    "name": "collapse_light",
+                    "duration": 0.10000000149011612,
+                    "lifetime": 0.4000000059604645,
+                    "maxParticles": 1
+                },
+                {
+                    "name": "collapse_debris",
+                    "duration": 0.4000000059604645,
+                    "lifetime": 1.2999999523162842,
+                    "maxParticles": 20
+                },
+                {
+                    "name": "collapse_sparks",
+                    "duration": 0.4000000059604645,
+                    "lifetime": 0.5,
+                    "maxParticles": 30
+                }
+            ],
+            "shaders": [
+                "ForgeVfx/Particles Additive",
+                "ForgeVfx/Particles Alpha Blended"
+            ],
+            "items": [
+                {
+                    "path": "Assets/ForgeVfx/Effects/forge_black_hole.prefab",
+                    "sha256": "bb8bcaa9c37115c5c7d2029e506a306d7916f057d074f0e128fe77964d7f14cd",
+                    "source": "Forge effect prefabs",
+                    "author": "Forge",
+                    "license": "CC0-1.0",
+                    "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+                    "origin": "Authored in this project by Assets/ForgeVfx/Editor/ForgeVfxOwnEffects.cs; each prefab is named after its effect_play member",
+                    "modifications": "none"
+                },
+                {
+                    "path": "Assets/ForgeVfx/Own/Materials/crackle_additive.mat",
+                    "sha256": "e0cd7b51083bb743a1ed63896b4f7c7c51e9b60a79c608bf16d279db480e836d",
+                    "source": "Forge self-made textures, materials and meshes",
+                    "author": "Forge",
+                    "license": "CC0-1.0",
+                    "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+                    "origin": "Generated by Assets/ForgeVfx/Editor/ForgeVfxOwnEffects.cs",
+                    "modifications": "none"
+                },
+                {
+                    "path": "Assets/ForgeVfx/Own/Materials/debris_alpha.mat",
+                    "sha256": "7264ba1226203d7fe17e6be9a2e726e3038e103cad0745de0544130d32fe0149",
+                    "source": "Forge self-made textures, materials and meshes",
+                    "author": "Forge",
+                    "license": "CC0-1.0",
+                    "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+                    "origin": "Generated by Assets/ForgeVfx/Editor/ForgeVfxOwnEffects.cs",
+                    "modifications": "none"
+                },
+                {
+                    "path": "Assets/ForgeVfx/Own/Materials/disc_alpha.mat",
+                    "sha256": "c787a9906db17256d06decb605ca774681832f75cfbe8b5b077208bc3f5414ff",
+                    "source": "Forge self-made textures, materials and meshes",
+                    "author": "Forge",
+                    "license": "CC0-1.0",
+                    "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+                    "origin": "Generated by Assets/ForgeVfx/Editor/ForgeVfxOwnEffects.cs",
+                    "modifications": "none"
+                },
+                {
+                    "path": "Assets/ForgeVfx/Own/Materials/glow_additive.mat",
+                    "sha256": "7ee9c674f83b25e6bcbf12dd40a2a029e260d6f03aac4fe4b46b44090a85a192",
+                    "source": "Forge self-made textures, materials and meshes",
+                    "author": "Forge",
+                    "license": "CC0-1.0",
+                    "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+                    "origin": "Generated by Assets/ForgeVfx/Editor/ForgeVfxOwnEffects.cs",
+                    "modifications": "none"
+                },
+                {
+                    "path": "Assets/ForgeVfx/Own/Materials/ring_thin_additive.mat",
+                    "sha256": "a1562a6593bdf928cea79795d983554c7885863751a21e5e3341b05e98c5d2af",
+                    "source": "Forge self-made textures, materials and meshes",
+                    "author": "Forge",
+                    "license": "CC0-1.0",
+                    "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+                    "origin": "Generated by Assets/ForgeVfx/Editor/ForgeVfxOwnEffects.cs",
+                    "modifications": "none"
+                },
+                {
+                    "path": "Assets/ForgeVfx/Own/Materials/shock_ring_additive.mat",
+                    "sha256": "d4a14972c0b952b0ff1ada71e1c7930d797b6ac14f3357623c8b46033a9df0b0",
+                    "source": "Forge self-made textures, materials and meshes",
+                    "author": "Forge",
+                    "license": "CC0-1.0",
+                    "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+                    "origin": "Generated by Assets/ForgeVfx/Editor/ForgeVfxOwnEffects.cs",
+                    "modifications": "none"
+                },
+                {
+                    "path": "Assets/ForgeVfx/Own/Materials/spiral_additive.mat",
+                    "sha256": "790d2e1f94cd49aca5daa79c88a266dced820d473c4e955e471c629cf2902697",
+                    "source": "Forge self-made textures, materials and meshes",
+                    "author": "Forge",
+                    "license": "CC0-1.0",
+                    "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+                    "origin": "Generated by Assets/ForgeVfx/Editor/ForgeVfxOwnEffects.cs",
+                    "modifications": "none"
+                },
+                {
+                    "path": "Assets/ForgeVfx/Own/Textures/crackle_sheet.png",
+                    "sha256": "9e75706b654b73577cab057e19282fdb4eabc749ecd509e4ec97431289ce391c",
+                    "source": "Forge self-made textures, materials and meshes",
+                    "author": "Forge",
+                    "license": "CC0-1.0",
+                    "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+                    "origin": "Generated by Assets/ForgeVfx/Editor/ForgeVfxOwnEffects.cs",
+                    "modifications": "none"
+                },
+                {
+                    "path": "Assets/ForgeVfx/Own/Textures/debris_sheet.png",
+                    "sha256": "040a0f9747d0db355ef56f7cacf276943c8fd818c3368b52db00bd3d0813f7b7",
+                    "source": "Forge self-made textures, materials and meshes",
+                    "author": "Forge",
+                    "license": "CC0-1.0",
+                    "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+                    "origin": "Generated by Assets/ForgeVfx/Editor/ForgeVfxOwnEffects.cs",
+                    "modifications": "none"
+                },
+                {
+                    "path": "Assets/ForgeVfx/Own/Textures/disc.png",
+                    "sha256": "0b60138f54be1a18f29eb4b113132c810159d0e187ec839fa4e6cf8767d22097",
+                    "source": "Forge self-made textures, materials and meshes",
+                    "author": "Forge",
+                    "license": "CC0-1.0",
+                    "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+                    "origin": "Generated by Assets/ForgeVfx/Editor/ForgeVfxOwnEffects.cs",
+                    "modifications": "none"
+                },
+                {
+                    "path": "Assets/ForgeVfx/Own/Textures/glow.png",
+                    "sha256": "d7f5dede7b600cfa51915d9b4bff7f6e03cc347c847d23fe69c631cb263a55c3",
+                    "source": "Forge self-made textures, materials and meshes",
+                    "author": "Forge",
+                    "license": "CC0-1.0",
+                    "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+                    "origin": "Generated by Assets/ForgeVfx/Editor/ForgeVfxOwnEffects.cs",
+                    "modifications": "none"
+                },
+                {
+                    "path": "Assets/ForgeVfx/Own/Textures/ring_thin.png",
+                    "sha256": "2b0bdc478145ac81f3650d75b8861d32259a8867f8d5c185beaf3d69a2458c47",
+                    "source": "Forge self-made textures, materials and meshes",
+                    "author": "Forge",
+                    "license": "CC0-1.0",
+                    "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+                    "origin": "Generated by Assets/ForgeVfx/Editor/ForgeVfxOwnEffects.cs",
+                    "modifications": "none"
+                },
+                {
+                    "path": "Assets/ForgeVfx/Own/Textures/shock_ring.png",
+                    "sha256": "ba0fcd7c5f92c0a8bfd77d98064f1b88b893a8a76db5bbb44ccbc3842961a339",
+                    "source": "Forge self-made textures, materials and meshes",
+                    "author": "Forge",
+                    "license": "CC0-1.0",
+                    "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+                    "origin": "Generated by Assets/ForgeVfx/Editor/ForgeVfxOwnEffects.cs",
+                    "modifications": "none"
+                },
+                {
+                    "path": "Assets/ForgeVfx/Own/Textures/spiral.png",
+                    "sha256": "2f41c2bdf6b477673fbc0d194aecadf8f626a725be8f12b5717740fdc8397c3b",
+                    "source": "Forge self-made textures, materials and meshes",
+                    "author": "Forge",
+                    "license": "CC0-1.0",
+                    "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+                    "origin": "Generated by Assets/ForgeVfx/Editor/ForgeVfxOwnEffects.cs",
+                    "modifications": "none"
+                },
+                {
+                    "path": "Assets/ForgeVfx/Shaders/ForgeParticlesAdditive.shader",
+                    "sha256": "d9c29d095644d3f19dbe9b4877ef17013ec59499c357a8886cd88e970de31448",
+                    "source": "Forge particle shaders",
+                    "author": "Forge",
+                    "license": "CC0-1.0",
+                    "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+                    "origin": "Written for this project",
+                    "modifications": "none"
+                },
+                {
+                    "path": "Assets/ForgeVfx/Shaders/ForgeParticlesAlphaBlended.shader",
+                    "sha256": "99f716167fcba1ce4960224934a8dd189908df8305be291923e4a2c5837e8f53",
+                    "source": "Forge particle shaders",
+                    "author": "Forge",
+                    "license": "CC0-1.0",
+                    "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+                    "origin": "Written for this project",
+                    "modifications": "none"
+                }
+            ]
+        },
+        {
+            "member": "forge_blast_tracer",
+            "prefab": "Assets/ForgeVfx/Effects/forge_blast_tracer.prefab",
+            "line": true,
+            "sustained": false,
+            "size": 0.0,
+            "seconds": 1.3200000524520875,
+            "layers": [
+                {
+                    "name": "(root)",
+                    "duration": 0.10000000149011612,
+                    "lifetime": 0.05999999865889549,
+                    "maxParticles": 2
+                },
+                {
+                    "name": "slug",
+                    "duration": 0.10000000149011612,
+                    "lifetime": 0.054999999701976779,
+                    "maxParticles": 2
+                },
+                {
+                    "name": "halo",
+                    "duration": 0.10000000149011612,
+                    "lifetime": 0.09000000357627869,
+                    "maxParticles": 2
+                },
+                {
+                    "name": "trail",
+                    "duration": 0.10000000149011612,
+                    "lifetime": 1.2000000476837159,
+                    "maxParticles": 16
+                },
+                {
+                    "name": "muzzle",
+                    "duration": 0.10000000149011612,
+                    "lifetime": 0.05000000074505806,
+                    "maxParticles": 2
+                },
+                {
+                    "name": "muzzle_glow",
+                    "duration": 0.10000000149011612,
+                    "lifetime": 0.05999999865889549,
+                    "maxParticles": 2
+                },
+                {
+                    "name": "muzzle_light",
+                    "duration": 0.10000000149011612,
+                    "lifetime": 0.11999999731779099,
+                    "maxParticles": 1
+                },
+                {
+                    "name": "muzzle_sparks",
+                    "duration": 0.10000000149011612,
+                    "lifetime": 0.18000000715255738,
+                    "maxParticles": 10
+                },
+                {
+                    "name": "muzzle_smoke",
+                    "duration": 0.10000000149011612,
+                    "lifetime": 0.8999999761581421,
+                    "maxParticles": 3
+                }
+            ],
+            "shaders": [
+                "ForgeVfx/Particles Additive",
+                "ForgeVfx/Particles Premultiplied"
+            ],
+            "items": [
+                {
+                    "path": "Assets/ForgeVfx/Effects/forge_blast_tracer.prefab",
+                    "sha256": "3cf74215ea434955ab4683cf7c17540ac6aeb38c0f6064b7122e7e32a9a27691",
+                    "source": "Forge effect prefabs",
+                    "author": "Forge",
+                    "license": "CC0-1.0",
+                    "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+                    "origin": "Authored in this project by Assets/ForgeVfx/Editor/ForgeVfxOwnEffects.cs; each prefab is named after its effect_play member",
+                    "modifications": "none"
+                },
+                {
+                    "path": "Assets/ForgeVfx/Own/Materials/beam_additive.mat",
+                    "sha256": "c9aa6e07aef20918d3c35748e02435e35c525594e3f94b0781609c9a2d74bb2d",
+                    "source": "Forge self-made textures, materials and meshes",
+                    "author": "Forge",
+                    "license": "CC0-1.0",
+                    "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+                    "origin": "Generated by Assets/ForgeVfx/Editor/ForgeVfxOwnEffects.cs",
+                    "modifications": "none"
+                },
+                {
+                    "path": "Assets/ForgeVfx/Own/Materials/flash_additive.mat",
+                    "sha256": "7db99478f8354fa64f5802a15f56eaf31510d7e70b504b7823b82ca0a8c58190",
+                    "source": "Forge self-made textures, materials and meshes",
+                    "author": "Forge",
+                    "license": "CC0-1.0",
+                    "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+                    "origin": "Generated by Assets/ForgeVfx/Editor/ForgeVfxOwnEffects.cs",
+                    "modifications": "none"
+                },
+                {
+                    "path": "Assets/ForgeVfx/Own/Materials/glow_additive.mat",
+                    "sha256": "7ee9c674f83b25e6bcbf12dd40a2a029e260d6f03aac4fe4b46b44090a85a192",
+                    "source": "Forge self-made textures, materials and meshes",
+                    "author": "Forge",
+                    "license": "CC0-1.0",
+                    "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+                    "origin": "Generated by Assets/ForgeVfx/Editor/ForgeVfxOwnEffects.cs",
+                    "modifications": "none"
+                },
+                {
+                    "path": "Assets/ForgeVfx/Own/Materials/smoke_premultiplied.mat",
+                    "sha256": "4e9c117b5c1e3d6e16757134ca1ab16658b2a3f38e631e25b409afebd10eab2b",
+                    "source": "Forge self-made textures, materials and meshes",
+                    "author": "Forge",
+                    "license": "CC0-1.0",
+                    "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+                    "origin": "Generated by Assets/ForgeVfx/Editor/ForgeVfxOwnEffects.cs",
+                    "modifications": "none"
+                },
+                {
+                    "path": "Assets/ForgeVfx/Own/Meshes/line_cross.asset",
+                    "sha256": "2d1837851ea971333120a4ce8dd6cba17b4ea0e35841ee9324517171c0ee81c9",
+                    "source": "Forge self-made textures, materials and meshes",
+                    "author": "Forge",
+                    "license": "CC0-1.0",
+                    "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+                    "origin": "Generated by Assets/ForgeVfx/Editor/ForgeVfxOwnEffects.cs",
+                    "modifications": "none"
+                },
+                {
+                    "path": "Assets/ForgeVfx/Own/Textures/beam_soft.png",
+                    "sha256": "f831f9217f8b844b4b551801598bcf2cf09478fe8c8a47baa37394d22594514b",
+                    "source": "Forge self-made textures, materials and meshes",
+                    "author": "Forge",
+                    "license": "CC0-1.0",
+                    "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+                    "origin": "Generated by Assets/ForgeVfx/Editor/ForgeVfxOwnEffects.cs",
+                    "modifications": "none"
+                },
+                {
+                    "path": "Assets/ForgeVfx/Own/Textures/flash_sheet.png",
+                    "sha256": "edcb8166010e92b5bb31e42e681c8e252ac32635d703c25af7bda1dcb3b9e71f",
+                    "source": "Forge self-made textures, materials and meshes",
+                    "author": "Forge",
+                    "license": "CC0-1.0",
+                    "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+                    "origin": "Generated by Assets/ForgeVfx/Editor/ForgeVfxOwnEffects.cs",
+                    "modifications": "none"
+                },
+                {
+                    "path": "Assets/ForgeVfx/Own/Textures/glow.png",
+                    "sha256": "d7f5dede7b600cfa51915d9b4bff7f6e03cc347c847d23fe69c631cb263a55c3",
+                    "source": "Forge self-made textures, materials and meshes",
+                    "author": "Forge",
+                    "license": "CC0-1.0",
+                    "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+                    "origin": "Generated by Assets/ForgeVfx/Editor/ForgeVfxOwnEffects.cs",
+                    "modifications": "none"
+                },
+                {
+                    "path": "Assets/ForgeVfx/Own/Textures/smoke_sheet.png",
+                    "sha256": "594b3df695f0b0f9cd08eb6298e9b45208fa5310a2d72a125b709b9b18ba4e6b",
+                    "source": "Forge self-made textures, materials and meshes",
+                    "author": "Forge",
+                    "license": "CC0-1.0",
+                    "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+                    "origin": "Generated by Assets/ForgeVfx/Editor/ForgeVfxOwnEffects.cs",
+                    "modifications": "none"
+                },
+                {
+                    "path": "Assets/ForgeVfx/Shaders/ForgeParticlesAdditive.shader",
+                    "sha256": "d9c29d095644d3f19dbe9b4877ef17013ec59499c357a8886cd88e970de31448",
+                    "source": "Forge particle shaders",
+                    "author": "Forge",
+                    "license": "CC0-1.0",
+                    "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+                    "origin": "Written for this project",
+                    "modifications": "none"
+                },
+                {
+                    "path": "Assets/ForgeVfx/Shaders/ForgeParticlesPremultiplied.shader",
+                    "sha256": "e52bda252fda7a916850678de34ac39e69ccd4fb0ea9e33096aa5a6fcade30f7",
+                    "source": "Forge particle shaders",
+                    "author": "Forge",
+                    "license": "CC0-1.0",
+                    "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+                    "origin": "Written for this project",
+                    "modifications": "none"
+                }
+            ]
+        },
+        {
+            "member": "forge_energy_beam",
+            "prefab": "Assets/ForgeVfx/Effects/forge_energy_beam.prefab",
+            "line": true,
+            "sustained": true,
+            "size": 0.0,
+            "seconds": 2.299999952316284,
+            "layers": [
+                {
+                    "name": "(root)",
+                    "duration": 1.0,
+                    "lifetime": 0.07000000029802323,
+                    "maxParticles": 8
+                },
+                {
+                    "name": "halo",
+                    "duration": 1.0,
+                    "lifetime": 0.09000000357627869,
+                    "maxParticles": 8
+                },
+                {
+                    "name": "flow",
+                    "duration": 1.0,
+                    "lifetime": 0.10000000149011612,
+                    "maxParticles": 8
+                },
+                {
+                    "name": "ions",
+                    "duration": 1.0,
+                    "lifetime": 0.5,
+                    "maxParticles": 24
+                },
+                {
+                    "name": "muzzle",
+                    "duration": 1.0,
+                    "lifetime": 0.07000000029802323,
+                    "maxParticles": 4
+                },
+                {
+                    "name": "muzzle_flash",
+                    "duration": 1.0,
+                    "lifetime": 0.05000000074505806,
+                    "maxParticles": 4
+                },
+                {
+                    "name": "impact",
+                    "duration": 1.0,
+                    "lifetime": 0.07999999821186066,
+                    "maxParticles": 4
+                },
+                {
+                    "name": "impact_flash",
+                    "duration": 1.0,
+                    "lifetime": 0.05000000074505806,
+                    "maxParticles": 4
+                },
+                {
+                    "name": "impact_sparks",
+                    "duration": 1.0,
+                    "lifetime": 0.3499999940395355,
+                    "maxParticles": 36
+                },
+                {
+                    "name": "impact_melt",
+                    "duration": 1.0,
+                    "lifetime": 0.800000011920929,
+                    "maxParticles": 10
+                },
+                {
+                    "name": "impact_smoke",
+                    "duration": 1.0,
+                    "lifetime": 1.2999999523162842,
+                    "maxParticles": 12
+                },
+                {
+                    "name": "ignite",
+                    "duration": 0.10000000149011612,
+                    "lifetime": 0.05999999865889549,
+                    "maxParticles": 2
+                },
+                {
+                    "name": "ignite_sparks",
+                    "duration": 0.10000000149011612,
+                    "lifetime": 0.20000000298023225,
+                    "maxParticles": 8
+                }
+            ],
+            "shaders": [
+                "ForgeVfx/Particles Additive",
+                "ForgeVfx/Particles Premultiplied"
+            ],
+            "items": [
+                {
+                    "path": "Assets/ForgeVfx/Effects/forge_energy_beam.prefab",
+                    "sha256": "3ce29ad87fcaa85507d3dc2a39194c77e8ec302d07b9b5286100d020a9b9dd04",
+                    "source": "Forge effect prefabs",
+                    "author": "Forge",
+                    "license": "CC0-1.0",
+                    "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+                    "origin": "Authored in this project by Assets/ForgeVfx/Editor/ForgeVfxOwnEffects.cs; each prefab is named after its effect_play member",
+                    "modifications": "none"
+                },
+                {
+                    "path": "Assets/ForgeVfx/Own/Materials/beam_additive.mat",
+                    "sha256": "c9aa6e07aef20918d3c35748e02435e35c525594e3f94b0781609c9a2d74bb2d",
+                    "source": "Forge self-made textures, materials and meshes",
+                    "author": "Forge",
+                    "license": "CC0-1.0",
+                    "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+                    "origin": "Generated by Assets/ForgeVfx/Editor/ForgeVfxOwnEffects.cs",
+                    "modifications": "none"
+                },
+                {
+                    "path": "Assets/ForgeVfx/Own/Materials/flash_additive.mat",
+                    "sha256": "7db99478f8354fa64f5802a15f56eaf31510d7e70b504b7823b82ca0a8c58190",
+                    "source": "Forge self-made textures, materials and meshes",
+                    "author": "Forge",
+                    "license": "CC0-1.0",
+                    "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+                    "origin": "Generated by Assets/ForgeVfx/Editor/ForgeVfxOwnEffects.cs",
+                    "modifications": "none"
+                },
+                {
+                    "path": "Assets/ForgeVfx/Own/Materials/flow_additive.mat",
+                    "sha256": "85248a56bf3c5a0b53f50d390e0d06513ed25b3be00de99b89b57d0a7adc4dfb",
+                    "source": "Forge self-made textures, materials and meshes",
+                    "author": "Forge",
+                    "license": "CC0-1.0",
+                    "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+                    "origin": "Generated by Assets/ForgeVfx/Editor/ForgeVfxOwnEffects.cs",
+                    "modifications": "none"
+                },
+                {
+                    "path": "Assets/ForgeVfx/Own/Materials/glow_additive.mat",
+                    "sha256": "7ee9c674f83b25e6bcbf12dd40a2a029e260d6f03aac4fe4b46b44090a85a192",
+                    "source": "Forge self-made textures, materials and meshes",
+                    "author": "Forge",
+                    "license": "CC0-1.0",
+                    "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+                    "origin": "Generated by Assets/ForgeVfx/Editor/ForgeVfxOwnEffects.cs",
+                    "modifications": "none"
+                },
+                {
+                    "path": "Assets/ForgeVfx/Own/Materials/smoke_premultiplied.mat",
+                    "sha256": "4e9c117b5c1e3d6e16757134ca1ab16658b2a3f38e631e25b409afebd10eab2b",
+                    "source": "Forge self-made textures, materials and meshes",
+                    "author": "Forge",
+                    "license": "CC0-1.0",
+                    "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+                    "origin": "Generated by Assets/ForgeVfx/Editor/ForgeVfxOwnEffects.cs",
+                    "modifications": "none"
+                },
+                {
+                    "path": "Assets/ForgeVfx/Own/Meshes/line_cross.asset",
+                    "sha256": "2d1837851ea971333120a4ce8dd6cba17b4ea0e35841ee9324517171c0ee81c9",
+                    "source": "Forge self-made textures, materials and meshes",
+                    "author": "Forge",
+                    "license": "CC0-1.0",
+                    "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+                    "origin": "Generated by Assets/ForgeVfx/Editor/ForgeVfxOwnEffects.cs",
+                    "modifications": "none"
+                },
+                {
+                    "path": "Assets/ForgeVfx/Own/Textures/beam_flow_sheet.png",
+                    "sha256": "700a4578c6be361a972544512cd6dcb9593634d92d0c7ee88458a26f18bf269d",
+                    "source": "Forge self-made textures, materials and meshes",
+                    "author": "Forge",
+                    "license": "CC0-1.0",
+                    "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+                    "origin": "Generated by Assets/ForgeVfx/Editor/ForgeVfxOwnEffects.cs",
+                    "modifications": "none"
+                },
+                {
+                    "path": "Assets/ForgeVfx/Own/Textures/beam_soft.png",
+                    "sha256": "f831f9217f8b844b4b551801598bcf2cf09478fe8c8a47baa37394d22594514b",
+                    "source": "Forge self-made textures, materials and meshes",
+                    "author": "Forge",
+                    "license": "CC0-1.0",
+                    "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+                    "origin": "Generated by Assets/ForgeVfx/Editor/ForgeVfxOwnEffects.cs",
+                    "modifications": "none"
+                },
+                {
+                    "path": "Assets/ForgeVfx/Own/Textures/flash_sheet.png",
+                    "sha256": "edcb8166010e92b5bb31e42e681c8e252ac32635d703c25af7bda1dcb3b9e71f",
+                    "source": "Forge self-made textures, materials and meshes",
+                    "author": "Forge",
+                    "license": "CC0-1.0",
+                    "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+                    "origin": "Generated by Assets/ForgeVfx/Editor/ForgeVfxOwnEffects.cs",
+                    "modifications": "none"
+                },
+                {
+                    "path": "Assets/ForgeVfx/Own/Textures/glow.png",
+                    "sha256": "d7f5dede7b600cfa51915d9b4bff7f6e03cc347c847d23fe69c631cb263a55c3",
+                    "source": "Forge self-made textures, materials and meshes",
+                    "author": "Forge",
+                    "license": "CC0-1.0",
+                    "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+                    "origin": "Generated by Assets/ForgeVfx/Editor/ForgeVfxOwnEffects.cs",
+                    "modifications": "none"
+                },
+                {
+                    "path": "Assets/ForgeVfx/Own/Textures/smoke_sheet.png",
+                    "sha256": "594b3df695f0b0f9cd08eb6298e9b45208fa5310a2d72a125b709b9b18ba4e6b",
+                    "source": "Forge self-made textures, materials and meshes",
+                    "author": "Forge",
+                    "license": "CC0-1.0",
+                    "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+                    "origin": "Generated by Assets/ForgeVfx/Editor/ForgeVfxOwnEffects.cs",
+                    "modifications": "none"
+                },
+                {
+                    "path": "Assets/ForgeVfx/Shaders/ForgeParticlesAdditive.shader",
+                    "sha256": "d9c29d095644d3f19dbe9b4877ef17013ec59499c357a8886cd88e970de31448",
+                    "source": "Forge particle shaders",
+                    "author": "Forge",
+                    "license": "CC0-1.0",
+                    "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+                    "origin": "Written for this project",
+                    "modifications": "none"
+                },
+                {
+                    "path": "Assets/ForgeVfx/Shaders/ForgeParticlesPremultiplied.shader",
+                    "sha256": "e52bda252fda7a916850678de34ac39e69ccd4fb0ea9e33096aa5a6fcade30f7",
+                    "source": "Forge particle shaders",
+                    "author": "Forge",
+                    "license": "CC0-1.0",
+                    "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+                    "origin": "Written for this project",
+                    "modifications": "none"
+                }
+            ]
+        },
+        {
+            "member": "forge_explosion",
+            "prefab": "Assets/ForgeVfx/Effects/forge_explosion.prefab",
+            "line": false,
+            "sustained": false,
+            "size": 2.200000047683716,
+            "seconds": 2.940000057220459,
+            "layers": [
+                {
+                    "name": "(root)",
+                    "duration": 0.10000000149011612,
+                    "lifetime": 0.09000000357627869,
+                    "maxParticles": 2
+                },
+                {
+                    "name": "light",
+                    "duration": 0.10000000149011612,
+                    "lifetime": 0.5,
+                    "maxParticles": 1
+                },
+                {
+                    "name": "flash_core",
+                    "duration": 0.10000000149011612,
+                    "lifetime": 0.06499999761581421,
+                    "maxParticles": 2
+                },
+                {
+                    "name": "fireball",
+                    "duration": 0.10000000149011612,
+                    "lifetime": 0.75,
+                    "maxParticles": 8
+                },
+                {
+                    "name": "smoke",
+                    "duration": 0.10000000149011612,
+                    "lifetime": 2.799999952316284,
+                    "maxParticles": 10
+                },
+                {
+                    "name": "streaks",
+                    "duration": 0.10000000149011612,
+                    "lifetime": 0.11999999731779099,
+                    "maxParticles": 16
+                },
+                {
+                    "name": "sparks",
+                    "duration": 0.10000000149011612,
+                    "lifetime": 0.44999998807907107,
+                    "maxParticles": 48
+                },
+                {
+                    "name": "bouncers",
+                    "duration": 0.10000000149011612,
+                    "lifetime": 0.699999988079071,
+                    "maxParticles": 16
+                },
+                {
+                    "name": "debris",
+                    "duration": 0.10000000149011612,
+                    "lifetime": 1.5,
+                    "maxParticles": 12
+                },
+                {
+                    "name": "embers",
+                    "duration": 0.10000000149011612,
+                    "lifetime": 2.0,
+                    "maxParticles": 16
+                }
+            ],
+            "shaders": [
+                "ForgeVfx/Particles Additive",
+                "ForgeVfx/Particles Alpha Blended",
+                "ForgeVfx/Particles Premultiplied"
+            ],
+            "items": [
+                {
+                    "path": "Assets/ForgeVfx/Effects/forge_explosion.prefab",
+                    "sha256": "49a1c6903ae00ce0299c2adfcaa755ffc6b4e332063c0d6a39b1e3a70082ee4c",
+                    "source": "Forge effect prefabs",
+                    "author": "Forge",
+                    "license": "CC0-1.0",
+                    "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+                    "origin": "Authored in this project by Assets/ForgeVfx/Editor/ForgeVfxOwnEffects.cs; each prefab is named after its effect_play member",
+                    "modifications": "none"
+                },
+                {
+                    "path": "Assets/ForgeVfx/Own/Materials/debris_alpha.mat",
+                    "sha256": "7264ba1226203d7fe17e6be9a2e726e3038e103cad0745de0544130d32fe0149",
+                    "source": "Forge self-made textures, materials and meshes",
+                    "author": "Forge",
+                    "license": "CC0-1.0",
+                    "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+                    "origin": "Generated by Assets/ForgeVfx/Editor/ForgeVfxOwnEffects.cs",
+                    "modifications": "none"
+                },
+                {
+                    "path": "Assets/ForgeVfx/Own/Materials/fire_premultiplied.mat",
+                    "sha256": "2a72c25e5005e99cad8b0217f6ec3e5afd1c5ab7fd9e1d9df44fdcc50f3065e2",
+                    "source": "Forge self-made textures, materials and meshes",
+                    "author": "Forge",
+                    "license": "CC0-1.0",
+                    "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+                    "origin": "Generated by Assets/ForgeVfx/Editor/ForgeVfxOwnEffects.cs",
+                    "modifications": "none"
+                },
+                {
+                    "path": "Assets/ForgeVfx/Own/Materials/flash_additive.mat",
+                    "sha256": "7db99478f8354fa64f5802a15f56eaf31510d7e70b504b7823b82ca0a8c58190",
+                    "source": "Forge self-made textures, materials and meshes",
+                    "author": "Forge",
+                    "license": "CC0-1.0",
+                    "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+                    "origin": "Generated by Assets/ForgeVfx/Editor/ForgeVfxOwnEffects.cs",
+                    "modifications": "none"
+                },
+                {
+                    "path": "Assets/ForgeVfx/Own/Materials/glow_additive.mat",
+                    "sha256": "7ee9c674f83b25e6bcbf12dd40a2a029e260d6f03aac4fe4b46b44090a85a192",
+                    "source": "Forge self-made textures, materials and meshes",
+                    "author": "Forge",
+                    "license": "CC0-1.0",
+                    "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+                    "origin": "Generated by Assets/ForgeVfx/Editor/ForgeVfxOwnEffects.cs",
+                    "modifications": "none"
+                },
+                {
+                    "path": "Assets/ForgeVfx/Own/Materials/smoke_premultiplied.mat",
+                    "sha256": "4e9c117b5c1e3d6e16757134ca1ab16658b2a3f38e631e25b409afebd10eab2b",
+                    "source": "Forge self-made textures, materials and meshes",
+                    "author": "Forge",
+                    "license": "CC0-1.0",
+                    "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+                    "origin": "Generated by Assets/ForgeVfx/Editor/ForgeVfxOwnEffects.cs",
+                    "modifications": "none"
+                },
+                {
+                    "path": "Assets/ForgeVfx/Own/Textures/debris_sheet.png",
+                    "sha256": "040a0f9747d0db355ef56f7cacf276943c8fd818c3368b52db00bd3d0813f7b7",
+                    "source": "Forge self-made textures, materials and meshes",
+                    "author": "Forge",
+                    "license": "CC0-1.0",
+                    "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+                    "origin": "Generated by Assets/ForgeVfx/Editor/ForgeVfxOwnEffects.cs",
+                    "modifications": "none"
+                },
+                {
+                    "path": "Assets/ForgeVfx/Own/Textures/fire_sheet.png",
+                    "sha256": "79cfab719ad1124c506057f5df2ea3ebc2e5fddfa433c836f05afc8aa6d5050e",
+                    "source": "Forge self-made textures, materials and meshes",
+                    "author": "Forge",
+                    "license": "CC0-1.0",
+                    "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+                    "origin": "Generated by Assets/ForgeVfx/Editor/ForgeVfxOwnEffects.cs",
+                    "modifications": "none"
+                },
+                {
+                    "path": "Assets/ForgeVfx/Own/Textures/flash_sheet.png",
+                    "sha256": "edcb8166010e92b5bb31e42e681c8e252ac32635d703c25af7bda1dcb3b9e71f",
+                    "source": "Forge self-made textures, materials and meshes",
+                    "author": "Forge",
+                    "license": "CC0-1.0",
+                    "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+                    "origin": "Generated by Assets/ForgeVfx/Editor/ForgeVfxOwnEffects.cs",
+                    "modifications": "none"
+                },
+                {
+                    "path": "Assets/ForgeVfx/Own/Textures/glow.png",
+                    "sha256": "d7f5dede7b600cfa51915d9b4bff7f6e03cc347c847d23fe69c631cb263a55c3",
+                    "source": "Forge self-made textures, materials and meshes",
+                    "author": "Forge",
+                    "license": "CC0-1.0",
+                    "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+                    "origin": "Generated by Assets/ForgeVfx/Editor/ForgeVfxOwnEffects.cs",
+                    "modifications": "none"
+                },
+                {
+                    "path": "Assets/ForgeVfx/Own/Textures/smoke_sheet.png",
+                    "sha256": "594b3df695f0b0f9cd08eb6298e9b45208fa5310a2d72a125b709b9b18ba4e6b",
+                    "source": "Forge self-made textures, materials and meshes",
+                    "author": "Forge",
+                    "license": "CC0-1.0",
+                    "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+                    "origin": "Generated by Assets/ForgeVfx/Editor/ForgeVfxOwnEffects.cs",
+                    "modifications": "none"
+                },
+                {
+                    "path": "Assets/ForgeVfx/Shaders/ForgeParticlesAdditive.shader",
+                    "sha256": "d9c29d095644d3f19dbe9b4877ef17013ec59499c357a8886cd88e970de31448",
+                    "source": "Forge particle shaders",
+                    "author": "Forge",
+                    "license": "CC0-1.0",
+                    "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+                    "origin": "Written for this project",
+                    "modifications": "none"
+                },
+                {
+                    "path": "Assets/ForgeVfx/Shaders/ForgeParticlesAlphaBlended.shader",
+                    "sha256": "99f716167fcba1ce4960224934a8dd189908df8305be291923e4a2c5837e8f53",
+                    "source": "Forge particle shaders",
+                    "author": "Forge",
+                    "license": "CC0-1.0",
+                    "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+                    "origin": "Written for this project",
+                    "modifications": "none"
+                },
+                {
+                    "path": "Assets/ForgeVfx/Shaders/ForgeParticlesPremultiplied.shader",
+                    "sha256": "e52bda252fda7a916850678de34ac39e69ccd4fb0ea9e33096aa5a6fcade30f7",
+                    "source": "Forge particle shaders",
+                    "author": "Forge",
+                    "license": "CC0-1.0",
+                    "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+                    "origin": "Written for this project",
+                    "modifications": "none"
+                }
+            ]
+        },
+        {
+            "member": "forge_flame",
+            "prefab": "Assets/ForgeVfx/Effects/forge_flame.prefab",
+            "line": false,
+            "sustained": true,
+            "size": 8.0,
+            "seconds": 2.5999999046325685,
+            "layers": [
+                {
+                    "name": "(root)",
+                    "duration": 1.0,
+                    "lifetime": 0.6000000238418579,
+                    "maxParticles": 56
+                },
+                {
+                    "name": "jet",
+                    "duration": 1.0,
+                    "lifetime": 0.18000000715255738,
+                    "maxParticles": 14
+                },
+                {
+                    "name": "licks",
+                    "duration": 1.0,
+                    "lifetime": 0.41999998688697817,
+                    "maxParticles": 16
+                },
+                {
+                    "name": "core",
+                    "duration": 1.0,
+                    "lifetime": 0.05999999865889549,
+                    "maxParticles": 4
+                },
+                {
+                    "name": "smoke",
+                    "duration": 1.0,
+                    "lifetime": 1.600000023841858,
+                    "maxParticles": 18
+                },
+                {
+                    "name": "sparks",
+                    "duration": 1.0,
+                    "lifetime": 0.5,
+                    "maxParticles": 14
+                },
+                {
+                    "name": "embers",
+                    "duration": 1.0,
+                    "lifetime": 1.399999976158142,
+                    "maxParticles": 14
+                },
+                {
+                    "name": "glow",
+                    "duration": 1.0,
+                    "lifetime": 0.1599999964237213,
+                    "maxParticles": 4
+                },
+                {
+                    "name": "ignite",
+                    "duration": 0.10000000149011612,
+                    "lifetime": 0.05999999865889549,
+                    "maxParticles": 2
+                },
+                {
+                    "name": "ignite_fire",
+                    "duration": 0.10000000149011612,
+                    "lifetime": 0.44999998807907107,
+                    "maxParticles": 3
+                },
+                {
+                    "name": "ignite_sparks",
+                    "duration": 0.10000000149011612,
+                    "lifetime": 0.25,
+                    "maxParticles": 8
+                }
+            ],
+            "shaders": [
+                "ForgeVfx/Particles Additive",
+                "ForgeVfx/Particles Premultiplied"
+            ],
+            "items": [
+                {
+                    "path": "Assets/ForgeVfx/Effects/forge_flame.prefab",
+                    "sha256": "6a44af81227a992253841e3e6d32fd5221a7534ee8e7b15217bb2a3e95929636",
+                    "source": "Forge effect prefabs",
+                    "author": "Forge",
+                    "license": "CC0-1.0",
+                    "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+                    "origin": "Authored in this project by Assets/ForgeVfx/Editor/ForgeVfxOwnEffects.cs; each prefab is named after its effect_play member",
+                    "modifications": "none"
+                },
+                {
+                    "path": "Assets/ForgeVfx/Own/Materials/fire_additive.mat",
+                    "sha256": "e7358ba1cbec7c87f77c7f37366fa444c23813f59ad8ca938611a58b034efbeb",
+                    "source": "Forge self-made textures, materials and meshes",
+                    "author": "Forge",
+                    "license": "CC0-1.0",
+                    "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+                    "origin": "Generated by Assets/ForgeVfx/Editor/ForgeVfxOwnEffects.cs",
+                    "modifications": "none"
+                },
+                {
+                    "path": "Assets/ForgeVfx/Own/Materials/fire_premultiplied.mat",
+                    "sha256": "2a72c25e5005e99cad8b0217f6ec3e5afd1c5ab7fd9e1d9df44fdcc50f3065e2",
+                    "source": "Forge self-made textures, materials and meshes",
+                    "author": "Forge",
+                    "license": "CC0-1.0",
+                    "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+                    "origin": "Generated by Assets/ForgeVfx/Editor/ForgeVfxOwnEffects.cs",
+                    "modifications": "none"
+                },
+                {
+                    "path": "Assets/ForgeVfx/Own/Materials/glow_additive.mat",
+                    "sha256": "7ee9c674f83b25e6bcbf12dd40a2a029e260d6f03aac4fe4b46b44090a85a192",
+                    "source": "Forge self-made textures, materials and meshes",
+                    "author": "Forge",
+                    "license": "CC0-1.0",
+                    "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+                    "origin": "Generated by Assets/ForgeVfx/Editor/ForgeVfxOwnEffects.cs",
+                    "modifications": "none"
+                },
+                {
+                    "path": "Assets/ForgeVfx/Own/Materials/smoke_premultiplied.mat",
+                    "sha256": "4e9c117b5c1e3d6e16757134ca1ab16658b2a3f38e631e25b409afebd10eab2b",
+                    "source": "Forge self-made textures, materials and meshes",
+                    "author": "Forge",
+                    "license": "CC0-1.0",
+                    "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+                    "origin": "Generated by Assets/ForgeVfx/Editor/ForgeVfxOwnEffects.cs",
+                    "modifications": "none"
+                },
+                {
+                    "path": "Assets/ForgeVfx/Own/Textures/fire_sheet.png",
+                    "sha256": "79cfab719ad1124c506057f5df2ea3ebc2e5fddfa433c836f05afc8aa6d5050e",
+                    "source": "Forge self-made textures, materials and meshes",
+                    "author": "Forge",
+                    "license": "CC0-1.0",
+                    "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+                    "origin": "Generated by Assets/ForgeVfx/Editor/ForgeVfxOwnEffects.cs",
+                    "modifications": "none"
+                },
+                {
+                    "path": "Assets/ForgeVfx/Own/Textures/glow.png",
+                    "sha256": "d7f5dede7b600cfa51915d9b4bff7f6e03cc347c847d23fe69c631cb263a55c3",
+                    "source": "Forge self-made textures, materials and meshes",
+                    "author": "Forge",
+                    "license": "CC0-1.0",
+                    "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+                    "origin": "Generated by Assets/ForgeVfx/Editor/ForgeVfxOwnEffects.cs",
+                    "modifications": "none"
+                },
+                {
+                    "path": "Assets/ForgeVfx/Own/Textures/smoke_sheet.png",
+                    "sha256": "594b3df695f0b0f9cd08eb6298e9b45208fa5310a2d72a125b709b9b18ba4e6b",
+                    "source": "Forge self-made textures, materials and meshes",
+                    "author": "Forge",
+                    "license": "CC0-1.0",
+                    "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+                    "origin": "Generated by Assets/ForgeVfx/Editor/ForgeVfxOwnEffects.cs",
+                    "modifications": "none"
+                },
+                {
+                    "path": "Assets/ForgeVfx/Shaders/ForgeParticlesAdditive.shader",
+                    "sha256": "d9c29d095644d3f19dbe9b4877ef17013ec59499c357a8886cd88e970de31448",
+                    "source": "Forge particle shaders",
+                    "author": "Forge",
+                    "license": "CC0-1.0",
+                    "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+                    "origin": "Written for this project",
+                    "modifications": "none"
+                },
+                {
+                    "path": "Assets/ForgeVfx/Shaders/ForgeParticlesPremultiplied.shader",
+                    "sha256": "e52bda252fda7a916850678de34ac39e69ccd4fb0ea9e33096aa5a6fcade30f7",
+                    "source": "Forge particle shaders",
+                    "author": "Forge",
+                    "license": "CC0-1.0",
+                    "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+                    "origin": "Written for this project",
+                    "modifications": "none"
+                }
+            ]
+        },
+        {
+            "member": "forge_flame_impact",
+            "prefab": "Assets/ForgeVfx/Effects/forge_flame_impact.prefab",
+            "line": false,
+            "sustained": false,
+            "size": 0.0,
+            "seconds": 1.7000000476837159,
+            "layers": [
+                {
+                    "name": "(root)",
+                    "duration": 0.10000000149011612,
+                    "lifetime": 0.07999999821186066,
+                    "maxParticles": 2
+                },
+                {
+                    "name": "light",
+                    "duration": 0.10000000149011612,
+                    "lifetime": 0.20000000298023225,
+                    "maxParticles": 1
+                },
+                {
+                    "name": "fire",
+                    "duration": 0.10000000149011612,
+                    "lifetime": 0.5,
+                    "maxParticles": 3
+                },
+                {
+                    "name": "smoke",
+                    "duration": 0.10000000149011612,
+                    "lifetime": 1.5,
+                    "maxParticles": 2
+                },
+                {
+                    "name": "sparks",
+                    "duration": 0.10000000149011612,
+                    "lifetime": 0.30000001192092898,
+                    "maxParticles": 8
+                },
+                {
+                    "name": "embers",
+                    "duration": 0.10000000149011612,
+                    "lifetime": 1.2000000476837159,
+                    "maxParticles": 4
+                }
+            ],
+            "shaders": [
+                "ForgeVfx/Particles Additive",
+                "ForgeVfx/Particles Premultiplied"
+            ],
+            "items": [
+                {
+                    "path": "Assets/ForgeVfx/Effects/forge_flame_impact.prefab",
+                    "sha256": "4842d95ab36b42e9107c51793648c27b840510e89b7e84e092ccc82b4e3ee6b5",
+                    "source": "Forge effect prefabs",
+                    "author": "Forge",
+                    "license": "CC0-1.0",
+                    "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+                    "origin": "Authored in this project by Assets/ForgeVfx/Editor/ForgeVfxOwnEffects.cs; each prefab is named after its effect_play member",
+                    "modifications": "none"
+                },
+                {
+                    "path": "Assets/ForgeVfx/Own/Materials/fire_premultiplied.mat",
+                    "sha256": "2a72c25e5005e99cad8b0217f6ec3e5afd1c5ab7fd9e1d9df44fdcc50f3065e2",
+                    "source": "Forge self-made textures, materials and meshes",
+                    "author": "Forge",
+                    "license": "CC0-1.0",
+                    "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+                    "origin": "Generated by Assets/ForgeVfx/Editor/ForgeVfxOwnEffects.cs",
+                    "modifications": "none"
+                },
+                {
+                    "path": "Assets/ForgeVfx/Own/Materials/glow_additive.mat",
+                    "sha256": "7ee9c674f83b25e6bcbf12dd40a2a029e260d6f03aac4fe4b46b44090a85a192",
+                    "source": "Forge self-made textures, materials and meshes",
+                    "author": "Forge",
+                    "license": "CC0-1.0",
+                    "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+                    "origin": "Generated by Assets/ForgeVfx/Editor/ForgeVfxOwnEffects.cs",
+                    "modifications": "none"
+                },
+                {
+                    "path": "Assets/ForgeVfx/Own/Materials/smoke_premultiplied.mat",
+                    "sha256": "4e9c117b5c1e3d6e16757134ca1ab16658b2a3f38e631e25b409afebd10eab2b",
+                    "source": "Forge self-made textures, materials and meshes",
+                    "author": "Forge",
+                    "license": "CC0-1.0",
+                    "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+                    "origin": "Generated by Assets/ForgeVfx/Editor/ForgeVfxOwnEffects.cs",
+                    "modifications": "none"
+                },
+                {
+                    "path": "Assets/ForgeVfx/Own/Textures/fire_sheet.png",
+                    "sha256": "79cfab719ad1124c506057f5df2ea3ebc2e5fddfa433c836f05afc8aa6d5050e",
+                    "source": "Forge self-made textures, materials and meshes",
+                    "author": "Forge",
+                    "license": "CC0-1.0",
+                    "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+                    "origin": "Generated by Assets/ForgeVfx/Editor/ForgeVfxOwnEffects.cs",
+                    "modifications": "none"
+                },
+                {
+                    "path": "Assets/ForgeVfx/Own/Textures/glow.png",
+                    "sha256": "d7f5dede7b600cfa51915d9b4bff7f6e03cc347c847d23fe69c631cb263a55c3",
+                    "source": "Forge self-made textures, materials and meshes",
+                    "author": "Forge",
+                    "license": "CC0-1.0",
+                    "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+                    "origin": "Generated by Assets/ForgeVfx/Editor/ForgeVfxOwnEffects.cs",
+                    "modifications": "none"
+                },
+                {
+                    "path": "Assets/ForgeVfx/Own/Textures/smoke_sheet.png",
+                    "sha256": "594b3df695f0b0f9cd08eb6298e9b45208fa5310a2d72a125b709b9b18ba4e6b",
+                    "source": "Forge self-made textures, materials and meshes",
+                    "author": "Forge",
+                    "license": "CC0-1.0",
+                    "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+                    "origin": "Generated by Assets/ForgeVfx/Editor/ForgeVfxOwnEffects.cs",
+                    "modifications": "none"
+                },
+                {
+                    "path": "Assets/ForgeVfx/Shaders/ForgeParticlesAdditive.shader",
+                    "sha256": "d9c29d095644d3f19dbe9b4877ef17013ec59499c357a8886cd88e970de31448",
+                    "source": "Forge particle shaders",
+                    "author": "Forge",
+                    "license": "CC0-1.0",
+                    "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+                    "origin": "Written for this project",
+                    "modifications": "none"
+                },
+                {
+                    "path": "Assets/ForgeVfx/Shaders/ForgeParticlesPremultiplied.shader",
+                    "sha256": "e52bda252fda7a916850678de34ac39e69ccd4fb0ea9e33096aa5a6fcade30f7",
+                    "source": "Forge particle shaders",
+                    "author": "Forge",
+                    "license": "CC0-1.0",
+                    "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+                    "origin": "Written for this project",
+                    "modifications": "none"
+                }
+            ]
+        },
+        {
+            "member": "forge_lightning_arc",
+            "prefab": "Assets/ForgeVfx/Effects/forge_lightning_arc.prefab",
+            "line": true,
+            "sustained": false,
+            "size": 0.0,
+            "seconds": 1.100000023841858,
+            "layers": [
+                {
+                    "name": "(root)",
+                    "duration": 0.2199999988079071,
+                    "lifetime": 0.07000000029802323,
+                    "maxParticles": 8
+                },
+                {
+                    "name": "bolts_thin",
+                    "duration": 0.2199999988079071,
+                    "lifetime": 0.05999999865889549,
+                    "maxParticles": 6
+                },
+                {
+                    "name": "glow",
+                    "duration": 0.2199999988079071,
+                    "lifetime": 0.2199999988079071,
+                    "maxParticles": 2
+                },
+                {
+                    "name": "branches",
+                    "duration": 0.2199999988079071,
+                    "lifetime": 0.07000000029802323,
+                    "maxParticles": 12
+                },
+                {
+                    "name": "ions",
+                    "duration": 0.10000000149011612,
+                    "lifetime": 0.6000000238418579,
+                    "maxParticles": 14
+                },
+                {
+                    "name": "end_flash",
+                    "duration": 0.10000000149011612,
+                    "lifetime": 0.10000000149011612,
+                    "maxParticles": 2
+                },
+                {
+                    "name": "end_light",
+                    "duration": 0.10000000149011612,
+                    "lifetime": 0.18000000715255738,
+                    "maxParticles": 1
+                },
+                {
+                    "name": "end_crackle",
+                    "duration": 0.15000000596046449,
+                    "lifetime": 0.07999999821186066,
+                    "maxParticles": 4
+                },
+                {
+                    "name": "end_sparks",
+                    "duration": 0.10000000149011612,
+                    "lifetime": 0.4000000059604645,
+                    "maxParticles": 18
+                },
+                {
+                    "name": "end_smoke",
+                    "duration": 0.10000000149011612,
+                    "lifetime": 1.0,
+                    "maxParticles": 3
+                },
+                {
+                    "name": "start_flash",
+                    "duration": 0.10000000149011612,
+                    "lifetime": 0.05999999865889549,
+                    "maxParticles": 2
+                },
+                {
+                    "name": "start_crackle",
+                    "duration": 0.10000000149011612,
+                    "lifetime": 0.05000000074505806,
+                    "maxParticles": 2
+                }
+            ],
+            "shaders": [
+                "ForgeVfx/Particles Additive",
+                "ForgeVfx/Particles Premultiplied"
+            ],
+            "items": [
+                {
+                    "path": "Assets/ForgeVfx/Effects/forge_lightning_arc.prefab",
+                    "sha256": "9c60e1fcef930233cb625af63ef53a4835da285fa2536a641d0f9fc7fadab614",
+                    "source": "Forge effect prefabs",
+                    "author": "Forge",
+                    "license": "CC0-1.0",
+                    "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+                    "origin": "Authored in this project by Assets/ForgeVfx/Editor/ForgeVfxOwnEffects.cs; each prefab is named after its effect_play member",
+                    "modifications": "none"
+                },
+                {
+                    "path": "Assets/ForgeVfx/Own/Materials/beam_additive.mat",
+                    "sha256": "c9aa6e07aef20918d3c35748e02435e35c525594e3f94b0781609c9a2d74bb2d",
+                    "source": "Forge self-made textures, materials and meshes",
+                    "author": "Forge",
+                    "license": "CC0-1.0",
+                    "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+                    "origin": "Generated by Assets/ForgeVfx/Editor/ForgeVfxOwnEffects.cs",
+                    "modifications": "none"
+                },
+                {
+                    "path": "Assets/ForgeVfx/Own/Materials/bolt_additive.mat",
+                    "sha256": "42ab1fd0dea20348f692e12eb11b9b287b6d32ae144aff8f22061c4316adc419",
+                    "source": "Forge self-made textures, materials and meshes",
+                    "author": "Forge",
+                    "license": "CC0-1.0",
+                    "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+                    "origin": "Generated by Assets/ForgeVfx/Editor/ForgeVfxOwnEffects.cs",
+                    "modifications": "none"
+                },
+                {
+                    "path": "Assets/ForgeVfx/Own/Materials/crackle_additive.mat",
+                    "sha256": "e0cd7b51083bb743a1ed63896b4f7c7c51e9b60a79c608bf16d279db480e836d",
+                    "source": "Forge self-made textures, materials and meshes",
+                    "author": "Forge",
+                    "license": "CC0-1.0",
+                    "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+                    "origin": "Generated by Assets/ForgeVfx/Editor/ForgeVfxOwnEffects.cs",
+                    "modifications": "none"
+                },
+                {
+                    "path": "Assets/ForgeVfx/Own/Materials/glow_additive.mat",
+                    "sha256": "7ee9c674f83b25e6bcbf12dd40a2a029e260d6f03aac4fe4b46b44090a85a192",
+                    "source": "Forge self-made textures, materials and meshes",
+                    "author": "Forge",
+                    "license": "CC0-1.0",
+                    "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+                    "origin": "Generated by Assets/ForgeVfx/Editor/ForgeVfxOwnEffects.cs",
+                    "modifications": "none"
+                },
+                {
+                    "path": "Assets/ForgeVfx/Own/Materials/smoke_premultiplied.mat",
+                    "sha256": "4e9c117b5c1e3d6e16757134ca1ab16658b2a3f38e631e25b409afebd10eab2b",
+                    "source": "Forge self-made textures, materials and meshes",
+                    "author": "Forge",
+                    "license": "CC0-1.0",
+                    "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+                    "origin": "Generated by Assets/ForgeVfx/Editor/ForgeVfxOwnEffects.cs",
+                    "modifications": "none"
+                },
+                {
+                    "path": "Assets/ForgeVfx/Own/Meshes/line_cross.asset",
+                    "sha256": "2d1837851ea971333120a4ce8dd6cba17b4ea0e35841ee9324517171c0ee81c9",
+                    "source": "Forge self-made textures, materials and meshes",
+                    "author": "Forge",
+                    "license": "CC0-1.0",
+                    "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+                    "origin": "Generated by Assets/ForgeVfx/Editor/ForgeVfxOwnEffects.cs",
+                    "modifications": "none"
+                },
+                {
+                    "path": "Assets/ForgeVfx/Own/Textures/beam_soft.png",
+                    "sha256": "f831f9217f8b844b4b551801598bcf2cf09478fe8c8a47baa37394d22594514b",
+                    "source": "Forge self-made textures, materials and meshes",
+                    "author": "Forge",
+                    "license": "CC0-1.0",
+                    "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+                    "origin": "Generated by Assets/ForgeVfx/Editor/ForgeVfxOwnEffects.cs",
+                    "modifications": "none"
+                },
+                {
+                    "path": "Assets/ForgeVfx/Own/Textures/bolt_sheet.png",
+                    "sha256": "44a4068615b29bbf8d1b59642fde5db1e2f0cfb74c36475ca65f78fcb98bcfec",
+                    "source": "Forge self-made textures, materials and meshes",
+                    "author": "Forge",
+                    "license": "CC0-1.0",
+                    "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+                    "origin": "Generated by Assets/ForgeVfx/Editor/ForgeVfxOwnEffects.cs",
+                    "modifications": "none"
+                },
+                {
+                    "path": "Assets/ForgeVfx/Own/Textures/crackle_sheet.png",
+                    "sha256": "9e75706b654b73577cab057e19282fdb4eabc749ecd509e4ec97431289ce391c",
+                    "source": "Forge self-made textures, materials and meshes",
+                    "author": "Forge",
+                    "license": "CC0-1.0",
+                    "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+                    "origin": "Generated by Assets/ForgeVfx/Editor/ForgeVfxOwnEffects.cs",
+                    "modifications": "none"
+                },
+                {
+                    "path": "Assets/ForgeVfx/Own/Textures/glow.png",
+                    "sha256": "d7f5dede7b600cfa51915d9b4bff7f6e03cc347c847d23fe69c631cb263a55c3",
+                    "source": "Forge self-made textures, materials and meshes",
+                    "author": "Forge",
+                    "license": "CC0-1.0",
+                    "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+                    "origin": "Generated by Assets/ForgeVfx/Editor/ForgeVfxOwnEffects.cs",
+                    "modifications": "none"
+                },
+                {
+                    "path": "Assets/ForgeVfx/Own/Textures/smoke_sheet.png",
+                    "sha256": "594b3df695f0b0f9cd08eb6298e9b45208fa5310a2d72a125b709b9b18ba4e6b",
+                    "source": "Forge self-made textures, materials and meshes",
+                    "author": "Forge",
+                    "license": "CC0-1.0",
+                    "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+                    "origin": "Generated by Assets/ForgeVfx/Editor/ForgeVfxOwnEffects.cs",
+                    "modifications": "none"
+                },
+                {
+                    "path": "Assets/ForgeVfx/Shaders/ForgeParticlesAdditive.shader",
+                    "sha256": "d9c29d095644d3f19dbe9b4877ef17013ec59499c357a8886cd88e970de31448",
+                    "source": "Forge particle shaders",
+                    "author": "Forge",
+                    "license": "CC0-1.0",
+                    "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+                    "origin": "Written for this project",
+                    "modifications": "none"
+                },
+                {
+                    "path": "Assets/ForgeVfx/Shaders/ForgeParticlesPremultiplied.shader",
+                    "sha256": "e52bda252fda7a916850678de34ac39e69ccd4fb0ea9e33096aa5a6fcade30f7",
+                    "source": "Forge particle shaders",
+                    "author": "Forge",
+                    "license": "CC0-1.0",
+                    "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+                    "origin": "Written for this project",
+                    "modifications": "none"
+                }
+            ]
+        },
+        {
+            "member": "forge_plasma_discharge",
+            "prefab": "Assets/ForgeVfx/Effects/forge_plasma_discharge.prefab",
+            "line": true,
+            "sustained": false,
+            "size": 0.0,
+            "seconds": 0.42000001668930056,
+            "layers": [
+                {
+                    "name": "(root)",
+                    "duration": 0.2199999988079071,
+                    "lifetime": 0.05999999865889549,
+                    "maxParticles": 6
+                },
+                {
+                    "name": "glow",
+                    "duration": 0.2199999988079071,
+                    "lifetime": 0.20000000298023225,
+                    "maxParticles": 2
+                },
+                {
+                    "name": "end_glow",
+                    "duration": 0.10000000149011612,
+                    "lifetime": 0.15000000596046449,
+                    "maxParticles": 2
+                },
+                {
+                    "name": "end_crackle",
+                    "duration": 0.10000000149011612,
+                    "lifetime": 0.07000000029802323,
+                    "maxParticles": 2
+                },
+                {
+                    "name": "end_sparks",
+                    "duration": 0.10000000149011612,
+                    "lifetime": 0.25,
+                    "maxParticles": 10
+                }
+            ],
+            "shaders": [
+                "ForgeVfx/Particles Additive"
+            ],
+            "items": [
+                {
+                    "path": "Assets/ForgeVfx/Effects/forge_plasma_discharge.prefab",
+                    "sha256": "f4f8d015bbb29f899a7a90d2523723d334aada5ae6ea6563e06d648494969c49",
+                    "source": "Forge effect prefabs",
+                    "author": "Forge",
+                    "license": "CC0-1.0",
+                    "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+                    "origin": "Authored in this project by Assets/ForgeVfx/Editor/ForgeVfxOwnEffects.cs; each prefab is named after its effect_play member",
+                    "modifications": "none"
+                },
+                {
+                    "path": "Assets/ForgeVfx/Own/Materials/beam_additive.mat",
+                    "sha256": "c9aa6e07aef20918d3c35748e02435e35c525594e3f94b0781609c9a2d74bb2d",
+                    "source": "Forge self-made textures, materials and meshes",
+                    "author": "Forge",
+                    "license": "CC0-1.0",
+                    "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+                    "origin": "Generated by Assets/ForgeVfx/Editor/ForgeVfxOwnEffects.cs",
+                    "modifications": "none"
+                },
+                {
+                    "path": "Assets/ForgeVfx/Own/Materials/bolt_additive.mat",
+                    "sha256": "42ab1fd0dea20348f692e12eb11b9b287b6d32ae144aff8f22061c4316adc419",
+                    "source": "Forge self-made textures, materials and meshes",
+                    "author": "Forge",
+                    "license": "CC0-1.0",
+                    "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+                    "origin": "Generated by Assets/ForgeVfx/Editor/ForgeVfxOwnEffects.cs",
+                    "modifications": "none"
+                },
+                {
+                    "path": "Assets/ForgeVfx/Own/Materials/crackle_additive.mat",
+                    "sha256": "e0cd7b51083bb743a1ed63896b4f7c7c51e9b60a79c608bf16d279db480e836d",
+                    "source": "Forge self-made textures, materials and meshes",
+                    "author": "Forge",
+                    "license": "CC0-1.0",
+                    "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+                    "origin": "Generated by Assets/ForgeVfx/Editor/ForgeVfxOwnEffects.cs",
+                    "modifications": "none"
+                },
+                {
+                    "path": "Assets/ForgeVfx/Own/Materials/glow_additive.mat",
+                    "sha256": "7ee9c674f83b25e6bcbf12dd40a2a029e260d6f03aac4fe4b46b44090a85a192",
+                    "source": "Forge self-made textures, materials and meshes",
+                    "author": "Forge",
+                    "license": "CC0-1.0",
+                    "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+                    "origin": "Generated by Assets/ForgeVfx/Editor/ForgeVfxOwnEffects.cs",
+                    "modifications": "none"
+                },
+                {
+                    "path": "Assets/ForgeVfx/Own/Meshes/line_cross.asset",
+                    "sha256": "2d1837851ea971333120a4ce8dd6cba17b4ea0e35841ee9324517171c0ee81c9",
+                    "source": "Forge self-made textures, materials and meshes",
+                    "author": "Forge",
+                    "license": "CC0-1.0",
+                    "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+                    "origin": "Generated by Assets/ForgeVfx/Editor/ForgeVfxOwnEffects.cs",
+                    "modifications": "none"
+                },
+                {
+                    "path": "Assets/ForgeVfx/Own/Textures/beam_soft.png",
+                    "sha256": "f831f9217f8b844b4b551801598bcf2cf09478fe8c8a47baa37394d22594514b",
+                    "source": "Forge self-made textures, materials and meshes",
+                    "author": "Forge",
+                    "license": "CC0-1.0",
+                    "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+                    "origin": "Generated by Assets/ForgeVfx/Editor/ForgeVfxOwnEffects.cs",
+                    "modifications": "none"
+                },
+                {
+                    "path": "Assets/ForgeVfx/Own/Textures/bolt_sheet.png",
+                    "sha256": "44a4068615b29bbf8d1b59642fde5db1e2f0cfb74c36475ca65f78fcb98bcfec",
+                    "source": "Forge self-made textures, materials and meshes",
+                    "author": "Forge",
+                    "license": "CC0-1.0",
+                    "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+                    "origin": "Generated by Assets/ForgeVfx/Editor/ForgeVfxOwnEffects.cs",
+                    "modifications": "none"
+                },
+                {
+                    "path": "Assets/ForgeVfx/Own/Textures/crackle_sheet.png",
+                    "sha256": "9e75706b654b73577cab057e19282fdb4eabc749ecd509e4ec97431289ce391c",
+                    "source": "Forge self-made textures, materials and meshes",
+                    "author": "Forge",
+                    "license": "CC0-1.0",
+                    "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+                    "origin": "Generated by Assets/ForgeVfx/Editor/ForgeVfxOwnEffects.cs",
+                    "modifications": "none"
+                },
+                {
+                    "path": "Assets/ForgeVfx/Own/Textures/glow.png",
+                    "sha256": "d7f5dede7b600cfa51915d9b4bff7f6e03cc347c847d23fe69c631cb263a55c3",
+                    "source": "Forge self-made textures, materials and meshes",
+                    "author": "Forge",
+                    "license": "CC0-1.0",
+                    "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+                    "origin": "Generated by Assets/ForgeVfx/Editor/ForgeVfxOwnEffects.cs",
+                    "modifications": "none"
+                },
+                {
+                    "path": "Assets/ForgeVfx/Shaders/ForgeParticlesAdditive.shader",
+                    "sha256": "d9c29d095644d3f19dbe9b4877ef17013ec59499c357a8886cd88e970de31448",
+                    "source": "Forge particle shaders",
+                    "author": "Forge",
+                    "license": "CC0-1.0",
+                    "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+                    "origin": "Written for this project",
+                    "modifications": "none"
+                }
+            ]
+        },
+        {
+            "member": "forge_plasma_explosion",
+            "prefab": "Assets/ForgeVfx/Effects/forge_plasma_explosion.prefab",
+            "line": false,
+            "sustained": false,
+            "size": 3.0,
+            "seconds": 2.4000000953674318,
+            "layers": [
+                {
+                    "name": "(root)",
+                    "duration": 0.15000000596046449,
+                    "lifetime": 0.10999999940395355,
+                    "maxParticles": 2
+                },
+                {
+                    "name": "light",
+                    "duration": 0.10000000149011612,
+                    "lifetime": 0.550000011920929,
+                    "maxParticles": 1
+                },
+                {
+                    "name": "flash_core",
+                    "duration": 0.10000000149011612,
+                    "lifetime": 0.05999999865889549,
+                    "maxParticles": 2
+                },
+                {
+                    "name": "ring",
+                    "duration": 0.10000000149011612,
+                    "lifetime": 0.3199999928474426,
+                    "maxParticles": 2
+                },
+                {
+                    "name": "core",
+                    "duration": 0.10000000149011612,
+                    "lifetime": 0.5,
+                    "maxParticles": 5
+                },
+                {
+                    "name": "arcs",
+                    "duration": 0.25,
+                    "lifetime": 0.09000000357627869,
+                    "maxParticles": 12
+                },
+                {
+                    "name": "tendrils",
+                    "duration": 0.20000000298023225,
+                    "lifetime": 0.07000000029802323,
+                    "maxParticles": 8
+                },
+                {
+                    "name": "sparks",
+                    "duration": 0.10000000149011612,
+                    "lifetime": 0.6000000238418579,
+                    "maxParticles": 44
+                },
+                {
+                    "name": "motes",
+                    "duration": 0.10000000149011612,
+                    "lifetime": 1.399999976158142,
+                    "maxParticles": 18
+                },
+                {
+                    "name": "smoke",
+                    "duration": 0.10000000149011612,
+                    "lifetime": 2.200000047683716,
+                    "maxParticles": 7
+                }
+            ],
+            "shaders": [
+                "ForgeVfx/Particles Additive",
+                "ForgeVfx/Particles Premultiplied"
+            ],
+            "items": [
+                {
+                    "path": "Assets/ForgeVfx/Effects/forge_plasma_explosion.prefab",
+                    "sha256": "40bd1f789094d1ea5f9031a2d1869893d846056450f3552ea7e098a25aff4fca",
+                    "source": "Forge effect prefabs",
+                    "author": "Forge",
+                    "license": "CC0-1.0",
+                    "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+                    "origin": "Authored in this project by Assets/ForgeVfx/Editor/ForgeVfxOwnEffects.cs; each prefab is named after its effect_play member",
+                    "modifications": "none"
+                },
+                {
+                    "path": "Assets/ForgeVfx/Own/Materials/bolt_additive.mat",
+                    "sha256": "42ab1fd0dea20348f692e12eb11b9b287b6d32ae144aff8f22061c4316adc419",
+                    "source": "Forge self-made textures, materials and meshes",
+                    "author": "Forge",
+                    "license": "CC0-1.0",
+                    "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+                    "origin": "Generated by Assets/ForgeVfx/Editor/ForgeVfxOwnEffects.cs",
+                    "modifications": "none"
+                },
+                {
+                    "path": "Assets/ForgeVfx/Own/Materials/crackle_additive.mat",
+                    "sha256": "e0cd7b51083bb743a1ed63896b4f7c7c51e9b60a79c608bf16d279db480e836d",
+                    "source": "Forge self-made textures, materials and meshes",
+                    "author": "Forge",
+                    "license": "CC0-1.0",
+                    "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+                    "origin": "Generated by Assets/ForgeVfx/Editor/ForgeVfxOwnEffects.cs",
+                    "modifications": "none"
+                },
+                {
+                    "path": "Assets/ForgeVfx/Own/Materials/flash_additive.mat",
+                    "sha256": "7db99478f8354fa64f5802a15f56eaf31510d7e70b504b7823b82ca0a8c58190",
+                    "source": "Forge self-made textures, materials and meshes",
+                    "author": "Forge",
+                    "license": "CC0-1.0",
+                    "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+                    "origin": "Generated by Assets/ForgeVfx/Editor/ForgeVfxOwnEffects.cs",
+                    "modifications": "none"
+                },
+                {
+                    "path": "Assets/ForgeVfx/Own/Materials/glow_additive.mat",
+                    "sha256": "7ee9c674f83b25e6bcbf12dd40a2a029e260d6f03aac4fe4b46b44090a85a192",
+                    "source": "Forge self-made textures, materials and meshes",
+                    "author": "Forge",
+                    "license": "CC0-1.0",
+                    "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+                    "origin": "Generated by Assets/ForgeVfx/Editor/ForgeVfxOwnEffects.cs",
+                    "modifications": "none"
+                },
+                {
+                    "path": "Assets/ForgeVfx/Own/Materials/plasma_additive.mat",
+                    "sha256": "27afce60ed6df9179cbea7840ab1b1e5b845fad8d47d93051e23ad9992928f77",
+                    "source": "Forge self-made textures, materials and meshes",
+                    "author": "Forge",
+                    "license": "CC0-1.0",
+                    "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+                    "origin": "Generated by Assets/ForgeVfx/Editor/ForgeVfxOwnEffects.cs",
+                    "modifications": "none"
+                },
+                {
+                    "path": "Assets/ForgeVfx/Own/Materials/shock_ring_additive.mat",
+                    "sha256": "d4a14972c0b952b0ff1ada71e1c7930d797b6ac14f3357623c8b46033a9df0b0",
+                    "source": "Forge self-made textures, materials and meshes",
+                    "author": "Forge",
+                    "license": "CC0-1.0",
+                    "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+                    "origin": "Generated by Assets/ForgeVfx/Editor/ForgeVfxOwnEffects.cs",
+                    "modifications": "none"
+                },
+                {
+                    "path": "Assets/ForgeVfx/Own/Materials/smoke_premultiplied.mat",
+                    "sha256": "4e9c117b5c1e3d6e16757134ca1ab16658b2a3f38e631e25b409afebd10eab2b",
+                    "source": "Forge self-made textures, materials and meshes",
+                    "author": "Forge",
+                    "license": "CC0-1.0",
+                    "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+                    "origin": "Generated by Assets/ForgeVfx/Editor/ForgeVfxOwnEffects.cs",
+                    "modifications": "none"
+                },
+                {
+                    "path": "Assets/ForgeVfx/Own/Meshes/line_cross.asset",
+                    "sha256": "2d1837851ea971333120a4ce8dd6cba17b4ea0e35841ee9324517171c0ee81c9",
+                    "source": "Forge self-made textures, materials and meshes",
+                    "author": "Forge",
+                    "license": "CC0-1.0",
+                    "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+                    "origin": "Generated by Assets/ForgeVfx/Editor/ForgeVfxOwnEffects.cs",
+                    "modifications": "none"
+                },
+                {
+                    "path": "Assets/ForgeVfx/Own/Textures/bolt_sheet.png",
+                    "sha256": "44a4068615b29bbf8d1b59642fde5db1e2f0cfb74c36475ca65f78fcb98bcfec",
+                    "source": "Forge self-made textures, materials and meshes",
+                    "author": "Forge",
+                    "license": "CC0-1.0",
+                    "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+                    "origin": "Generated by Assets/ForgeVfx/Editor/ForgeVfxOwnEffects.cs",
+                    "modifications": "none"
+                },
+                {
+                    "path": "Assets/ForgeVfx/Own/Textures/crackle_sheet.png",
+                    "sha256": "9e75706b654b73577cab057e19282fdb4eabc749ecd509e4ec97431289ce391c",
+                    "source": "Forge self-made textures, materials and meshes",
+                    "author": "Forge",
+                    "license": "CC0-1.0",
+                    "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+                    "origin": "Generated by Assets/ForgeVfx/Editor/ForgeVfxOwnEffects.cs",
+                    "modifications": "none"
+                },
+                {
+                    "path": "Assets/ForgeVfx/Own/Textures/flash_sheet.png",
+                    "sha256": "edcb8166010e92b5bb31e42e681c8e252ac32635d703c25af7bda1dcb3b9e71f",
+                    "source": "Forge self-made textures, materials and meshes",
+                    "author": "Forge",
+                    "license": "CC0-1.0",
+                    "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+                    "origin": "Generated by Assets/ForgeVfx/Editor/ForgeVfxOwnEffects.cs",
+                    "modifications": "none"
+                },
+                {
+                    "path": "Assets/ForgeVfx/Own/Textures/glow.png",
+                    "sha256": "d7f5dede7b600cfa51915d9b4bff7f6e03cc347c847d23fe69c631cb263a55c3",
+                    "source": "Forge self-made textures, materials and meshes",
+                    "author": "Forge",
+                    "license": "CC0-1.0",
+                    "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+                    "origin": "Generated by Assets/ForgeVfx/Editor/ForgeVfxOwnEffects.cs",
+                    "modifications": "none"
+                },
+                {
+                    "path": "Assets/ForgeVfx/Own/Textures/plasma_sheet.png",
+                    "sha256": "95cbfc753d12133eaf5aa057b63151898def789b2a9a35d7caaf4dbdaa070543",
+                    "source": "Forge self-made textures, materials and meshes",
+                    "author": "Forge",
+                    "license": "CC0-1.0",
+                    "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+                    "origin": "Generated by Assets/ForgeVfx/Editor/ForgeVfxOwnEffects.cs",
+                    "modifications": "none"
+                },
+                {
+                    "path": "Assets/ForgeVfx/Own/Textures/shock_ring.png",
+                    "sha256": "ba0fcd7c5f92c0a8bfd77d98064f1b88b893a8a76db5bbb44ccbc3842961a339",
+                    "source": "Forge self-made textures, materials and meshes",
+                    "author": "Forge",
+                    "license": "CC0-1.0",
+                    "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+                    "origin": "Generated by Assets/ForgeVfx/Editor/ForgeVfxOwnEffects.cs",
+                    "modifications": "none"
+                },
+                {
+                    "path": "Assets/ForgeVfx/Own/Textures/smoke_sheet.png",
+                    "sha256": "594b3df695f0b0f9cd08eb6298e9b45208fa5310a2d72a125b709b9b18ba4e6b",
+                    "source": "Forge self-made textures, materials and meshes",
+                    "author": "Forge",
+                    "license": "CC0-1.0",
+                    "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+                    "origin": "Generated by Assets/ForgeVfx/Editor/ForgeVfxOwnEffects.cs",
+                    "modifications": "none"
+                },
+                {
+                    "path": "Assets/ForgeVfx/Shaders/ForgeParticlesAdditive.shader",
+                    "sha256": "d9c29d095644d3f19dbe9b4877ef17013ec59499c357a8886cd88e970de31448",
+                    "source": "Forge particle shaders",
+                    "author": "Forge",
+                    "license": "CC0-1.0",
+                    "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+                    "origin": "Written for this project",
+                    "modifications": "none"
+                },
+                {
+                    "path": "Assets/ForgeVfx/Shaders/ForgeParticlesPremultiplied.shader",
+                    "sha256": "e52bda252fda7a916850678de34ac39e69ccd4fb0ea9e33096aa5a6fcade30f7",
+                    "source": "Forge particle shaders",
+                    "author": "Forge",
+                    "license": "CC0-1.0",
+                    "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+                    "origin": "Written for this project",
+                    "modifications": "none"
+                }
+            ]
+        },
+        {
+            "member": "forge_plasma_orb",
+            "prefab": "Assets/ForgeVfx/Effects/forge_plasma_orb.prefab",
+            "line": false,
+            "sustained": true,
+            "size": 0.30000001192092898,
+            "seconds": 2.0,
+            "layers": [
+                {
+                    "name": "(root)",
+                    "duration": 1.0,
+                    "lifetime": 0.2800000011920929,
+                    "maxParticles": 8
+                },
+                {
+                    "name": "centre",
+                    "duration": 1.0,
+                    "lifetime": 0.10000000149011612,
+                    "maxParticles": 4
+                },
+                {
+                    "name": "shell",
+                    "duration": 1.0,
+                    "lifetime": 0.25,
+                    "maxParticles": 4
+                },
+                {
+                    "name": "arcs",
+                    "duration": 1.0,
+                    "lifetime": 0.05999999865889549,
+                    "maxParticles": 4
+                },
+                {
+                    "name": "trail",
+                    "duration": 1.0,
+                    "lifetime": 1.0,
+                    "maxParticles": 2
+                },
+                {
+                    "name": "wake",
+                    "duration": 1.0,
+                    "lifetime": 0.6000000238418579,
+                    "maxParticles": 8
+                },
+                {
+                    "name": "motes",
+                    "duration": 1.0,
+                    "lifetime": 0.5,
+                    "maxParticles": 10
+                },
+                {
+                    "name": "charging",
+                    "duration": 0.5,
+                    "lifetime": 0.3199999928474426,
+                    "maxParticles": 16
+                },
+                {
+                    "name": "charging_arcs",
+                    "duration": 0.5,
+                    "lifetime": 0.05000000074505806,
+                    "maxParticles": 3
+                },
+                {
+                    "name": "charged",
+                    "duration": 0.10000000149011612,
+                    "lifetime": 0.10000000149011612,
+                    "maxParticles": 2
+                },
+                {
+                    "name": "charged_light",
+                    "duration": 0.10000000149011612,
+                    "lifetime": 0.20000000298023225,
+                    "maxParticles": 1
+                },
+                {
+                    "name": "charged_ring",
+                    "duration": 0.10000000149011612,
+                    "lifetime": 0.30000001192092898,
+                    "maxParticles": 2
+                },
+                {
+                    "name": "charged_pulse",
+                    "duration": 0.5,
+                    "lifetime": 0.5,
+                    "maxParticles": 2
+                },
+                {
+                    "name": "charged_arcs",
+                    "duration": 0.5,
+                    "lifetime": 0.05000000074505806,
+                    "maxParticles": 3
+                },
+                {
+                    "name": "launch",
+                    "duration": 0.10000000149011612,
+                    "lifetime": 0.054999999701976779,
+                    "maxParticles": 2
+                },
+                {
+                    "name": "launch_glow",
+                    "duration": 0.10000000149011612,
+                    "lifetime": 0.11999999731779099,
+                    "maxParticles": 2
+                },
+                {
+                    "name": "launch_ring",
+                    "duration": 0.10000000149011612,
+                    "lifetime": 0.15000000596046449,
+                    "maxParticles": 2
+                },
+                {
+                    "name": "launch_sparks",
+                    "duration": 0.10000000149011612,
+                    "lifetime": 0.25,
+                    "maxParticles": 14
+                },
+                {
+                    "name": "launch_smoke",
+                    "duration": 0.10000000149011612,
+                    "lifetime": 0.8999999761581421,
+                    "maxParticles": 3
+                },
+                {
+                    "name": "fizzle",
+                    "duration": 0.20000000298023225,
+                    "lifetime": 0.07000000029802323,
+                    "maxParticles": 4
+                },
+                {
+                    "name": "fizzle_glow",
+                    "duration": 0.10000000149011612,
+                    "lifetime": 0.11999999731779099,
+                    "maxParticles": 2
+                },
+                {
+                    "name": "fizzle_sparks",
+                    "duration": 0.10000000149011612,
+                    "lifetime": 0.3499999940395355,
+                    "maxParticles": 12
+                },
+                {
+                    "name": "fizzle_smoke",
+                    "duration": 0.10000000149011612,
+                    "lifetime": 1.0,
+                    "maxParticles": 2
+                },
+                {
+                    "name": "storm",
+                    "duration": 1.0,
+                    "lifetime": 0.05000000074505806,
+                    "maxParticles": 4
+                },
+                {
+                    "name": "storm_tendrils",
+                    "duration": 1.0,
+                    "lifetime": 0.05000000074505806,
+                    "maxParticles": 4
+                },
+                {
+                    "name": "storm_glow",
+                    "duration": 1.0,
+                    "lifetime": 0.25,
+                    "maxParticles": 4
+                }
+            ],
+            "shaders": [
+                "ForgeVfx/Particles Additive",
+                "ForgeVfx/Particles Premultiplied"
+            ],
+            "items": [
+                {
+                    "path": "Assets/ForgeVfx/Effects/forge_plasma_orb.prefab",
+                    "sha256": "e02d2b85a92f8b12f145e533ea1d5b3e65d57c74c176388c89a77d82496f8a46",
+                    "source": "Forge effect prefabs",
+                    "author": "Forge",
+                    "license": "CC0-1.0",
+                    "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+                    "origin": "Authored in this project by Assets/ForgeVfx/Editor/ForgeVfxOwnEffects.cs; each prefab is named after its effect_play member",
+                    "modifications": "none"
+                },
+                {
+                    "path": "Assets/ForgeVfx/Own/Materials/bolt_additive.mat",
+                    "sha256": "42ab1fd0dea20348f692e12eb11b9b287b6d32ae144aff8f22061c4316adc419",
+                    "source": "Forge self-made textures, materials and meshes",
+                    "author": "Forge",
+                    "license": "CC0-1.0",
+                    "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+                    "origin": "Generated by Assets/ForgeVfx/Editor/ForgeVfxOwnEffects.cs",
+                    "modifications": "none"
+                },
+                {
+                    "path": "Assets/ForgeVfx/Own/Materials/crackle_additive.mat",
+                    "sha256": "e0cd7b51083bb743a1ed63896b4f7c7c51e9b60a79c608bf16d279db480e836d",
+                    "source": "Forge self-made textures, materials and meshes",
+                    "author": "Forge",
+                    "license": "CC0-1.0",
+                    "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+                    "origin": "Generated by Assets/ForgeVfx/Editor/ForgeVfxOwnEffects.cs",
+                    "modifications": "none"
+                },
+                {
+                    "path": "Assets/ForgeVfx/Own/Materials/flash_additive.mat",
+                    "sha256": "7db99478f8354fa64f5802a15f56eaf31510d7e70b504b7823b82ca0a8c58190",
+                    "source": "Forge self-made textures, materials and meshes",
+                    "author": "Forge",
+                    "license": "CC0-1.0",
+                    "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+                    "origin": "Generated by Assets/ForgeVfx/Editor/ForgeVfxOwnEffects.cs",
+                    "modifications": "none"
+                },
+                {
+                    "path": "Assets/ForgeVfx/Own/Materials/glow_additive.mat",
+                    "sha256": "7ee9c674f83b25e6bcbf12dd40a2a029e260d6f03aac4fe4b46b44090a85a192",
+                    "source": "Forge self-made textures, materials and meshes",
+                    "author": "Forge",
+                    "license": "CC0-1.0",
+                    "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+                    "origin": "Generated by Assets/ForgeVfx/Editor/ForgeVfxOwnEffects.cs",
+                    "modifications": "none"
+                },
+                {
+                    "path": "Assets/ForgeVfx/Own/Materials/plasma_additive.mat",
+                    "sha256": "27afce60ed6df9179cbea7840ab1b1e5b845fad8d47d93051e23ad9992928f77",
+                    "source": "Forge self-made textures, materials and meshes",
+                    "author": "Forge",
+                    "license": "CC0-1.0",
+                    "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+                    "origin": "Generated by Assets/ForgeVfx/Editor/ForgeVfxOwnEffects.cs",
+                    "modifications": "none"
+                },
+                {
+                    "path": "Assets/ForgeVfx/Own/Materials/shock_ring_additive.mat",
+                    "sha256": "d4a14972c0b952b0ff1ada71e1c7930d797b6ac14f3357623c8b46033a9df0b0",
+                    "source": "Forge self-made textures, materials and meshes",
+                    "author": "Forge",
+                    "license": "CC0-1.0",
+                    "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+                    "origin": "Generated by Assets/ForgeVfx/Editor/ForgeVfxOwnEffects.cs",
+                    "modifications": "none"
+                },
+                {
+                    "path": "Assets/ForgeVfx/Own/Materials/smoke_premultiplied.mat",
+                    "sha256": "4e9c117b5c1e3d6e16757134ca1ab16658b2a3f38e631e25b409afebd10eab2b",
+                    "source": "Forge self-made textures, materials and meshes",
+                    "author": "Forge",
+                    "license": "CC0-1.0",
+                    "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+                    "origin": "Generated by Assets/ForgeVfx/Editor/ForgeVfxOwnEffects.cs",
+                    "modifications": "none"
+                },
+                {
+                    "path": "Assets/ForgeVfx/Own/Materials/trail_additive.mat",
+                    "sha256": "c1361b69644fd706f26a70c6dd131e53acf2181220132ec7170a5eb337ce41be",
+                    "source": "Forge self-made textures, materials and meshes",
+                    "author": "Forge",
+                    "license": "CC0-1.0",
+                    "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+                    "origin": "Generated by Assets/ForgeVfx/Editor/ForgeVfxOwnEffects.cs",
+                    "modifications": "none"
+                },
+                {
+                    "path": "Assets/ForgeVfx/Own/Meshes/line_cross.asset",
+                    "sha256": "2d1837851ea971333120a4ce8dd6cba17b4ea0e35841ee9324517171c0ee81c9",
+                    "source": "Forge self-made textures, materials and meshes",
+                    "author": "Forge",
+                    "license": "CC0-1.0",
+                    "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+                    "origin": "Generated by Assets/ForgeVfx/Editor/ForgeVfxOwnEffects.cs",
+                    "modifications": "none"
+                },
+                {
+                    "path": "Assets/ForgeVfx/Own/Textures/bolt_sheet.png",
+                    "sha256": "44a4068615b29bbf8d1b59642fde5db1e2f0cfb74c36475ca65f78fcb98bcfec",
+                    "source": "Forge self-made textures, materials and meshes",
+                    "author": "Forge",
+                    "license": "CC0-1.0",
+                    "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+                    "origin": "Generated by Assets/ForgeVfx/Editor/ForgeVfxOwnEffects.cs",
+                    "modifications": "none"
+                },
+                {
+                    "path": "Assets/ForgeVfx/Own/Textures/crackle_sheet.png",
+                    "sha256": "9e75706b654b73577cab057e19282fdb4eabc749ecd509e4ec97431289ce391c",
+                    "source": "Forge self-made textures, materials and meshes",
+                    "author": "Forge",
+                    "license": "CC0-1.0",
+                    "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+                    "origin": "Generated by Assets/ForgeVfx/Editor/ForgeVfxOwnEffects.cs",
+                    "modifications": "none"
+                },
+                {
+                    "path": "Assets/ForgeVfx/Own/Textures/flash_sheet.png",
+                    "sha256": "edcb8166010e92b5bb31e42e681c8e252ac32635d703c25af7bda1dcb3b9e71f",
+                    "source": "Forge self-made textures, materials and meshes",
+                    "author": "Forge",
+                    "license": "CC0-1.0",
+                    "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+                    "origin": "Generated by Assets/ForgeVfx/Editor/ForgeVfxOwnEffects.cs",
+                    "modifications": "none"
+                },
+                {
+                    "path": "Assets/ForgeVfx/Own/Textures/glow.png",
+                    "sha256": "d7f5dede7b600cfa51915d9b4bff7f6e03cc347c847d23fe69c631cb263a55c3",
+                    "source": "Forge self-made textures, materials and meshes",
+                    "author": "Forge",
+                    "license": "CC0-1.0",
+                    "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+                    "origin": "Generated by Assets/ForgeVfx/Editor/ForgeVfxOwnEffects.cs",
+                    "modifications": "none"
+                },
+                {
+                    "path": "Assets/ForgeVfx/Own/Textures/plasma_sheet.png",
+                    "sha256": "95cbfc753d12133eaf5aa057b63151898def789b2a9a35d7caaf4dbdaa070543",
+                    "source": "Forge self-made textures, materials and meshes",
+                    "author": "Forge",
+                    "license": "CC0-1.0",
+                    "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+                    "origin": "Generated by Assets/ForgeVfx/Editor/ForgeVfxOwnEffects.cs",
+                    "modifications": "none"
+                },
+                {
+                    "path": "Assets/ForgeVfx/Own/Textures/shock_ring.png",
+                    "sha256": "ba0fcd7c5f92c0a8bfd77d98064f1b88b893a8a76db5bbb44ccbc3842961a339",
+                    "source": "Forge self-made textures, materials and meshes",
+                    "author": "Forge",
+                    "license": "CC0-1.0",
+                    "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+                    "origin": "Generated by Assets/ForgeVfx/Editor/ForgeVfxOwnEffects.cs",
+                    "modifications": "none"
+                },
+                {
+                    "path": "Assets/ForgeVfx/Own/Textures/smoke_sheet.png",
+                    "sha256": "594b3df695f0b0f9cd08eb6298e9b45208fa5310a2d72a125b709b9b18ba4e6b",
+                    "source": "Forge self-made textures, materials and meshes",
+                    "author": "Forge",
+                    "license": "CC0-1.0",
+                    "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+                    "origin": "Generated by Assets/ForgeVfx/Editor/ForgeVfxOwnEffects.cs",
+                    "modifications": "none"
+                },
+                {
+                    "path": "Assets/ForgeVfx/Own/Textures/trail_soft.png",
+                    "sha256": "ca9dea5eec460a480c2624cfe8c3500f6b0040d57bd38c68ac95445f19487a5b",
+                    "source": "Forge self-made textures, materials and meshes",
+                    "author": "Forge",
+                    "license": "CC0-1.0",
+                    "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+                    "origin": "Generated by Assets/ForgeVfx/Editor/ForgeVfxOwnEffects.cs",
+                    "modifications": "none"
+                },
+                {
+                    "path": "Assets/ForgeVfx/Shaders/ForgeParticlesAdditive.shader",
+                    "sha256": "d9c29d095644d3f19dbe9b4877ef17013ec59499c357a8886cd88e970de31448",
+                    "source": "Forge particle shaders",
+                    "author": "Forge",
+                    "license": "CC0-1.0",
+                    "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+                    "origin": "Written for this project",
+                    "modifications": "none"
+                },
+                {
+                    "path": "Assets/ForgeVfx/Shaders/ForgeParticlesPremultiplied.shader",
+                    "sha256": "e52bda252fda7a916850678de34ac39e69ccd4fb0ea9e33096aa5a6fcade30f7",
+                    "source": "Forge particle shaders",
+                    "author": "Forge",
+                    "license": "CC0-1.0",
+                    "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+                    "origin": "Written for this project",
+                    "modifications": "none"
+                }
+            ]
+        },
+        {
+            "member": "forge_sparks",
+            "prefab": "Assets/ForgeVfx/Effects/forge_sparks.prefab",
+            "line": false,
+            "sustained": false,
+            "size": 0.0,
+            "seconds": 1.4000000953674317,
+            "layers": [
+                {
+                    "name": "(root)",
+                    "duration": 0.25,
+                    "lifetime": 0.6000000238418579,
+                    "maxParticles": 40
+                },
+                {
+                    "name": "flash",
+                    "duration": 0.10000000149011612,
+                    "lifetime": 0.05000000074505806,
+                    "maxParticles": 2
+                },
+                {
+                    "name": "light",
+                    "duration": 0.10000000149011612,
+                    "lifetime": 0.11999999731779099,
+                    "maxParticles": 1
+                },
+                {
+                    "name": "embers",
+                    "duration": 0.20000000298023225,
+                    "lifetime": 1.100000023841858,
+                    "maxParticles": 12
+                },
+                {
+                    "name": "chips",
+                    "duration": 0.20000000298023225,
+                    "lifetime": 0.8999999761581421,
+                    "maxParticles": 6
+                },
+                {
+                    "name": "smoke",
+                    "duration": 0.20000000298023225,
+                    "lifetime": 1.2000000476837159,
+                    "maxParticles": 2
+                }
+            ],
+            "shaders": [
+                "ForgeVfx/Particles Additive",
+                "ForgeVfx/Particles Alpha Blended",
+                "ForgeVfx/Particles Premultiplied"
+            ],
+            "items": [
+                {
+                    "path": "Assets/ForgeVfx/Effects/forge_sparks.prefab",
+                    "sha256": "7be94f15da34a5531b72fd1f229a7d055068b133d3bbf9aa5410ee2ae39e544f",
+                    "source": "Forge effect prefabs",
+                    "author": "Forge",
+                    "license": "CC0-1.0",
+                    "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+                    "origin": "Authored in this project by Assets/ForgeVfx/Editor/ForgeVfxOwnEffects.cs; each prefab is named after its effect_play member",
+                    "modifications": "none"
+                },
+                {
+                    "path": "Assets/ForgeVfx/Own/Materials/debris_alpha.mat",
+                    "sha256": "7264ba1226203d7fe17e6be9a2e726e3038e103cad0745de0544130d32fe0149",
+                    "source": "Forge self-made textures, materials and meshes",
+                    "author": "Forge",
+                    "license": "CC0-1.0",
+                    "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+                    "origin": "Generated by Assets/ForgeVfx/Editor/ForgeVfxOwnEffects.cs",
+                    "modifications": "none"
+                },
+                {
+                    "path": "Assets/ForgeVfx/Own/Materials/flash_additive.mat",
+                    "sha256": "7db99478f8354fa64f5802a15f56eaf31510d7e70b504b7823b82ca0a8c58190",
+                    "source": "Forge self-made textures, materials and meshes",
+                    "author": "Forge",
+                    "license": "CC0-1.0",
+                    "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+                    "origin": "Generated by Assets/ForgeVfx/Editor/ForgeVfxOwnEffects.cs",
+                    "modifications": "none"
+                },
+                {
+                    "path": "Assets/ForgeVfx/Own/Materials/glow_additive.mat",
+                    "sha256": "7ee9c674f83b25e6bcbf12dd40a2a029e260d6f03aac4fe4b46b44090a85a192",
+                    "source": "Forge self-made textures, materials and meshes",
+                    "author": "Forge",
+                    "license": "CC0-1.0",
+                    "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+                    "origin": "Generated by Assets/ForgeVfx/Editor/ForgeVfxOwnEffects.cs",
+                    "modifications": "none"
+                },
+                {
+                    "path": "Assets/ForgeVfx/Own/Materials/smoke_premultiplied.mat",
+                    "sha256": "4e9c117b5c1e3d6e16757134ca1ab16658b2a3f38e631e25b409afebd10eab2b",
+                    "source": "Forge self-made textures, materials and meshes",
+                    "author": "Forge",
+                    "license": "CC0-1.0",
+                    "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+                    "origin": "Generated by Assets/ForgeVfx/Editor/ForgeVfxOwnEffects.cs",
+                    "modifications": "none"
+                },
+                {
+                    "path": "Assets/ForgeVfx/Own/Textures/debris_sheet.png",
+                    "sha256": "040a0f9747d0db355ef56f7cacf276943c8fd818c3368b52db00bd3d0813f7b7",
+                    "source": "Forge self-made textures, materials and meshes",
+                    "author": "Forge",
+                    "license": "CC0-1.0",
+                    "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+                    "origin": "Generated by Assets/ForgeVfx/Editor/ForgeVfxOwnEffects.cs",
+                    "modifications": "none"
+                },
+                {
+                    "path": "Assets/ForgeVfx/Own/Textures/flash_sheet.png",
+                    "sha256": "edcb8166010e92b5bb31e42e681c8e252ac32635d703c25af7bda1dcb3b9e71f",
+                    "source": "Forge self-made textures, materials and meshes",
+                    "author": "Forge",
+                    "license": "CC0-1.0",
+                    "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+                    "origin": "Generated by Assets/ForgeVfx/Editor/ForgeVfxOwnEffects.cs",
+                    "modifications": "none"
+                },
+                {
+                    "path": "Assets/ForgeVfx/Own/Textures/glow.png",
+                    "sha256": "d7f5dede7b600cfa51915d9b4bff7f6e03cc347c847d23fe69c631cb263a55c3",
+                    "source": "Forge self-made textures, materials and meshes",
+                    "author": "Forge",
+                    "license": "CC0-1.0",
+                    "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+                    "origin": "Generated by Assets/ForgeVfx/Editor/ForgeVfxOwnEffects.cs",
+                    "modifications": "none"
+                },
+                {
+                    "path": "Assets/ForgeVfx/Own/Textures/smoke_sheet.png",
+                    "sha256": "594b3df695f0b0f9cd08eb6298e9b45208fa5310a2d72a125b709b9b18ba4e6b",
+                    "source": "Forge self-made textures, materials and meshes",
+                    "author": "Forge",
+                    "license": "CC0-1.0",
+                    "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+                    "origin": "Generated by Assets/ForgeVfx/Editor/ForgeVfxOwnEffects.cs",
+                    "modifications": "none"
+                },
+                {
+                    "path": "Assets/ForgeVfx/Shaders/ForgeParticlesAdditive.shader",
+                    "sha256": "d9c29d095644d3f19dbe9b4877ef17013ec59499c357a8886cd88e970de31448",
+                    "source": "Forge particle shaders",
+                    "author": "Forge",
+                    "license": "CC0-1.0",
+                    "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+                    "origin": "Written for this project",
+                    "modifications": "none"
+                },
+                {
+                    "path": "Assets/ForgeVfx/Shaders/ForgeParticlesAlphaBlended.shader",
+                    "sha256": "99f716167fcba1ce4960224934a8dd189908df8305be291923e4a2c5837e8f53",
+                    "source": "Forge particle shaders",
+                    "author": "Forge",
+                    "license": "CC0-1.0",
+                    "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+                    "origin": "Written for this project",
+                    "modifications": "none"
+                },
+                {
+                    "path": "Assets/ForgeVfx/Shaders/ForgeParticlesPremultiplied.shader",
+                    "sha256": "e52bda252fda7a916850678de34ac39e69ccd4fb0ea9e33096aa5a6fcade30f7",
+                    "source": "Forge particle shaders",
+                    "author": "Forge",
+                    "license": "CC0-1.0",
+                    "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+                    "origin": "Written for this project",
+                    "modifications": "none"
+                }
+            ]
+        }
+    ]
+}

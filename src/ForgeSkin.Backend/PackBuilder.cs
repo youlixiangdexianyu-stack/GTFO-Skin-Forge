@@ -32,6 +32,8 @@ public static class PackBuilder
             if (item.GearId == null && item.ItemId == null) doc.Target.Weapon = null; // attachment, lens or ammo skin: applies wherever its materials are used
         }
         if (string.IsNullOrWhiteSpace(doc.Id)) doc.Id = "skin-" + Guid.NewGuid().ToString("N")[..12];
+        // A pack's player colours hold their defaults, so the plugin shows the skin as built until the player picks.
+        foreach (var c in doc.PlayerColors ?? []) c.Paint(doc, c.Default);
 
         if (!outPath.EndsWith(SkinPack.Extension, StringComparison.OrdinalIgnoreCase)) outPath = Path.Combine(outPath, Preview.Safe(doc.Id) + SkinPack.Extension);
         Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(outPath))!);
@@ -46,23 +48,38 @@ public static class PackBuilder
 
         using (var zip = ZipFile.Open(temp.Temp, ZipArchiveMode.Create))
         {
-            void Png(string name, SKBitmap bmp)
-            {
-                using var data = bmp.Encode(SKEncodedImageFormat.Png, 100);
-                using var s = zip.CreateEntry(name, CompressionLevel.Fastest).Open();
-                data.SaveTo(s);
-            }
             // A resized texture or a layer atlas, encoded once per set of inputs: an apply that changed one layer
             // re-encodes that layer only (resizing, packing and PNG encoding are nearly all of a build's time).
-            void CachedPng(string name, string key, Func<SKBitmap> make)
+            // Every entry name passes the loader's path rule here, so a name the game would refuse (a layer id such as CON) fails the build.
+            string Name(string name)
             {
-                var file = PngCache(key, make);
-                zip.CreateEntryFromFile(file, name, CompressionLevel.NoCompression);
+                SkinPack.RequirePath(name, name);
+                return name;
+            }
+            void CachedPng(string name, string key, Func<SKBitmap> make) =>
+                zip.CreateEntryFromFile(PngCache(key, make), Name(name), CompressionLevel.NoCompression);
+            // A texture set straight on a material goes in compressed (Core Dds, `<stem>.dds`), so the plugin uploads it
+            // instead of decoding and compressing a PNG in the game; compressed once per PNG content, channel kind and
+            // encoder version. A size the plugin would leave uncompressed goes in as the PNG (`<stem>.png`). The entry name.
+            string Texture(string stem, string key, Func<SKBitmap> make, TextureChannel channel)
+            {
+                var png = PngCache(key, make);
+                var bytes = File.ReadAllBytes(png);
+                var kind = channel == TextureChannel.Normal ? "normal" : Dds.Linear(channel) ? "linear" : "srgb";
+                var dds = Cache($"{Convert.ToHexString(SHA256.HashData(bytes))}|{kind}|{Precompress.Version}", ".dds",
+                    file => File.WriteAllBytes(file, Precompress.Encode(bytes, channel, stem) ?? []));
+                if (new FileInfo(dds).Length == 0)
+                {
+                    zip.CreateEntryFromFile(png, Name(stem + ".png"), CompressionLevel.NoCompression);
+                    return stem + ".png";
+                }
+                zip.CreateEntryFromFile(dds, Name(stem + ".dds"), CompressionLevel.Optimal);
+                return stem + ".dds";
             }
             void Copy(string name, string file)
             {
                 if (!File.Exists(file)) throw new SkinFormatException("missing-file", $"{file} missing");
-                zip.CreateEntryFromFile(file, name, CompressionLevel.Optimal);
+                zip.CreateEntryFromFile(file, Name(name), CompressionLevel.Optimal);
             }
             // A .forgeskinmesh is copied; a GLB is converted.
             void Mesh(string name, string file)
@@ -70,7 +87,7 @@ public static class PackBuilder
                 if (file.EndsWith(".forgeskinmesh", StringComparison.OrdinalIgnoreCase)) Copy(name, file);
                 else
                 {
-                    using var s = zip.CreateEntry(name).Open();
+                    using var s = zip.CreateEntry(Name(name)).Open();
                     s.Write(MeshImport.ToForgeSkinMesh(GlbReader.Read(file)).Write());
                 }
             }
@@ -88,13 +105,11 @@ public static class PackBuilder
                         var file = Abs(textures[channel]);
                         var (sw, sh) = Images.Size(file);
                         var size = TargetSize(sizeMode, sw, sh, BaselineSize(baseline, m.Material, channel));
-                        var name = $"textures/{Preview.Safe(m.Material)}_{stage}{channel}.png";
-                        CachedPng(name, $"texture|{Stamp(file)}|{size}", () =>
+                        textures[channel] = Texture($"textures/{Preview.Safe(m.Material)}_{stage}{channel}", $"texture|{Stamp(file)}|{size}", () =>
                         {
                             using var src = Images.Load(file);
                             return Images.Resize(src, size.W, size.H);
-                        });
-                        textures[channel] = name;
+                        }, channel);
                         sizes[channel] = size;
                         memory += Dxt(size.W, size.H);
                     }
@@ -121,28 +136,28 @@ public static class PackBuilder
                     w = Math.Min(w, target.W - x); h = Math.Min(h, target.H - y);
                     if (w <= 0 || h <= 0)
                         throw new SkinFormatException("bad-atlas", $"{m.Material}/{layer.Name}: layer rect lies outside the {target.W}x{target.H} texture");
-                    int columns = Math.Max(1, Math.Min(frames.Count, 4096 / w));
+                    var (columns, fw, fh) = AtlasLayout(frames.Count, w, h);
                     int rows = (frames.Count + columns - 1) / columns;
-                    if (rows * h > 4096) warnings.Add($"{layer.Name}: atlas is {columns * w}x{rows * h}, larger than 4096");
+                    if (fw < w) warnings.Add($"{layer.Name}: {frames.Count} frames of {w}x{h} scaled to {fw}x{fh} to fit a {MaxAtlas}x{MaxAtlas} atlas");
                     var name = $"layers/{Preview.Safe(layer.Id)}.png";
-                    CachedPng(name, $"atlas|{w}x{h}x{columns}x{rows}|{layer.Channel == TextureChannel.Normal}|{string.Join("|", frames.Select(Stamp))}", () =>
+                    CachedPng(name, $"atlas|{fw}x{fh}x{columns}x{rows}|{layer.Channel == TextureChannel.Normal}|{string.Join("|", frames.Select(Stamp))}", () =>
                     {
-                        var atlas = new SKBitmap(new SKImageInfo(columns * w, rows * h, SKColorType.Rgba8888, SKAlphaType.Unpremul));
+                        var atlas = new SKBitmap(new SKImageInfo(columns * fw, rows * fh, SKColorType.Rgba8888, SKAlphaType.Unpremul));
                         using (var canvas = new SKCanvas(atlas))
                         {
                             canvas.Clear(SKColors.Transparent);
                             for (int i = 0; i < frames.Count; i++)
                             {
                                 using var frame = Images.Load(frames[i]);
-                                using var scaled = Images.Resize(frame, w, h);
-                                canvas.DrawBitmap(scaled, i % columns * w, i / columns * h);
+                                using var scaled = Images.Resize(frame, fw, fh);
+                                canvas.DrawBitmap(scaled, i % columns * fw, i / columns * fh);
                             }
                         }
                         if (layer.Channel == TextureChannel.Normal) OpaqueAlpha(atlas);
                         return atlas;
                     });
-                    memory += Rgba(columns * w, rows * h) + Rgba(w, h);
-                    layer.Atlas = new LayerAtlas { Path = name, FrameCount = frames.Count, Columns = columns, FrameWidth = w, FrameHeight = h, TargetRect = [x, y, w, h] };
+                    memory += Rgba(columns * fw, rows * fh) + Rgba(w, h);
+                    layer.Atlas = new LayerAtlas { Path = name, FrameCount = frames.Count, Columns = columns, FrameWidth = fw, FrameHeight = fh, TargetRect = [x, y, w, h] };
                     layer.Sources = new();
                     if (layer.Text != null) layer.Text.Font = null;
                 }
@@ -167,11 +182,10 @@ public static class PackBuilder
                 if (a.Material != null)
                     foreach (var channel in a.Material.Textures.Keys.ToList())
                     {
-                        var name = $"textures/{Preview.Safe(a.Id)}_{channel}.png";
-                        using var src = Images.Load(Abs(a.Material.Textures[channel]));
-                        Png(name, src);
-                        memory += Dxt(src.Width, src.Height);
-                        a.Material.Textures[channel] = name;
+                        var file = Abs(a.Material.Textures[channel]);
+                        a.Material.Textures[channel] = Texture($"textures/{Preview.Safe(a.Id)}_{channel}", $"attachment|{Stamp(file)}", () => Images.Load(file), channel);
+                        var (w, h) = Images.Size(file);
+                        memory += Dxt(w, h);
                     }
                 if (a.Screen != null)
                 {
@@ -187,7 +201,7 @@ public static class PackBuilder
                         var (mesh, traced) = GlyphMesh.Text(bmp);
                         if (mesh == null) return null;
                         aspect = traced;
-                        using var s = zip.CreateEntry(entry).Open();
+                        using var s = zip.CreateEntry(Name(entry)).Open();
                         s.Write(mesh.Write());
                         return entry;
                     }
@@ -209,7 +223,7 @@ public static class PackBuilder
                         {
                             if (g == null) return null;
                             var name = $"glyphs/{Preview.Safe(a.Id)}_{i}.forgeskinmesh";
-                            using var s = zip.CreateEntry(name).Open();
+                            using var s = zip.CreateEntry(Name(name)).Open();
                             s.Write(g.Write());
                             return name;
                         }).ToArray();
@@ -228,10 +242,19 @@ public static class PackBuilder
                 s.Write(SkinJson.Write(doc));
         }
 
-        using (SkinPack.Open(temp.Temp)) { }
+        using (var built = SkinPack.Open(temp.Temp)) CheckSounds(built);
         temp.Commit();
         Program.Progress(requestId, total, total, "done");
         return new { pack = Path.GetFullPath(outPath), warnings, memory };
+    }
+
+    // Every sound of a pack through the audio kit's own container check (ForgeCore AssetValidation, linked): a pack the game
+    // would refuse when it loads the sounds (bad-audio) is refused here, naming the sound.
+    public static void CheckSounds(SkinPack pack)
+    {
+        foreach (var file in pack.Manifest.Sounds.Select(s => s.File).Distinct())
+            if (ForgeAudio.AssetValidation.Ogg(pack.ReadBytes(file), SkinPack.MaxSoundSeconds) is { Success: false } bad)
+                throw new SkinFormatException("bad-audio", $"{Path.GetFileName(file)}: {bad.Error.Detail}");
     }
 
     // A file by path, length and write time: a re-baked frame or a replaced texture is a new input.
@@ -244,23 +267,28 @@ public static class PackBuilder
 
     static readonly TimeSpan CacheAge = TimeSpan.FromDays(14);
 
-    // <cache>/pack/<hash of key>.png, made by `make` when missing; entries unused for CacheAge are removed.
-    static string PngCache(string key, Func<SKBitmap> make)
+    static string PngCache(string key, Func<SKBitmap> make) => Cache(key, ".png", path =>
+    {
+        using var bmp = make();
+        Images.SavePng(bmp, path);
+    });
+
+    // <cache>/pack/<hash of key><extension>, written by `write` when missing; entries unused for CacheAge are removed.
+    static string Cache(string key, string extension, Action<string> write)
     {
         var dir = Path.Combine(Paths.Cache, "pack");
         Directory.CreateDirectory(dir);
-        var file = Path.Combine(dir, Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(key)))[..24] + ".png");
+        var file = Path.Combine(dir, Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(key)))[..24] + extension);
         if (File.Exists(file))
         {
             File.SetLastWriteTimeUtc(file, DateTime.UtcNow);
             return file;
         }
-        foreach (var old in Directory.EnumerateFiles(dir, "*.png"))
+        foreach (var old in Directory.EnumerateFiles(dir))
             if (DateTime.UtcNow - File.GetLastWriteTimeUtc(old) > CacheAge) File.Delete(old);
-        using (var bmp = make())
         using (var temp = new AtomicFile(file))
         {
-            Images.SavePng(bmp, temp.Temp);
+            write(temp.Temp);
             temp.Commit();
         }
         return file;
@@ -284,6 +312,23 @@ public static class PackBuilder
         if (longest is not { } l) return (w, h);
         double scale = (double)l / Math.Max(w, h);
         return (Math.Max(1, (int)Math.Round(w * scale)), Math.Max(1, (int)Math.Round(h * scale)));
+    }
+
+    const int MaxAtlas = 4096;
+
+    // Columns and frame size of a layer atlas: `count` frames of the w x h region at full size where they fit a MaxAtlas
+    // square, else smaller by the largest one scale for both sides any column count allows (most columns among equals).
+    public static (int Columns, int W, int H) AtlasLayout(int count, int w, int h)
+    {
+        var best = (Columns: 1, W: 1, H: 1);
+        double bestScale = -1;
+        for (int c = count; c >= 1; c--)
+        {
+            int rows = (count + c - 1) / c;
+            double k = Math.Min(1, Math.Min((double)MaxAtlas / (c * w), (double)MaxAtlas / (rows * h)));
+            if (k > bestScale) (bestScale, best) = (k, (c, Math.Max(1, (int)(w * k)), Math.Max(1, (int)(h * k))));
+        }
+        return best;
     }
 
     static void OpaqueAlpha(SKBitmap bmp)

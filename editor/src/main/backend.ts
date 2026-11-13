@@ -1,6 +1,7 @@
 // Spawns ForgeSkin.Backend and speaks PLAN §3.3: one JSON object per line on stdio.
 import { execFileSync, spawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
 import { basename, dirname, join } from 'node:path';
+import { createInterface } from 'node:readline';
 import { app } from 'electron';
 
 export interface BackendError {
@@ -14,8 +15,6 @@ export class Backend {
   private child: ChildProcessWithoutNullStreams | null = null;
   private nextId = 1;
   private pending = new Map<number, Pending>();
-  private stdoutBuf = '';
-  private stderrBuf = '';
 
   constructor(
     private readonly onEvent: (event: string, data: unknown) => void,
@@ -51,13 +50,12 @@ export class Backend {
     return { file, args: dataArgs, cwd: dirname(file) };
   }
 
-  start(): void {
+  start(onSpawn: () => void): void {
     const { file, args, cwd } = this.command();
     this.onLog(`starting backend: ${file} ${args.join(' ')}`);
     const child = spawn(file, args, { windowsHide: true, cwd });
     this.child = child;
-    // A half line from the previous process is not the start of this one's.
-    this.stdoutBuf = this.stderrBuf = '';
+    child.once('spawn', onSpawn);
     // Once per process, whether it exits or never starts: every call still waiting fails, so the UI shows the backend
     // down instead of waiting forever.
     let ended = false;
@@ -69,21 +67,10 @@ export class Backend {
       this.pending.clear();
       this.onExit(code);
     };
-    child.stdout.setEncoding('utf8').on('data', (d: string) => {
-      this.stdoutBuf += d;
-      for (let i; (i = this.stdoutBuf.indexOf('\n')) >= 0; ) {
-        const line = this.stdoutBuf.slice(0, i).trim();
-        this.stdoutBuf = this.stdoutBuf.slice(i + 1);
-        if (line) this.handleLine(line);
-      }
+    createInterface({ input: child.stdout }).on('line', (line) => {
+      if (line.trim()) this.handleLine(line.trim());
     });
-    child.stderr.setEncoding('utf8').on('data', (d: string) => {
-      this.stderrBuf += d;
-      for (let i; (i = this.stderrBuf.indexOf('\n')) >= 0; ) {
-        this.onLog(this.stderrBuf.slice(0, i).trimEnd());
-        this.stderrBuf = this.stderrBuf.slice(i + 1);
-      }
-    });
+    createInterface({ input: child.stderr }).on('line', (line) => this.onLog(line.trimEnd()));
     child.on('error', (e) => {
       this.onLog(`backend failed: ${e.message}`);
       // A process that never started sends no 'exit'.

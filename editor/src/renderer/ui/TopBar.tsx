@@ -39,6 +39,7 @@ import { localName, t, useLang, type Lang } from '../i18n';
 import { Info } from './Features';
 import { exportGameFiles, ReplaceModal, RestoreModal } from './GameFiles';
 import { GameLog } from './GameLog';
+import { HelpButton } from './HelpDocs';
 
 
 const SIZES: { value: SizeMode; label: string }[] = [
@@ -536,6 +537,7 @@ export function TopBar() {
         <b>FORGESKIN</b>
       </div>
       <div className="spacer" />
+      <HelpButton />
       <SettingsMenu />
       <PublishMenu />
       <span className="bar-sep" />

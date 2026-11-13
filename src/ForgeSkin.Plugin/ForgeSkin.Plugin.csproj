@@ -1,24 +1,35 @@
 <Project Sdk="Microsoft.NET.Sdk">
-
-  <!-- BepInEx 6 IL2CPP plugin for GTFO. References come from a BepInEx profile (read-only); override with -p:GTFOBepInExPath=<profile>/BepInEx. -->
   <PropertyGroup>
     <TargetFramework>net6.0</TargetFramework>
     <LangVersion>latest</LangVersion>
-    <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
-    <CheckEolTargetFramework>false</CheckEolTargetFramework>
-    <GenerateDependencyFile>false</GenerateDependencyFile>
-    <CopyLocalLockFileAssemblies>true</CopyLocalLockFileAssemblies>
-    <DebugType>none</DebugType>
-    <Version>1.0.0</Version>
-    <GTFOBepInExPath Condition="'$(GTFOBepInExPath)' == ''">C:/Users/nainf/AppData/Roaming/r2modmanPlus-local/GTFO/profiles/Forge-Multiplayer/BepInEx</GTFOBepInExPath>
+    <!-- The assembly keeps its published name: other plugins call ForgeSkin.Plugin.SkinPacks.Register from it. -->
+    <AssemblyName>ForgeSkin.Plugin</AssemblyName>
+    <RootNamespace>ForgeSkin.Plugin</RootNamespace>
+    <IsPackable>false</IsPackable>
+    <Version>1.1.0</Version>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+    <!-- Line numbers in error logs without the builder's local paths. -->
+    <DebugType>embedded</DebugType>
+    <PathMap>$(MSBuildProjectDirectory)=/ForgeSkin</PathMap>
+    <GTFOBepInExPath Condition="'$(GTFOBepInExPath)' == ''">$(GTFO_BEPINEX_PATH)</GTFOBepInExPath>
   </PropertyGroup>
-
+  <!-- ForgeCore comes built, from the profile's installed package; -p:ForgeCoreDll=<path> picks another build. -->
+  <PropertyGroup>
+    <ForgeCoreDll Condition="'$(ForgeCoreDll)' == ''">$(GTFOBepInExPath)/plugins/NAinfini-ForgeCore/ForgeCore.dll</ForgeCoreDll>
+  </PropertyGroup>
+  <Target Name="RequireGameReferences" BeforeTargets="ResolveReferences">
+    <Error Condition="!Exists('$(GTFOBepInExPath)/core/BepInEx.Unity.IL2CPP.dll') or !Exists('$(GTFOBepInExPath)/interop/Modules-ASM.dll')"
+           Text="Set GTFOBepInExPath to a GTFO BepInEx IL2CPP profile with generated interop assemblies." />
+  </Target>
   <ItemGroup>
-    <ProjectReference Include="..\ForgeSkin.Format\ForgeSkin.Format.csproj" />
-    <!-- Ogg Vorbis decoder for skin sounds (MIT, managed); NVorbis.dll ships beside the plugin with licenses/NVorbis.LICENSE. -->
-    <PackageReference Include="NVorbis" Version="0.10.5" />
+    <!-- ../ForgeSkin.Format/ is the pack format (no game reference); the backend compiles the same files. -->
+    <Compile Include="**/*.cs;../ForgeSkin.Format/*.cs" Exclude="bin/**;obj/**" />
+    <!-- The in-game texts, beside the DLL where ForgeCore's UI reads them. -->
+    <None Update="lang/*.forge" CopyToOutputDirectory="PreserveNewest" />
+    <Reference Include="ForgeCore" HintPath="$(ForgeCoreDll)" Private="false" />
     <Reference Include="$(GTFOBepInExPath)/core/0Harmony.dll" Private="false" />
     <Reference Include="$(GTFOBepInExPath)/core/BepInEx.Core.dll" Private="false" />
     <Reference Include="$(GTFOBepInExPath)/core/BepInEx.Unity.IL2CPP.dll" Private="false" />
@@ -26,12 +37,4 @@
     <Reference Include="$(GTFOBepInExPath)/core/Il2CppInterop.Runtime.dll" Private="false" />
     <Reference Include="$(GTFOBepInExPath)/interop/*.dll" Exclude="$(GTFOBepInExPath)/interop/netstandard.dll" Private="false" />
   </ItemGroup>
-
-  <!-- A Release build refreshes the committed prebuilt plugin (repo prebuilt/plugin/), which the backend installs on machines
-       that cannot build the plugin (no BepInEx interop assemblies). -->
-  <Target Name="CopyPrebuilt" AfterTargets="Build" Condition="'$(Configuration)' == 'Release'">
-    <Copy SourceFiles="$(OutDir)ForgeSkin.Plugin.dll;$(OutDir)ForgeSkin.Format.dll;$(OutDir)NVorbis.dll;licenses/NVorbis.LICENSE"
-          DestinationFolder="$(MSBuildThisFileDirectory)../../prebuilt/plugin" SkipUnchangedFiles="true" />
-  </Target>
-
 </Project>

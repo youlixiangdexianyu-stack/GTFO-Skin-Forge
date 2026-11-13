@@ -15,53 +15,37 @@ static class Readback
     {
         if (Directory == null || gearId == 0 || !Written.Add(gearId)) return;
         var file = Path.Combine(Directory, gearId + ".json");
-        System.IO.Directory.CreateDirectory(Directory);
         var root = holder.transform;
         var inverse = Quaternion.Inverse(root.rotation);
         var rootScale = root.lossyScale;
-        using (var stream = File.Create(file))
-        using (var json = new Utf8JsonWriter(stream, new JsonWriterOptions { Indented = true }))
+        var nodes = new List<object>();
+        foreach (var (id, get) in SkinnedGear.Parts)
         {
-            json.WriteStartObject();
-            json.WriteNumber("gearId", gearId);
-            json.WriteString("gear", holder.GearIDRange?.PublicGearName ?? "");
-            json.WriteStartArray("nodes");
-            foreach (var (id, get) in SkinnedGear.Parts)
-            {
-                var part = get(holder);
-                if (part != null) Node(json, id, null, part.transform);
-            }
-            json.WriteEndArray();
-            json.WriteEndObject();
+            var part = get(holder);
+            if (part != null) Collect(id, null, part.transform);
+        }
+        ForgeCore.Store.WriteText(file, JsonSerializer.Serialize(
+            new { gearId, gear = holder.GearIDRange?.PublicGearName ?? "", nodes }, new JsonSerializerOptions { WriteIndented = true }));
+        ForgeSkinPlugin.Info($"readback {holder.GearIDRange?.PublicGearName}: wrote {file}");
 
-            void Node(Utf8JsonWriter w, string part, string? path, Transform t)
+        void Collect(string part, string? path, Transform t)
+        {
+            var p = root.InverseTransformPoint(t.position);
+            var r = inverse * t.rotation;
+            var s = t.lossyScale;
+            nodes.Add(new
             {
-                var p = root.InverseTransformPoint(t.position);
-                var r = inverse * t.rotation;
-                var s = t.lossyScale;
-                w.WriteStartObject();
-                w.WriteString("part", part);
-                if (path == null) w.WriteNull("path");
-                else w.WriteString("path", path);
-                Floats(w, "position", p.x, p.y, p.z);
-                Floats(w, "rotation", r.x, r.y, r.z, r.w);
-                Floats(w, "scale", s.x / rootScale.x, s.y / rootScale.y, s.z / rootScale.z);
-                w.WriteEndObject();
-                for (int i = 0; i < t.childCount; i++)
-                {
-                    var child = t.GetChild(i);
-                    Node(w, part, path == null ? child.name : path + "/" + child.name, child);
-                }
+                part,
+                path,
+                position = new[] { p.x, p.y, p.z },
+                rotation = new[] { r.x, r.y, r.z, r.w },
+                scale = new[] { s.x / rootScale.x, s.y / rootScale.y, s.z / rootScale.z }
+            });
+            for (int i = 0; i < t.childCount; i++)
+            {
+                var child = t.GetChild(i);
+                Collect(part, path == null ? child.name : path + "/" + child.name, child);
             }
         }
-        ForgeSkinPlugin.Info($"readback {holder.GearIDRange?.PublicGearName}: wrote {file}");
-    }
-
-    // Utf8JsonWriter formats numbers invariantly.
-    static void Floats(Utf8JsonWriter w, string name, params float[] values)
-    {
-        w.WriteStartArray(name);
-        foreach (var v in values) w.WriteNumberValue(v);
-        w.WriteEndArray();
     }
 }

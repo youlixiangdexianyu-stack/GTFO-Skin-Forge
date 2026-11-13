@@ -32,6 +32,10 @@ public sealed class SkinPack : IDisposable
 {
     public const string Extension = ".forgeskin";
     public const string ManifestName = "manifest.json";
+    /// <summary>A one-shot "this skin goes before the player's picker choice" from the editor's 应用到游戏, in the skins folder.</summary>
+    public const string PickExtension = ".pick";
+    /// <summary>The longest one sound may play; the editor's build and the plugin's load refuse a longer one (bad-audio).</summary>
+    public const double MaxSoundSeconds = 10;
 
     readonly ZipArchive _zip;
     public SkinDocument Manifest { get; }
@@ -90,6 +94,13 @@ public sealed class SkinPack : IDisposable
 
     public void Dispose() => _zip.Dispose();
 
+    // A pack entry name is a relative file path under ForgeCore's one rule; the loader and the builder both ask here.
+    public static void RequirePath(string path, string where)
+    {
+        if (!ForgeCore.PosixPath.IsRelativeFile(path))
+            throw new SkinFormatException("bad-path", $"{path}: illegal path in {where}"); // the editor shows the part before ": illegal path"
+    }
+
     // Rejects a document the plugin cannot apply. `head` returns the first 8 bytes of a referenced file, or null when it is missing.
     public static void Validate(SkinDocument doc, Func<string, byte[]?> head)
     {
@@ -100,14 +111,14 @@ public sealed class SkinPack : IDisposable
         if (doc.Target.Weapon != null && (doc.Target.GearId == null) == (doc.Target.ItemId == null))
             throw new SkinFormatException("no-gear", $"Weapon {doc.Target.Weapon} needs exactly one of a gear id and an item id");
 
-        void File(string? path, string where, bool image = false, bool audio = false, bool mesh = false)
+        // packed: a texture set straight on a material, which may be precompressed (Dds); a layer atlas may not.
+        void File(string? path, string where, bool image = false, bool audio = false, bool mesh = false, bool packed = false)
         {
             if (path == null) return;
-            if (path.Contains("..") || Path.IsPathRooted(path))
-                throw new SkinFormatException("bad-path", $"{where}: illegal path {path}");
+            RequirePath(path, where);
             var bytes = head(path) ?? throw new SkinFormatException("missing-file", $"{where}: {path} missing");
-            if (image && !IsImage(bytes))
-                throw new SkinFormatException("bad-image", $"{where}: {path} is not a PNG or JPEG");
+            if (image && !IsImage(bytes) && !(packed && Dds.IsDds(bytes)))
+                throw new SkinFormatException("bad-image", $"{where}: {path} is not a PNG or JPEG{(packed ? " or DDS" : "")}");
             if (audio && !IsOgg(bytes))
                 throw new SkinFormatException("bad-audio", $"{where}: {path} is not an Ogg Vorbis file");
             if (mesh && !ForgeSkinMesh.IsMesh(bytes))
@@ -131,7 +142,7 @@ public sealed class SkinPack : IDisposable
             if (string.IsNullOrWhiteSpace(m.Material)) throw new SkinFormatException("no-material", "Material override without a material name");
             // The plugin matches renderers by material name, so two overrides of one material would silently shadow each other.
             if (!names.Add(m.Material)) throw new SkinFormatException("duplicate-material", $"{m.Material}: more than one override");
-            foreach (var t in m.Textures.Values.Concat(m.Wear?.SelectMany(w => w.Textures.Values) ?? [])) File(t, m.Material, true);
+            foreach (var t in m.Textures.Values.Concat(m.Wear?.SelectMany(w => w.Textures.Values) ?? [])) File(t, m.Material, true, packed: true);
             Params(m.Params, m.Material);
             foreach (var l in m.Layers)
             {
@@ -143,7 +154,7 @@ public sealed class SkinPack : IDisposable
                 File(l.Atlas.Path, $"{m.Material}/{l.Id}", true);
                 var a = l.Atlas;
                 if (a.FrameCount < 1 || a.Columns < 1 || a.TargetRect.Length != 4 || a.FrameWidth < 1 || a.FrameHeight < 1
-                    || a.TargetRect[2] != a.FrameWidth || a.TargetRect[3] != a.FrameHeight)
+                    || a.TargetRect[2] < a.FrameWidth || a.TargetRect[3] < a.FrameHeight)
                     throw new SkinFormatException("bad-atlas", $"{m.Material}/{l.Id}: bad atlas layout");
             }
         }
@@ -158,10 +169,12 @@ public sealed class SkinPack : IDisposable
         }
         foreach (var s in doc.Sounds)
         {
-            if (s.Trigger == Trigger.Always || !Fraction(s.Volume) || !Fraction(s.LowAmmoFraction))
-                throw new SkinFormatException("bad-trigger", $"{s.Id}: a sound needs an event trigger, a volume 0 to 1 and a lowAmmoFraction 0 to 1");
+            if (s.Trigger == Trigger.Always || !Fraction(s.Volume) || !Fraction(s.LowAmmoFraction) || !(s.Weight is > 0 and <= 100)
+                || s.EnemyId != null && s.Trigger != Trigger.Kill)
+                throw new SkinFormatException("bad-trigger", $"{s.Id}: a sound needs an event trigger, a volume 0 to 1, a lowAmmoFraction 0 to 1, a weight above 0 up to 100 and an enemy only on Kill");
             File(s.File, s.Id, audio: true);
         }
+        int charms = 0;
         foreach (var a in doc.Attachments)
         {
             if (string.IsNullOrWhiteSpace(a.Part)) throw new SkinFormatException("no-anchor", $"{a.Id}: no anchor part");
@@ -178,11 +191,18 @@ public sealed class SkinPack : IDisposable
             }
             if (a.Hologram != null && !Fraction(a.Hologram.Flicker))
                 throw new SkinFormatException("bad-vector", $"{a.Id}: hologram flicker 0 to 1");
-            if (a.Swing != null && !Fraction(a.Swing.Looseness))
-                throw new SkinFormatException("bad-vector", $"{a.Id}: swing looseness 0 to 1");
+            if (a.Charm is { } c)
+            {
+                if (++charms > CharmRope.MaxPerGear)
+                    throw new SkinFormatException("bad-vector", $"{a.Id}: at most {CharmRope.MaxPerGear} charms on one gear");
+                if (c.Length is < 0.005f or > 0.3f || c.Segments is < 1 or > CharmRope.MaxSegments || c.Weight is < 0.1f or > 3f
+                    || !Fraction(c.Damping) || !Fraction(c.Stiffness) || c.Thickness is < 0.0003f or > 0.01f || !Enum.IsDefined(c.Style))
+                    throw new SkinFormatException("bad-vector", $"{a.Id}: charm length 0.005 to 0.3, segments 1 to {CharmRope.MaxSegments}, weight 0.1 to 3, damping and stiffness 0 to 1, thickness 0.0003 to 0.01");
+                Vec(c.Color, 3, a.Id);
+            }
             if (a.Material != null)
             {
-                foreach (var t in a.Material.Textures.Values) File(t, a.Id, true);
+                foreach (var t in a.Material.Textures.Values) File(t, a.Id, true, packed: true);
                 Vec(a.Material.Color, 4, a.Id);
                 Params(a.Material.Params, a.Id);
             }
@@ -209,6 +229,36 @@ public sealed class SkinPack : IDisposable
                 }
                 File(a.Screen.TextMesh, a.Id, mesh: true);
                 File(a.Screen.BorderMesh, a.Id, mesh: true);
+            }
+        }
+
+        CodeEffects.Validate(doc);
+
+        // Player colours: unique ids, each slot a colour this document has, no slot driven by two of them.
+        var colorIds = new HashSet<string>();
+        var slots = new HashSet<(ColorSlotKind, string, int)>();
+        foreach (var c in doc.PlayerColors ?? [])
+        {
+            void Bad(string why) => throw new SkinFormatException("bad-player-color", $"player colour {c.Id}: {why}");
+            if (string.IsNullOrWhiteSpace(c.Id) || !colorIds.Add(c.Id)) Bad("empty or repeated id");
+            if (c.Slots.Count == 0) Bad("drives no colour");
+            Vec(c.Default, 3, $"player colour {c.Id}");
+            foreach (var p in c.Palette ?? []) Vec(p, 3, $"player colour {c.Id}");
+            foreach (var s in c.Slots)
+            {
+                var m = doc.Materials.Find(x => x.Material == s.Target);
+                var a = doc.Attachments.Find(x => x.Id == s.Target);
+                var exists = s.Kind switch
+                {
+                    ColorSlotKind.Tint or ColorSlotKind.Emissive => m != null,
+                    ColorSlotKind.AttachmentColor => a?.Mesh != null,
+                    ColorSlotKind.ScreenText or ColorSlotKind.ScreenPanel or ColorSlotKind.ScreenBorder => a?.Screen != null,
+                    ColorSlotKind.ScreenLowAmmo => a?.Screen?.LowAmmoColor != null,
+                    ColorSlotKind.EffectColor => a != null && s.Effect >= 0 && s.Effect < a.Effects.Count && a.Effects[s.Effect].Action == EffectAction.Flash,
+                    _ => false,
+                };
+                if (!exists) Bad($"{s.Kind} of {s.Target} is not in this skin");
+                if (!slots.Add((s.Kind, s.Target, s.Kind == ColorSlotKind.EffectColor ? s.Effect : 0))) Bad($"{s.Kind} of {s.Target} is driven twice");
             }
         }
     }

@@ -9,9 +9,10 @@ import { unityDirToThree, type Vec3 } from '../space';
 import { persistAutosave, useStore } from '../store';
 import { Attachments } from './Attachments';
 import { LiveryTool } from './LiveryTool';
+import { CodeEffects } from './CodeEffects';
 import { PartMeshes } from './PartMeshes';
 import { ModalTransform, modalState, newGesture, selectedTarget, type Target } from './ModalTransform';
-import { selectedObjects, quiet, SCENE_EVENT, shown, useSceneVersion, viewRefs } from './refs';
+import { ATTACHMENT_EVENT, selectedObjects, quiet, SCENE_EVENT, shown, useSceneVersion, viewRefs } from './refs';
 import { WeaponModel } from './WeaponModel';
 import { roomReflection } from './weaponScene';
 import { lang, t } from '../i18n';
@@ -228,6 +229,12 @@ function Gizmo() {
     const id = setTimeout(() => setTarget(selectedTarget()), 0);
     return () => clearTimeout(id);
   }, [selection, doc.attachments]);
+  // A new attachment's object appears only once its model has loaded, after the selection already changed.
+  useEffect(() => {
+    const f = () => setTarget(selectedTarget());
+    window.addEventListener(ATTACHMENT_EVENT, f);
+    return () => window.removeEventListener(ATTACHMENT_EVENT, f);
+  }, []);
   // One gizmo stays mounted and is pointed at the selection: mounting one per selection leaks its handle geometry.
   const on = !!target && modal === 'null|null';
   return (
@@ -307,6 +314,7 @@ export function Viewport() {
         {preview && <WeaponModel key={preview.glb} preview={preview} />}
         {preview && <Attachments />}
         {preview && <PartMeshes />}
+        {preview && <CodeEffects />}
       </Suspense>
       <Gizmo />
       <ModalTransform />

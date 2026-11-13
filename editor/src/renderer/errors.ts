@@ -6,7 +6,6 @@ const MESSAGES: Record<string, string> = {
   get 'game-not-found'() { return t('errors.k1'); },
   get 'game-running'() { return t('errors.k2'); },
   get 'missing-file'() { return t('errors.k4'); },
-  get 'bad-path'() { return t('errors.k5'); },
   get 'bad-mesh'() { return t('errors.k6'); },
   get 'bad-screen'() { return t('errors.k7'); },
   get 'no-glyphs'() { return t('errors.k8'); },
@@ -17,7 +16,6 @@ const MESSAGES: Record<string, string> = {
   get 'no-material'() { return t('errors.k12'); },
   get 'backend-exited'() { return t('errors.k13'); },
   get 'bad-request'() { return t('errors.k14'); },
-  get 'bad-audio'() { return t('errors.k15'); },
   get 'bad-trigger'() { return t('errors.k16'); },
   get 'bad-image'() { return t('errors.k17'); },
   get 'bad-vector'() { return t('errors.k18'); },
@@ -28,6 +26,8 @@ const MESSAGES: Record<string, string> = {
   get 'not-a-profile'() { return t('errors.k23'); },
   get 'ammo-display'() { return t('errors.k24'); },
   get 'no-plugin'() { return t('errors.noPlugin'); },
+  get 'forge-core-old'() { return t('errors.forgeCoreOld'); },
+  get 'forge-skin-old'() { return t('errors.forgeSkinOld'); },
   get 'nothing-to-apply'() { return t('errors.nothingToApply'); },
   get 'game-changed'() { return t('errors.gameChanged'); },
   get 'stale-patch'() { return t('errors.stalePatch'); },
@@ -41,6 +41,13 @@ export function friendly(e: unknown, fallback = t('errors.k25')): string {
   const err = e as Partial<BackendError> | undefined;
   if (err?.code && MESSAGES[err.code]) return MESSAGES[err.code];
   if (err?.code === 'not-found') return t('errors.k3', { v0: err.message ?? '' });
+  // The backend's bad-audio message starts with the sound's name.
+  // The backend's bad-path message starts with the path; only its last part, the name the author chose, is shown.
+  if (err?.code === 'bad-path') {
+    const path = (err.message ?? '').split(': illegal path')[0];
+    return t('errors.k5', { v0: path.split(/[\\/]/).pop() ?? '' });
+  }
+  if (err?.code === 'bad-audio') return t('errors.k15', { v0: (err.message ?? '').split(': ')[0] });
   return fallback;
 }
 

@@ -9,6 +9,7 @@ import {
   type Attachment,
   type CatalogItem,
   type DynamicLayer,
+  type EnemyInfo,
   type GameInfo,
   type InstalledPack,
   type MatchCell,
@@ -20,12 +21,19 @@ import {
   type ProjectEntry,
   type SizeMode,
   type SkinDocument,
+  type SkinsNote,
   type SkinSound,
   type TextureChannel,
+  type Trigger,
   type WeaponPreview,
 } from './protocol';
 import { detail, friendly } from './errors';
 import { fillThumbnails } from './viewport/thumbnails';
+import { CHARM_DEFAULTS } from './viewport/charm';
+import { startPoint } from './viewport/refs';
+import { showTab } from './ui/InspectorTabs';
+import { syncPlayerColors } from './playerColors';
+import { syncCodeEffects } from './codeFx';
 import { notify, type NotifyAction, type NotifyKind } from './ui/notify';
 import { localName, setLang, systemLang, t, type Lang } from './i18n';
 
@@ -37,6 +45,7 @@ export type Selection =
   | { kind: 'layer'; material: string; id: string }
   | { kind: 'livery'; material: string; id: string }
   | { kind: 'sound'; id: string }
+  | { kind: 'fx'; id: string }
   | null;
 
 
@@ -98,7 +107,8 @@ export const pendingKey = (material: string, channel: TextureChannel) => `${mate
 
 export function editorOf(doc: SkinDocument): EditorState {
   const e = (doc.editor ?? {}) as Partial<EditorState>;
-  return { enabled: e.enabled ?? {}, pending: e.pending ?? {} };
+  // The rest of the editor state (model previews, the open variant, ...) stays with it.
+  return { ...e, enabled: e.enabled ?? {}, pending: e.pending ?? {} };
 }
 
 function normalize(doc: SkinDocument): SkinDocument {
@@ -156,6 +166,16 @@ export function materialOf(doc: SkinDocument, material: string): MaterialOverrid
   return doc.materials?.find((m) => m?.material === material) ?? undefined;
 }
 
+/**
+ * A material's glow as the game shows it, in the skin's units (1 = the colour as itself): the skin's colour times its
+ * intensity, or without a colour the game material's own glow (the backend gives it in these units) times the
+ * intensity, as the plugin applies it (SkinnedGear.Params).
+ */
+export function glowOf(game: MaterialParams | undefined, own: MaterialParams): { color: number[]; intensity: number } {
+  if (own.emissiveColor) return { color: own.emissiveColor, intensity: own.emissiveIntensity ?? 1 };
+  return { color: game?.emissiveColor ?? [1, 1, 1], intensity: (game?.emissiveIntensity ?? 1) * (own.emissiveIntensity ?? 1) };
+}
+
 export function ensureMaterial(doc: SkinDocument, material: string, part?: string): MaterialOverride {
   let m = materialOf(doc, material);
   if (!m) {
@@ -171,6 +191,14 @@ export function ensureMaterial(doc: SkinDocument, material: string, part?: strin
 export const uid = () => Math.random().toString(36).slice(2, 10);
 const newSkinId = (doc: SkinDocument) => `${doc.target?.weapon ?? 'skin'}-${uid()}`;
 
+/** One entry of the log panel: the same text again counts up instead of adding a line. */
+export interface LogLine {
+  time: string;
+  text: string;
+  count: number;
+}
+export const logText = (l: LogLine) => `[${l.time}] ${l.text}${l.count > 1 ? ` ×${l.count}` : ''}`;
+
 interface State {
   ready: boolean;
   backendDown: boolean;
@@ -178,6 +206,8 @@ interface State {
   game: GameInfo | null;
   profiles: Profile[];
   catalog: CatalogItem[];
+  /** Every enemy of the installed game (its enemy data blocks), for the kill sounds' enemy choice. */
+  enemies: EnemyInfo[];
   weaponId: string | null;
   preview: WeaponPreview | null;
   previewLoading: boolean;
@@ -189,7 +219,7 @@ interface State {
   lastEditKey: string | null;
   lastEditAt: number;
   prefs: Prefs;
-  logs: string[];
+  logs: LogLine[];
   progress: { text: string; done: number; total: number } | null;
   /** Background preparation of every weapon preview (first run after a game update). */
   cache: { done: number; total: number } | null;
@@ -227,6 +257,10 @@ interface State {
   exportModOpen: boolean;
   /** The 导出前体检 dialog is open. */
   checkOpen: boolean;
+  /** What a Skins import or export left out or changed, shown in ui/SkinsReport; null when closed. */
+  skinsReport: { title: string; notes: SkinsNote[]; folder?: string; weapons?: string[] } | null;
+  /** A Skins skin group that names no gear the editor knows, waiting for the author to pick one (ui/SkinsReport). */
+  skinsTarget: { manifest: string; notes: SkinsNote[] } | null;
   /** The sticker / decal image picker is open: it answers here (stickers.pickDecalImage). */
   stickerPick: ((file: string | null) => void) | null;
   /** The current item's skins (each its own autosaved project), newest first. */
@@ -263,8 +297,12 @@ interface State {
   addAttachment(kind: 'screen' | 'mesh', mesh?: { forgeskinmesh: string; glb: string }, init?: (a: Attachment, editor: Record<string, unknown>) => void, id?: string): void;
   updateAttachment(id: string, fn: (a: Attachment) => void, coalesceKey?: string): void;
   removeAttachment(id: string): void;
-  /** Converts the picked audio file to Ogg next to the project and adds it as a sound (one undo step). */
-  addSound(file: string): Promise<void>;
+  /** Converts the picked audio file to Ogg next to the project and adds it as a sound of the event (and, for a kill, the
+   *  enemy: its data block id), joining that event's group; the new sound opens (one undo step). */
+  addSound(file: string, trigger?: Trigger, enemyId?: number | null): Promise<void>;
+  /** Moves a sound to another event (and enemy): an enemy stays only on a kill, and a low-ammo sound takes the
+   *  threshold its new group already has. */
+  setSoundEvent(id: string, trigger: Trigger, enemyId?: number | null): void;
   updateSound(id: string, fn: (s: SkinSound) => void, coalesceKey?: string): void;
   removeSound(id: string): void;
   duplicateAttachment(id: string): void;
@@ -320,6 +358,7 @@ export const useStore = create<State>((set, get) => ({
   game: null,
   profiles: [],
   catalog: [],
+  enemies: [],
   weaponId: null,
   preview: null,
   previewLoading: false,
@@ -334,6 +373,8 @@ export const useStore = create<State>((set, get) => ({
   pluginPending: null,
   exportModOpen: false,
   checkOpen: false,
+  skinsReport: null,
+  skinsTarget: null,
   stickerPick: null,
   skins: [],
   installed: [],
@@ -364,6 +405,7 @@ export const useStore = create<State>((set, get) => ({
     } catch (e) {
       get().log(`catalog.get: ${detail(e)}`);
     }
+    await loadEnemies();
     await get().refreshProfiles();
     const last = localStorage.getItem('sf.weapon');
     set({ ready: true });
@@ -371,8 +413,12 @@ export const useStore = create<State>((set, get) => ({
     void fillThumbnails();
   },
   log(line) {
-    const stamp = new Date().toLocaleTimeString('zh-CN', { hour12: false });
-    set((s) => ({ logs: [...s.logs.slice(-499), `[${stamp}] ${line}`] }));
+    const time = new Date().toLocaleTimeString('zh-CN', { hour12: false });
+    // A line already in the panel is one entry: it moves to the end with the latest time and how often it came.
+    set((s) => {
+      const old = s.logs.find((l) => l.text === line);
+      return { logs: [...s.logs.filter((l) => l !== old).slice(-499), { time, text: line, count: (old?.count ?? 0) + 1 }] };
+    });
   },
 
   toast(kind, text, action) {
@@ -413,6 +459,7 @@ export const useStore = create<State>((set, get) => ({
       else {
         get().toast('ok', t('store.k5'));
         set({ catalog: (await call('catalog.get', {})).items });
+        await loadEnemies();
         await get().refreshProfiles();
       }
     } catch (e) {
@@ -423,11 +470,11 @@ export const useStore = create<State>((set, get) => ({
     try {
       const profiles = await call('profiles.list', {});
       set({ profiles });
-      // The last one used while it still has BepInEx; else the test profile; else the most recently changed one with
+      // The last one used while it still has BepInEx; else the most recently changed one with
       // BepInEx; else none (the top bar then says what to do).
       const last = profiles.find((p) => p.path === get().prefs.profilePath && p.hasBepInEx);
       const ready = profiles.filter((p) => p.hasBepInEx).sort((a, b) => (b.modified ?? '').localeCompare(a.modified ?? ''));
-      const pick = last ?? profiles.find((p) => p.name === 'SkinTest') ?? ready[0];
+      const pick = last ?? ready[0];
       get().setPrefs({ profilePath: pick?.path ?? null });
     } catch (e) {
       get().log(`profiles.list: ${detail(e)}`);
@@ -515,7 +562,11 @@ export const useStore = create<State>((set, get) => ({
 
   edit(fn, coalesceKey) {
     const s = get();
-    const [doc, redo, undo] = produceWithPatches(s.doc, (d) => void fn(d as SkinDocument));
+    const [doc, redo, undo] = produceWithPatches(s.doc, (d) => {
+      fn(d as SkinDocument);
+      syncPlayerColors(d as SkinDocument); // linked colours move together (playerColors.ts)
+      syncCodeEffects(d as SkinDocument); // code effects follow their material or attachment (codeFx.ts)
+    });
     if (!redo.length) return;
     // JSON has no NaN/Infinity: such a value would make the whole document fail to save and pack, so the edit is refused.
     // Only what the edit wrote is checked (a brush stroke's move adds a few numbers to a long list).
@@ -579,6 +630,7 @@ export const useStore = create<State>((set, get) => ({
       }
       ++opening; // a skin still loading for this item must not replace the opened project
       set({ doc, projectPath: path.endsWith('.forgeskinproj') ? path : null, selection: null, unmatched: [], undo: [], redo: [], lastEditKey: null });
+      void restorePreviews(doc);
       get().autosave();
       get().toast('ok', t('store.k9', { v0: doc.name }));
     } catch (e) {
@@ -730,7 +782,7 @@ export const useStore = create<State>((set, get) => ({
         visible: true,
         part: anchor,
         transform,
-        position: [0, 0.03, 0],
+        position: startPoint(anchor, transform, false) ?? [0, 0.03, 0],
         rotation: [0, 0, 0],
         scale: [1, 1, 1],
         faceCamera: false,
@@ -776,7 +828,7 @@ export const useStore = create<State>((set, get) => ({
     });
     set({ selection: null });
   },
-  async addSound(file) {
+  async addSound(file, trigger = 'kill', enemyId = null) {
     const s = get();
     const id = uid();
     set({ busy: t('store.k23') });
@@ -785,8 +837,11 @@ export const useStore = create<State>((set, get) => ({
       const out = `${dirName(s.projectPath ?? autosavePath(s.weaponId!))}\\sounds\\${id}.ogg`;
       await window.forge.writeFile(out, ogg);
       get().edit((d) => {
-        d.sounds = [...(d.sounds ?? []), { id, name: baseName(file).replace(/\.[^.]+$/, ''), trigger: 'kill', file: out, volume: 1, lowAmmoFraction: 0.2 }];
+        const low = d.sounds?.find((v) => v?.trigger === 'lowAmmo')?.lowAmmoFraction ?? 0.2;
+        const sound = { id, name: baseName(file).replace(/\.[^.]+$/, ''), trigger, file: out, volume: 1, lowAmmoFraction: low, weight: 1 };
+        d.sounds = [...(d.sounds ?? []), trigger === 'kill' && enemyId != null ? { ...sound, enemyId } : sound];
       });
+      get().select({ kind: 'sound', id });
     } catch (e) {
       if (e instanceof AudioError) get().toast('error', e.message);
       else get().fail(e, t('store.k24'));
@@ -799,6 +854,17 @@ export const useStore = create<State>((set, get) => ({
       const x = d.sounds?.find((v) => v?.id === id);
       if (x) fn(x);
     }, coalesceKey && `sound-${id}-${coalesceKey}`);
+  },
+  setSoundEvent(id, trigger, enemyId) {
+    get().edit((d) => {
+      const x = d.sounds?.find((v) => v?.id === id);
+      if (!x) return;
+      x.trigger = trigger;
+      if (trigger === 'kill' && enemyId != null) x.enemyId = enemyId;
+      else delete x.enemyId;
+      const low = d.sounds?.find((v) => v !== x && v?.trigger === 'lowAmmo')?.lowAmmoFraction;
+      if (trigger === 'lowAmmo' && low != null) x.lowAmmoFraction = low;
+    });
   },
   removeSound(id) {
     get().edit((d) => void (d.sounds = (d.sounds ?? []).filter((v) => v?.id !== id)));
@@ -905,8 +971,23 @@ function dropEmptyParts(d: SkinDocument) {
   d.parts = d.parts!.filter((t) => t && (t.position != null || t.rotation != null || t.scale != null || t.visible != null || t.mesh != null));
 }
 
+/** Folder of every item's skins, one folder per item id. */
+export const autosaveRoot = (): string => `${useStore.getState().dataDir}\\autosave`;
+
+/** A new charm's settings. */
+export const newCharm = (): NonNullable<Attachment['charm']> => ({ ...CHARM_DEFAULTS, color: [...CHARM_DEFAULTS.color] });
+
+/** Makes a new attachment a charm: its origin, the hanging point, on the middle of its part's underside, upright. */
+export function hangAsCharm(a: Attachment) {
+  a.charm = newCharm();
+  a.hologram = null;
+  a.position = startPoint(a.part ?? '', a.transform ?? null, true) ?? a.position;
+  a.rotation = [0, 0, 0];
+  showTab('attachment', 'place'); // the tab with the charm settings
+}
+
 /** Folder of one item's skins. */
-const skinDir = (weaponId: string): string => `${useStore.getState().dataDir}\\autosave\\${weaponId}`;
+const skinDir = (weaponId: string): string => `${autosaveRoot()}\\${weaponId}`;
 
 /** Autosave of one skin; by default the skin being edited. */
 export function autosavePath(weaponId: string, skinId = useStore.getState().doc.id): string {
@@ -922,6 +1003,15 @@ async function loadSkin(path: string): Promise<SkinDocument | null> {
     useStore.getState().log(t('store.k2', { v0: detail(e) }));
     useStore.getState().toast('error', t('store.autosaveLoad'));
     return null;
+  }
+}
+
+/** The game's enemies; without the game the kill sounds offer only "any enemy". */
+async function loadEnemies() {
+  try {
+    useStore.setState({ enemies: (await call('enemies.list', {})).enemies });
+  } catch (e) {
+    useStore.getState().log(`enemies.list: ${detail(e)}`);
   }
 }
 
@@ -953,7 +1043,37 @@ function openSkin(loaded: SkinDocument, id: string, ticket: number): boolean {
   doc.editor = ed as unknown as SkinDocument['editor'];
   localStorage.setItem(`sf.skin.${id}`, doc.id!);
   useStore.setState({ doc, projectPath: null, selection: null, undo: [], redo: [], unmatched: [], lastEditKey: null });
+  void restorePreviews(doc);
   return true;
+}
+
+/** The 3D view draws an imported model from the preview its import wrote (editor meshPreviews, partMeshPreviews). A model
+ * without one (a project copied or written elsewhere, a cleared cache) gets it made again from its file; a model file that
+ * is gone or unreadable is said, so the view never just leaves the model out. Not an edit: undo does not see it. */
+async function restorePreviews(doc: SkinDocument) {
+  const s = useStore.getState();
+  const models = [
+    ...(doc.attachments ?? []).filter((a) => a?.mesh).map((a) => ({ table: 'meshPreviews', key: a!.id!, file: a!.mesh!, name: a!.name || a!.id! })),
+    ...(doc.parts ?? []).filter((p) => p?.mesh && p.part).map((p) => ({ table: 'partMeshPreviews', key: partMeshKey(p!.part!, p!.path), file: p!.mesh!, name: p!.part! })),
+  ];
+  for (const m of models) {
+    const shown = (doc.editor as Record<string, Record<string, string> | undefined> | undefined)?.[m.table]?.[m.key];
+    if (shown && (await window.forge.exists(shown))) continue;
+    if (!(await window.forge.exists(m.file))) {
+      s.toast('error', t('store.modelMissing', { v0: m.name, v1: m.file.split(/[\\/]/).pop() }));
+      continue;
+    }
+    try {
+      const { glb } = await call('mesh.import', { glb: m.file });
+      if (useStore.getState().doc.id !== doc.id) return;
+      useStore.setState((st) => {
+        const ed = (st.doc.editor ?? {}) as Record<string, Record<string, string> | undefined>;
+        return { doc: { ...st.doc, editor: { ...ed, [m.table]: { ...(ed[m.table] ?? {}), [m.key]: glb } } as unknown as SkinDocument['editor'] } };
+      });
+    } catch (e) {
+      s.fail(e, t('errors.k6'));
+    }
+  }
 }
 
 export async function persistAutosave() {

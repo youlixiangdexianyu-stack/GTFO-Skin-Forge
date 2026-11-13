@@ -1,7 +1,7 @@
 import { app, autoUpdater, BrowserWindow, dialog, ipcMain, net, protocol, shell, type OpenDialogOptions } from 'electron';
 import { appendFileSync, cpSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, watch, writeFileSync, type FSWatcher } from 'node:fs';
 import { mkdir, stat, writeFile } from 'node:fs/promises';
-import { basename, dirname, isAbsolute, join, normalize, resolve, sep } from 'node:path';
+import { basename, dirname, extname, isAbsolute, join, normalize, resolve, sep } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import squirrelStartup from 'electron-squirrel-startup';
 import { updateElectronApp, UpdateSourceType } from 'update-electron-app';
@@ -22,8 +22,22 @@ function movePreRenameUserData(): void {
 }
 movePreRenameUserData();
 
-// Dev only: SF_CDP=<port> exposes DevTools protocol so the running app can be inspected and screenshotted.
-if (!app.isPackaged && process.env.SF_CDP) app.commandLine.appendSwitch('remote-debugging-port', process.env.SF_CDP);
+// `--ai-control[=<port>]` (default 9333) opens the Chromium DevTools protocol on 127.0.0.1 so an AI agent can drive the
+// window; without it no debugging port is open. It has to be appended before the app is ready.
+// In that mode file dialogs are asked in the window (see askPaths) instead of the system's, which a protocol client cannot drive.
+const aiControl = process.argv.find((a) => a === '--ai-control' || a.startsWith('--ai-control='));
+let aiControlOn = false;
+if (aiControl) {
+  const port = aiControl === '--ai-control' ? 9333 : Number(aiControl.slice('--ai-control='.length));
+  if (Number.isInteger(port) && port >= 1024 && port <= 65535) {
+    app.commandLine.appendSwitch('remote-debugging-address', '127.0.0.1');
+    app.commandLine.appendSwitch('remote-debugging-port', String(port));
+    // A window behind others counts as hidden and Chromium then stops animation frames, so menus never open: keep it live.
+    app.commandLine.appendSwitch('disable-features', 'CalculateNativeWinOcclusion');
+    app.commandLine.appendSwitch('disable-renderer-backgrounding');
+    aiControlOn = true;
+  } else appLog('ai-control', `ignored ${aiControl}: the port must be an integer from 1024 to 65535`);
+}
 
 // Local files (preview GLB, textures, videos) are served to the renderer as sf://local/<abs path>.
 protocol.registerSchemesAsPrivileged([
@@ -73,8 +87,8 @@ const backend = new Backend(
 
 function startBackend() {
   startedAt = Date.now();
-  backend.start();
-  send('backend:status', 'ready');
+  // Ready only once the process exists; an exe that is missing never reports ready.
+  backend.start(() => send('backend:status', 'ready'));
 }
 
 function createWindow() {
@@ -148,23 +162,22 @@ function registerIpc() {
   );
   ipcMain.handle('app:dataDir', () => Backend.dataDir());
   ipcMain.handle('dialog:open', async (_e, kind: 'folder' | 'files' | 'project', filters?: OpenDialogOptions['filters'], purpose?: string) => {
-    const props: OpenDialogOptions['properties'] =
-      kind === 'folder' ? ['openDirectory'] : kind === 'files' ? ['openFile', 'multiSelections'] : ['openFile'];
     const key = dialogKey(purpose ?? kind, filters);
-    const r = await dialog.showOpenDialog(win!, { properties: props, filters, defaultPath: lastDir(key) });
-    if (r.canceled || !r.filePaths.length) return [];
-    remember(key, kind === 'folder' ? r.filePaths[0] : dirname(r.filePaths[0]));
-    return r.filePaths;
+    const paths = await pickPaths(kind, filters, lastDir(key));
+    if (!paths.length) return [];
+    remember(key, kind === 'folder' ? paths[0] : dirname(paths[0]));
+    return paths;
   });
   ipcMain.handle('dialog:save', async (_e, defaultPath: string, filters: OpenDialogOptions['filters']) => {
     const key = dialogKey('save', filters);
     // A bare file name opens in the folder this kind of file was last saved to.
     const last = basename(defaultPath) === defaultPath ? lastDir(key) : undefined;
-    const r = await dialog.showSaveDialog(win!, { defaultPath: last ? join(last, defaultPath) : defaultPath, filters });
-    if (r.canceled || !r.filePath) return null;
-    remember(key, dirname(r.filePath));
-    return r.filePath;
+    const [path] = await pickPaths('save', filters, last ? join(last, defaultPath) : defaultPath);
+    if (!path) return null;
+    remember(key, dirname(path));
+    return path;
   });
+  ipcMain.handle('dialog:answer', (_e, id: number, paths: string[] | null) => answerPaths(id, paths));
   ipcMain.handle('files:write', async (_e, path: string, data: Uint8Array) => {
     if (!writable(path)) throw new Error(`refused write outside frames/data dir: ${path}`);
     await mkdir(dirname(path), { recursive: true });
@@ -249,6 +262,66 @@ async function watchDownload() {
   autoUpdater.once('error', stop(false));
 }
 
+// Every file the editor asks for comes through pickPaths: the system's dialog, or, with --ai-control, a dialog in the window
+// (ui/PathDialog) that takes typed paths. An empty answer is a cancel either way.
+type PathKind = 'folder' | 'files' | 'project' | 'save';
+type FileFilters = OpenDialogOptions['filters'];
+
+async function systemPaths(kind: PathKind, filters: FileFilters, start: string | undefined): Promise<string[]> {
+  if (kind === 'save') {
+    const r = await dialog.showSaveDialog(win!, { defaultPath: start, filters });
+    return r.canceled || !r.filePath ? [] : [r.filePath];
+  }
+  const properties: OpenDialogOptions['properties'] =
+    kind === 'folder' ? ['openDirectory'] : kind === 'files' ? ['openFile', 'multiSelections'] : ['openFile'];
+  const r = await dialog.showOpenDialog(win!, { properties, filters, defaultPath: start });
+  return r.canceled ? [] : r.filePaths;
+}
+
+const asks = new Map<number, { kind: PathKind; filters: FileFilters; resolve: (paths: string[]) => void }>();
+let askId = 0;
+
+function askPaths(kind: PathKind, filters: FileFilters, start: string | undefined): Promise<string[]> {
+  return new Promise((resolve) => {
+    const id = ++askId;
+    asks.set(id, { kind, filters, resolve });
+    send('dialog:ask', { id, kind, filters: filters ?? [], start: start ?? '' });
+  });
+}
+
+const pickPaths = (kind: PathKind, filters: FileFilters, start: string | undefined) =>
+  aiControlOn ? askPaths(kind, filters, start) : systemPaths(kind, filters, start);
+
+const kindOfPath = (p: string) => {
+  try {
+    return statSync(p).isDirectory() ? 'folder' : 'file';
+  } catch {
+    return null;
+  }
+};
+
+/** The window's answer to a path request: '' when taken, else the reason it is refused (the window shows it and stays open). */
+function answerPaths(id: number, paths: string[] | null): string {
+  const ask = asks.get(id);
+  if (!ask) return '';
+  const done = (out: string[]) => (asks.delete(id), ask.resolve(out), '');
+  if (!paths) return done([]);
+  if (!paths.length) return 'empty';
+  if (paths.some((p) => !isAbsolute(p))) return 'relative';
+  if (ask.kind === 'save') {
+    let out = normalize(paths[0]);
+    const ext = ask.filters?.[0]?.extensions[0];
+    if (ext && ext !== '*' && !extname(out)) out += `.${ext}`;
+    if (kindOfPath(out) === 'folder') return 'isFolder';
+    return kindOfPath(dirname(out)) === 'folder' ? done([out]) : 'noParent';
+  }
+  for (const p of paths) {
+    const kind = kindOfPath(p);
+    if (!kind) return 'missing';
+    if (kind !== (ask.kind === 'folder' ? 'folder' : 'file')) return ask.kind === 'folder' ? 'notFolder' : 'notFile';
+  }
+  return done(ask.kind === 'files' ? paths.map(normalize) : [normalize(paths[0])]);
+}
 // Every file dialog opens where the last one of its kind was confirmed (a purpose, else the kind and file types), kept
 // across runs in <dataDir>/dialogs.json.
 const dialogsFile = () => join(Backend.dataDir(), 'dialogs.json');

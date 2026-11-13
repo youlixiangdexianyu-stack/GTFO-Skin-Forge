@@ -1,7 +1,7 @@
 // Everything that can be added to one part, in one menu (the "+" on a part row): textures, paint layers, dynamic layers, screens,
 // models and a replacement model for the part itself. New kinds of per-part content get their item here.
 import { Menu } from '@mantine/core';
-import { IconBox, IconDeviceDesktop, IconLetterT, IconMovie, IconPhoto, IconReplace, IconStack2 } from '@tabler/icons-react';
+import { IconBox, IconBrush, IconDeviceDesktop, IconLetterT, IconMovie, IconPhoto, IconReplace, IconStack2 } from '@tabler/icons-react';
 import type { ReactElement } from 'react';
 import { importMesh } from '../actions';
 import type { CatalogPart, LayerKind } from '../protocol';
@@ -10,8 +10,9 @@ import { addLayer } from './DynamicInspector';
 import { FEATURE } from './Features';
 import { addLiveryLayer, LIVERY_KINDS } from './LiveryPanel';
 import { hasOwnModel, replacePartModel } from './PartModel';
-import { ShapeMenuItems } from './ShapePanel';
+import { ShapeMenuItems, SubMenu } from './ShapePanel';
 import { t } from '../i18n';
+import { addCodeEffect } from '../codeFx';
 
 const LAYERS: { kind: LayerKind; label: () => string; icon: typeof IconPhoto }[] = [
   { kind: 'image', label: () => t('dynamicInspector.k1'), icon: IconPhoto },
@@ -33,18 +34,24 @@ export function PartAddMenu({ part, path, children }: { part: CatalogPart; path?
         </Menu.Item>
         {material && (
           <>
-            <Menu.Label>{t('livery.title')}</Menu.Label>
-            {LIVERY_KINDS.map((k) => (
-              <Menu.Item key={k.id} leftSection={<k.icon size={14} color={FEATURE.livery.color} />} onClick={() => (here(), addLiveryLayer(material, part.id, k.id))}>
-                {k.label()}
-              </Menu.Item>
-            ))}
-            <Menu.Label>{t('dynamicInspector.k33')}</Menu.Label>
-            {LAYERS.map((l) => (
-              <Menu.Item key={l.kind} leftSection={<l.icon size={14} color={FEATURE.layer.color} />} onClick={() => (here(), void addLayer(material, part.id, l.kind))}>
-                {l.label()}
-              </Menu.Item>
-            ))}
+            <SubMenu icon={<IconBrush size={14} color={FEATURE.livery.color} />} label={t('livery.title')}>
+              {LIVERY_KINDS.map((k) => (
+                <Menu.Item key={k.id} leftSection={<k.icon size={14} color={FEATURE.livery.color} />} onClick={() => (here(), addLiveryLayer(material, part.id, k.id))}>
+                  {k.label()}
+                </Menu.Item>
+              ))}
+            </SubMenu>
+            <SubMenu icon={<IconMovie size={14} color={FEATURE.layer.color} />} label={t('dynamicInspector.k33')}>
+              {LAYERS.map((l) => (
+                <Menu.Item key={l.kind} leftSection={<l.icon size={14} color={FEATURE.layer.color} />} onClick={() => (here(), void addLayer(material, part.id, l.kind))}>
+                  {l.label()}
+                </Menu.Item>
+              ))}
+            </SubMenu>
+            <Menu.Label>{t('codeFx.title')}</Menu.Label>
+            <Menu.Item leftSection={<FEATURE.fx.icon size={14} color={FEATURE.fx.color} />} onClick={() => (here(), addCodeEffect({ material, part: part.id }))}>
+              {t('codeFx.addOnPart')}
+            </Menu.Item>
           </>
         )}
         <Menu.Label>{t('skinInspector.partAttachments')}</Menu.Label>

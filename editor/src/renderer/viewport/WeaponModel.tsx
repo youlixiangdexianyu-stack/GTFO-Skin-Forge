@@ -10,7 +10,7 @@ import { editorOf, materialOf, useStore } from '../store';
 import { poseWith, unityDirToThree, unityToThree } from '../space';
 import { holdTextures, releaseTextures } from './textures';
 import { editableMaterials, paintMaterial, restoreUnityNames } from './weaponScene';
-import { displayOffset, hiddenMeshes, partOf, partTarget, pathChain, playTime, registerTransforms, quiet, SCENE_EVENT, viewRefs } from './refs';
+import { displayOffset, hiddenMeshes, partOf, partTarget, pathChain, playTime, registerTransforms, quiet, SCENE_EVENT, viewRefs, walkGear } from './refs';
 import { t } from '../i18n';
 import { withVariant } from '../variants';
 
@@ -140,7 +140,8 @@ export function WeaponModel({ preview }: { preview: WeaponPreview }) {
       scale: o.scale.clone(),
     });
     // Captured once per model; an effect re-run (StrictMode, preview refresh) restores it before laying out ammo again.
-    scene.traverse((o) => {
+    // Attachments are mounted inside the gear's nodes; a re-run (preview refresh) must leave them alone.
+    walkGear(scene, (o) => {
       const v = viewRefs.vanilla.get(o);
       if (!v) return void viewRefs.vanilla.set(o, pose(o));
       o.position.copy(v.position);
@@ -148,10 +149,10 @@ export function WeaponModel({ preview }: { preview: WeaponPreview }) {
       o.scale.copy(v.scale);
     });
     layOutAmmo(preview.parts);
-    scene.traverse((o) => viewRefs.display.set(o, pose(o)));
+    walkGear(scene, (o) => viewRefs.display.set(o, pose(o)));
     // Every drawn mesh belongs to a part and can be selected; anything else is hidden and named once in the log.
     const unmapped: string[] = [];
-    scene.traverse((o) => {
+    walkGear(scene, (o) => {
       if ((o as Mesh).isMesh && !partOf(o)) {
         o.userData.sfUnmapped = true;
         o.visible = false;
@@ -182,9 +183,11 @@ export function WeaponModel({ preview }: { preview: WeaponPreview }) {
       );
     useStore.setState({ subParts });
     editableMaterials(scene, materials.current);
+    viewRefs.materials = materials.current;
     window.dispatchEvent(new Event(SCENE_EVENT));
     return () => {
       viewRefs.root = null;
+      viewRefs.materials = null;
     };
   }, [scene, preview]);
 

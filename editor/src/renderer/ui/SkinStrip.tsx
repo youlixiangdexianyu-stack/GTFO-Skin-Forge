@@ -23,7 +23,7 @@ function useSkinThumbs() {
   }, [weaponId, skins, ready]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => {
     if (!weaponId || !ready || !doc.id) return;
-    const id = setTimeout(() => void skinThumbnail(weaponId, doc.id!, { doc }), 1500);
+    const id = setTimeout(() => void skinThumbnail(weaponId, doc.id!, { doc, live: true }), 1500);
     return () => clearTimeout(id);
   }, [weaponId, doc, ready]);
 }
@@ -41,7 +41,7 @@ function SkinCard({ k, onDelete, onSnapshots }: { k: ProjectEntry; onDelete: (k:
   };
   const thumb = skinThumbOf(k.id) ?? (weaponId ? thumbOf(weaponId) : null);
   return (
-    <div className="skin-card" aria-current={current} onClick={() => !current && void switchSkin(k.id)}>
+    <div className="skin-card" role="button" aria-current={current} onClick={() => !current && void switchSkin(k.id)}>
       <div className="thumb">{thumb && <img src={thumb} alt="" />}</div>
       {pack?.active ? (
         <span className="in-game">{t('skins.inGameNow')}</span>
@@ -69,7 +69,8 @@ function SkinCard({ k, onDelete, onSnapshots }: { k: ProjectEntry; onDelete: (k:
             {name}
           </span>
         )}
-        <Menu position="bottom-end" withinPortal>
+        {/* No focus back to the button on close: 改名 focuses the name field, which a returned focus would blur at once. */}
+        <Menu position="bottom-end" withinPortal returnFocus={false}>
           <Menu.Target>
             <ActionIcon variant="subtle" color="gray" size="sm" aria-label={t('skins.more')} onClick={(e) => e.stopPropagation()}>
               <IconDots size={14} />

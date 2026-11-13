@@ -1,11 +1,14 @@
-import { ActionIcon, Button, Checkbox, Group, SegmentedControl, Select, Switch, TextInput } from '@mantine/core';
+import { ActionIcon, Button, Checkbox, Group, SegmentedControl, Select, Switch, TextInput, Tooltip } from '@mantine/core';
 import { useState } from 'react';
 import { cssFont, DEFAULT_FONT, FONT_GROUPS, isFontFile, loadFont, systemFonts } from '../fonts';
-import { IconArrowsMove, IconDeviceDesktop, IconPalette, IconPlus, IconSparkles, IconTrash, IconX } from '@tabler/icons-react';
+import { IconArrowsMove, IconDeviceDesktop, IconPalette, IconPlus, IconRotate, IconRun, IconSparkles, IconTrash, IconWind, IconX } from '@tabler/icons-react';
+import { CHARM_DEFAULTS, MAX_PER_GEAR, MAX_SEGMENTS, type CharmSettings } from '../viewport/charm';
 import { InspectorTabs } from './InspectorTabs';
 import { baseName, triggersFor, type Attachment, type CatalogItem, type Screen, type ScreenSource, type Trigger, type TriggerEffect } from '../protocol';
 import { isBounded, isPercent, screenDigits } from '../frames';
-import { useItem, useStore } from '../store';
+import { newCharm, useItem, useStore } from '../store';
+import { removeEffect } from '../playerColors';
+import { previewEvents, type CharmMotion } from '../viewport/refs';
 import { Color, Field, Num, Slider, Vec } from './fields';
 import { SelectionLayout } from './SelectionLayout';
 import { useSoundsTab } from './SkinInspector';
@@ -117,17 +120,17 @@ function Effects({ a }: { a: Attachment }) {
           <Group gap="xs" wrap="nowrap">
             <Select size="xs" w={96} value={e.trigger ?? 'kill'} data={triggers} allowDeselect={false} onChange={(v) => v && up(i, (x) => void (x.trigger = v as Trigger))} />
             <SegmentedControl size="xs" value={e.action ?? 'flash'} data={[{ value: 'flash', get label() { return t('attachInspector.k14'); } }, { value: 'show', get label() { return t('attachInspector.k15'); } }]} onChange={(v) => up(i, (x) => void (x.action = v as 'flash' | 'show'))} />
-            <Num w={78} value={e.seconds ?? 0.4} step={0.1} decimalScale={2} min={0.05} rightSection={t('attachInspector.k16')} onChange={(v) => up(i, (x) => void (x.seconds = v), 's')} />
-            <ActionIcon variant="subtle" color="gray" size="sm" ml="auto" aria-label={t('attachInspector.k17')} onClick={() => updateAttachment(a.id!, (x) => void x.effects!.splice(i, 1))}>
+            <Num w={78} value={e.seconds ?? 0.3} step={0.1} decimalScale={2} min={0.05} rightSection={t('attachInspector.k16')} onChange={(v) => up(i, (x) => void (x.seconds = v), 's')} />
+            <ActionIcon variant="subtle" color="gray" size="sm" ml="auto" aria-label={t('attachInspector.k17')} onClick={() => useStore.getState().edit((d) => removeEffect(d, a.id!, i))}>
               <IconX size={13} />
             </ActionIcon>
           </Group>
           {e.action !== 'show' && (
             <Group gap="xs" mt={6} wrap="nowrap">
               <div style={{ flex: 1 }}>
-                <Color value={[...(e.color ?? [1, 1, 1]).slice(0, 3), 1]} onChange={(c) => up(i, (x) => void (x.color = [c[0], c[1], c[2]]), 'c')} />
+                <Color slot={{ kind: 'effectColor', target: a.id, effect: i }} value={[...(e.color ?? [1, 1, 1]).slice(0, 3), 1]} onChange={(c) => up(i, (x) => void (x.color = [c[0], c[1], c[2]]), 'c')} />
               </div>
-              <Num w={92} value={e.intensity ?? 4} step={0.5} decimalScale={1} min={0} leftSection={t('attachInspector.k18')} leftSectionWidth={38} onChange={(v) => up(i, (x) => void (x.intensity = v), 'k')} />
+              <Num w={92} value={e.intensity ?? 1} step={0.5} decimalScale={1} min={0} leftSection={t('attachInspector.k18')} leftSectionWidth={38} onChange={(v) => up(i, (x) => void (x.intensity = v), 'k')} />
             </Group>
           )}
         </div>
@@ -137,6 +140,86 @@ function Effects({ a }: { a: Attachment }) {
 }
 
 const MM = 1000;
+const CM = 100;
+
+const MOTIONS: { motion: CharmMotion; icon: typeof IconWind }[] = [
+  { motion: 'shake', icon: IconWind },
+  { motion: 'run', icon: IconRun },
+  { motion: 'turn', icon: IconRotate },
+];
+
+/** Charm: a rope or chain from the attachment's origin with the model hanging on its end; the game's rope (charm.ts). */
+function CharmSection({ a }: { a: Attachment }) {
+  const { updateAttachment } = useStore.getState();
+  const charms = useStore((s) => (s.doc.attachments ?? []).filter((x) => x?.charm).length);
+  const c = a.charm;
+  const set = <K extends keyof CharmSettings>(k: K, v: CharmSettings[K], key = true) =>
+    updateAttachment(a.id!, (x) => void (x.charm && (x.charm[k] = v as never)), key ? `${a.id}-charm-${k}` : undefined);
+  const full = !c && charms >= MAX_PER_GEAR;
+  return (
+    <div className="section">
+      <h3>
+        <span>{t('charm.title')}</span>
+        <Info label={full ? t('charm.full', { v0: MAX_PER_GEAR }) : t('charm.info')} />
+        <span className="grow" />
+        <Switch
+          aria-label={t('charm.title')}
+          checked={!!c}
+          disabled={full}
+          onChange={(e) => {
+            const on = e.currentTarget.checked;
+            updateAttachment(a.id!, (x) => void (x.charm = on ? newCharm() : null));
+          }}
+        />
+      </h3>
+      {c && (
+        <>
+          <p className="hint" style={{ marginTop: 0 }}>
+            {t('charm.pointHint')}
+          </p>
+          <SegmentedControl
+            fullWidth
+            size="xs"
+            value={c.style ?? CHARM_DEFAULTS.style}
+            data={(['cord', 'chain', 'beads'] as const).map((v) => ({ value: v, label: t(`charm.${v}`) }))}
+            onChange={(v) => set('style', v as CharmSettings['style'], false)}
+          />
+          <Field label={t('charm.length')}>
+            <Slider value={(c.length ?? CHARM_DEFAULTS.length) * CM} min={0.5} max={30} step={0.1} label={(v) => `${v.toFixed(1)} cm`} onChange={(v) => set('length', v / CM)} />
+          </Field>
+          <Field label={t('charm.thickness')}>
+            <Slider value={(c.thickness ?? CHARM_DEFAULTS.thickness) * MM} min={0.3} max={10} step={0.1} label={(v) => `${v.toFixed(1)} mm`} onChange={(v) => set('thickness', v / MM)} />
+          </Field>
+          <Field label={t('charm.color')}>
+            <Color value={c.color ?? CHARM_DEFAULTS.color} onChange={(v) => set('color', v.slice(0, 3))} />
+          </Field>
+          <Field label={t('charm.weight')}>
+            <Slider value={c.weight ?? CHARM_DEFAULTS.weight} min={0.1} max={3} step={0.05} onChange={(v) => set('weight', v)} />
+          </Field>
+          <Field label={t('charm.damping')}>
+            <Slider value={c.damping ?? CHARM_DEFAULTS.damping} onChange={(v) => set('damping', v)} />
+          </Field>
+          <Field label={t('charm.stiffness')}>
+            <Slider value={c.stiffness ?? CHARM_DEFAULTS.stiffness} onChange={(v) => set('stiffness', v)} />
+          </Field>
+          <Field label={t('charm.segments')}>
+            <Slider value={c.segments ?? CHARM_DEFAULTS.segments} min={1} max={MAX_SEGMENTS} step={1} label={(v) => String(v)} onChange={(v) => set('segments', Math.round(v))} />
+          </Field>
+          <Switch mt="xs" label={t('charm.collide')} checked={c.collide ?? CHARM_DEFAULTS.collide} onChange={(e) => set('collide', e.currentTarget.checked, false)} />
+          <Group gap={6} mt="sm" grow>
+            {MOTIONS.map(({ motion, icon: Icon }) => (
+              <Tooltip key={motion} label={t(`charm.${motion}Info`)}>
+                <Button size="compact-sm" variant="light" leftSection={<Icon size={14} />} onClick={() => void (previewEvents.charm = { motion, at: performance.now() })}>
+                  {t(`charm.${motion}`)}
+                </Button>
+              </Tooltip>
+            ))}
+          </Group>
+        </>
+      )}
+    </div>
+  );
+}
 
 function AttachmentPanel({ a }: { a: Attachment }) {
   const item = useItem();
@@ -145,9 +228,10 @@ function AttachmentPanel({ a }: { a: Attachment }) {
   const upScreen = (fn: (s: Screen) => void, key?: string) => up((x) => void (x.screen && fn(x.screen)), key);
   const s = a.screen;
   const sounds = useSoundsTab();
-  // 位置: where it is mounted and its pose; 外观: shape, hologram, colours; 屏幕: what a screen shows; 特效: events.
+  // 位置: charm first (where and how it hangs), where it is mounted and its pose; 外观: shape, hologram, colours; 屏幕: what a screen shows; 特效: events.
   const place = (
     <>
+      <CharmSection a={a} />
       <div className="section">
         <h3>{t('attachInspector.k21')}</h3>
         <Field label={t('attachInspector.k22')}>
@@ -182,33 +266,17 @@ function AttachmentPanel({ a }: { a: Attachment }) {
           </Field>
         )}
       </div>
-      <div className="section">
-        <h3>
-          <span>{t('swing.title')}</span>
-          <Info label={t('swing.info')} />
-          <span className="grow" />
-          <Switch checked={!!a.swing} onChange={(e) => {
-            const on = e.currentTarget.checked;
-            up((x) => void (x.swing = on ? { looseness: 0.5 } : null));
-          }} />
-        </h3>
-        {a.swing && (
-          <Field label={t('swing.looseness')}>
-            <Slider value={a.swing.looseness ?? 0.5} min={0} max={1} onChange={(v) => up((x) => void (x.swing && (x.swing.looseness = v)), 'looseness')} />
-          </Field>
-        )}
-      </div>
       {s && (
         <div className="section">
           <h3>{t('attachInspector.k34')}</h3>
           <Field label={t('attachInspector.k24')}>
-            <Color value={s.textColor ?? [1, 1, 1, 1]} onChange={(c) => upScreen((x) => void (x.textColor = [c[0], c[1], c[2], 1]), 'tc')} />
+            <Color slot={{ kind: 'screenText', target: a.id }} value={s.textColor ?? [1, 1, 1, 1]} onChange={(c) => upScreen((x) => void (x.textColor = [c[0], c[1], c[2], 1]), 'tc')} />
           </Field>
           <Field label={t('attachInspector.k35')}>
-            <Color alpha value={s.panelColor ?? [0, 0, 0, 0.85]} onChange={(c) => upScreen((x) => void (x.panelColor = c), 'pc')} />
+            <Color alpha slot={{ kind: 'screenPanel', target: a.id }} value={s.panelColor ?? [0, 0, 0, 0.85]} onChange={(c) => upScreen((x) => void (x.panelColor = c), 'pc')} />
           </Field>
           <Field label={t('attachInspector.k36')}>
-            <Color alpha value={s.borderColor ?? [1, 1, 1, 1]} onChange={(c) => upScreen((x) => void (x.borderColor = c), 'bc')} />
+            <Color alpha slot={{ kind: 'screenBorder', target: a.id }} value={s.borderColor ?? [1, 1, 1, 1]} onChange={(c) => upScreen((x) => void (x.borderColor = c), 'bc')} />
           </Field>
           <Field label={t('border.style')}>
             <Select
@@ -229,7 +297,7 @@ function AttachmentPanel({ a }: { a: Attachment }) {
               }} />
               {s.lowAmmoColor && (
                 <div style={{ flex: 1 }}>
-                  <Color value={s.lowAmmoColor} onChange={(c) => upScreen((x) => void (x.lowAmmoColor = [c[0], c[1], c[2], 1]), 'lc')} />
+                  <Color slot={{ kind: 'screenLowAmmo', target: a.id }} value={s.lowAmmoColor} onChange={(c) => upScreen((x) => void (x.lowAmmoColor = [c[0], c[1], c[2], 1]), 'lc')} />
                 </div>
               )}
             </Group>
@@ -263,7 +331,7 @@ function AttachmentPanel({ a }: { a: Attachment }) {
         <div className="section">
           <h3>{t('attachInspector.k41')}</h3>
           <Field label={t('attachInspector.k34')}>
-            <Color value={a.material.color ?? [1, 1, 1, 1]} onChange={(c) => up((x) => void (x.material && (x.material.color = [c[0], c[1], c[2], 1])), 'mc')} />
+            <Color slot={a.mesh ? { kind: 'attachmentColor', target: a.id } : undefined} value={a.material.color ?? [1, 1, 1, 1]} onChange={(c) => up((x) => void (x.material && (x.material.color = [c[0], c[1], c[2], 1])), 'mc')} />
           </Field>
           <Switch mt="xs" label={t('attachInspector.k42')} checked={!!a.material.unlit} onChange={(e) => {
             const on = e.currentTarget.checked;

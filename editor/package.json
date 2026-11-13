@@ -1,17 +1,17 @@
 {
   "name": "forgeskin",
   "productName": "ForgeSkin",
-  "version": "1.0.3",
+  "version": "1.1.0",
   "description": "GTFO 武器皮肤工坊",
   "private": true,
   "type": "module",
   "main": ".vite/build/main.cjs",
   "scripts": {
-    "start": "electron-forge start",
-    "package": "electron-forge package",
-    "make": "electron-forge make",
-    "typecheck": "tsc --noEmit -p tsconfig.json",
-    "lint": "eslint src && tsc --noEmit -p tsconfig.json",
+    "start": "node scripts/gen-types.mjs && electron-forge start",
+    "package": "node scripts/gen-types.mjs && electron-forge package",
+    "make": "node scripts/gen-types.mjs && electron-forge make",
+    "typecheck": "node scripts/gen-types.mjs && tsc --noEmit -p tsconfig.json",
+    "lint": "node scripts/gen-types.mjs && eslint src && tsc --noEmit -p tsconfig.json",
     "gen:types": "node scripts/gen-types.mjs"
   },
   "dependencies": {
@@ -42,6 +42,7 @@
     "i18next": "^27.1.1",
     "immer": "^11.2.10",
     "konva": "^10.9.1",
+    "marked": "^18.2.0",
     "postprocessing": "^6.39.6",
     "react": "^19.3.1",
     "react-dom": "^19.3.1",

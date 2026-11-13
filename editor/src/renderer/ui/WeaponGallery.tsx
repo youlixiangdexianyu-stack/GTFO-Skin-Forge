@@ -5,7 +5,7 @@ import { IconChevronDown, IconSearch } from '@tabler/icons-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { CatalogItem } from '../protocol';
 import { useItem, useStore } from '../store';
-import { THUMB_EVENT, thumbOf } from '../viewport/thumbnails';
+import { galleryThumbOf, THUMB_EVENT } from '../viewport/thumbnails';
 import { lang, localCategory, localName, t, useLang } from '../i18n';
 
 /** Filter chips by slot, in this order (unknown slots last); a slot without a label here shows its id. */
@@ -38,7 +38,7 @@ function WeaponCard({ item, current, onPick }: { item: CatalogItem; current: boo
   useEffect(() => {
     if (current) ref.current?.scrollIntoView({ block: 'nearest' });
   }, [current]);
-  const thumb = thumbOf(item.id);
+  const thumb = galleryThumbOf(item.id);
   return (
     <UnstyledButton ref={ref} className="weapon" aria-current={current} onClick={() => (void useStore.getState().selectWeapon(item.id), onPick())}>
       <div className="thumb">{thumb ? <img src={thumb} alt="" /> : item.slot === 'ammo' ? 'AMMO' : ''}</div>

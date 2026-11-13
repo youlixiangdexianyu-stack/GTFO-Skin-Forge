@@ -1,11 +1,12 @@
 // Multi-step user actions: apply to game, export pack, export OBJ.
 import { bakeGlyphs, bakeLayers, baseTexturePath, loadImage, writePng } from './frames';
 import { bakeLivery, hasLivery } from './livery';
-import { drawUvWireframe, meshesOf, uvRenderer } from './viewport/liveryGpu';
-import { call, type Profile, type SkinDocument } from './protocol';
-import { autosavePath, currentItem, editorOf, useStore, type Selection } from './store';
-import { localName, partLabel, t } from './i18n';
+import { drawUvWireframe, liveryViewReady, meshesOf, uvRenderer } from './viewport/liveryGpu';
+import { call, type CatalogItem, type Profile, type SkinDocument, type SkinsImport, type SkinsNote, type WeaponPreview } from './protocol';
+import { autosavePath, autosaveRoot, currentItem, editorOf, hangAsCharm, useStore, type Selection } from './store';
+import { lang, localName, partLabel, t } from './i18n';
 import { confirmInGame } from './gameLog';
+import { detail, friendly } from './errors';
 import { shownDoc, variantDocs } from './variants';
 
 const st = () => useStore.getState();
@@ -15,9 +16,8 @@ export const MEMORY_FINE = 256 * 2 ** 20;
 export const MEMORY_HEAVY = 512 * 2 ** 20;
 export const mb = (bytes: number) => Math.round(bytes / 2 ** 20);
 
-/** Document as packed: parts switched off keep vanilla, so their overrides are left out. */
-function packDoc(doc = shownDoc(st().doc)): SkinDocument {
-  const item = currentItem();
+/** Document as packed (of `item`, whose preview is `preview`): parts switched off keep vanilla, so their overrides are left out. */
+function packDoc(doc = shownDoc(st().doc), item = currentItem(), preview = st().preview): SkinDocument {
   const ed = editorOf(doc);
   const off = new Set(item?.parts.filter((p) => ed.enabled[p.id] === false).flatMap((p) => p.materials) ?? []);
   const out = structuredClone(doc);
@@ -25,9 +25,17 @@ function packDoc(doc = shownDoc(st().doc)): SkinDocument {
   out.materials = (out.materials ?? []).filter((m) => m && !off.has(m.material ?? ''));
   // Hidden layers are not baked, so they stay out of the pack.
   for (const m of out.materials) if (m) m.layers = (m.layers ?? []).filter((l) => l && l.visible !== false);
+  // Settings the game material has no property for (the preview reads them from the game files) stay out of the pack,
+  // as the inspector hides them: the game could not show them.
+  for (const m of out.materials) {
+    const game = m?.material ? preview?.params[m.material] : null;
+    if (!game || !m?.params) continue;
+    if (game.metallic == null) m.params.metallic = null;
+    if (game.smoothness == null) m.params.smoothness = null;
+    if (game.tint == null) m.params.tint = null;
+  }
   // A GTFO/BlendHS material (vertex-coloured, no albedo texture) can only show a picture once the plugin draws it with a
   // textured gear shader: it gets the editor's baked look as its base wherever the skin draws on it.
-  const preview = st().preview;
   for (const m of out.materials) {
     if (!m?.material || preview?.params[m.material]?.shader !== 'GTFO/BlendHS') continue;
     if (!m.layers?.length && !Object.keys(m.textures ?? {}).length) continue;
@@ -71,10 +79,9 @@ function badVectors(doc: SkinDocument): Problem[] {
   return out;
 }
 
-/** Things the user must fix before building `doc` (by default the edited skin), in plain words. */
-export function problems(doc = st().doc): Problem[] {
+/** Things the user must fix before building `doc` of `item` (by default the edited skin), in plain words. */
+export function problems(doc = st().doc, item = currentItem()): Problem[] {
   const { prefs } = st();
-  const item = currentItem();
   if (!item) return [{ text: t('actions.k2') }];
   const out: Problem[] = [];
   const pending = Object.keys(editorOf(doc).pending);
@@ -103,23 +110,31 @@ function preflight(doc = st().doc): string | null {
 /** The toast button that opens the full check (导出前体检). */
 const openCheck = () => ({ label: t('check.open'), run: () => useStore.setState({ checkOpen: true }) });
 
-/** What in `doc` names `file`, to select it; null when nothing selectable does. */
-function referrer(doc: SkinDocument, file: string): Selection {
+/** What in `doc` names `file`: its name as the author sees it and the selection that shows it (null when nothing selectable does). */
+function referrer(doc: SkinDocument, file: string): { name: string; select: Selection } {
   const names = (x: unknown) => JSON.stringify(x).includes(JSON.stringify(file));
   for (const m of doc.materials ?? []) {
     if (!m) continue;
     const l = m.layers?.find(names);
-    if (l) return { kind: 'layer', material: m.material ?? '', id: l.id ?? '' };
+    if (l) return { name: l.name ?? '', select: { kind: 'layer', material: m.material ?? '', id: l.id ?? '' } };
     const d = m.livery?.find(names);
-    if (d) return { kind: 'livery', material: m.material ?? '', id: d.id ?? '' };
-    if (names(m)) return partOf(m.material);
+    if (d) return { name: d.name ?? '', select: { kind: 'livery', material: m.material ?? '', id: d.id ?? '' } };
+    if (names(m)) return { name: m.material ?? '', select: partOf(m.material) };
   }
   const a = doc.attachments?.find(names);
-  if (a) return { kind: 'attachment', id: a.id ?? '' };
+  if (a) return { name: a.name || (a.id ?? ''), select: { kind: 'attachment', id: a.id ?? '' } };
   const p = doc.parts?.find(names);
-  if (p) return { kind: 'part', id: p.part ?? '', sub: p.path };
+  if (p) return { name: p.part ?? '', select: { kind: 'part', id: p.part ?? '', sub: p.path } };
   const snd = doc.sounds?.find(names);
-  return snd ? { kind: 'sound', id: snd.id ?? '' } : null;
+  return snd ? { name: snd.name ?? '', select: { kind: 'sound', id: snd.id ?? '' } } : { name: '', select: null };
+}
+
+/** A file `doc` names that is gone, as one error naming what uses it and the file (the build cannot draw without it). */
+async function missingSource(doc: SkinDocument): Promise<void> {
+  const [file] = (await call('project.missing', { project: doc })).files;
+  if (!file) return;
+  const what = referrer(doc, file).name;
+  throw Object.assign(new Error(t('actions.missingSource', { v0: what, v1: file.split(/[\\/]/).pop() })), { code: 'missing-source' });
 }
 
 export interface SkinCheck {
@@ -136,27 +151,35 @@ export async function checkSkins(): Promise<SkinCheck[]> {
       const doc = k.id === s.doc.id ? s.doc : await call('project.load', { path: k.path }).catch(() => null);
       if (!doc) return { id: k.id, name: k.name, problems: [{ text: t('check.unreadable') }] };
       const { files } = await call('project.missing', { project: doc });
-      const gone = files.map((f) => ({ text: t('check.missing', { v0: f }), select: referrer(doc, f) }));
+      const gone = files.map((f) => ({ text: t('check.missing', { v0: f }), select: referrer(doc, f).select }));
       return { id: k.id, name: doc.name || k.name, problems: [...problems(doc), ...gone] };
     }),
   );
 }
 
-/** Builds a skin of the current item: by default the edited one, else `skin` loaded from its autosave. */
-async function build(out: string, skin?: { doc: SkinDocument; path: string }): Promise<string> {
+/** Builds a skin: by default the edited one, else `skin` loaded from its autosave, of the current item unless it names
+ * another (with that item's preview; a livery is drawn on the model in the 3D view, so its item must be the open one). */
+async function build(out: string, skin?: { doc: SkinDocument; path: string; item?: CatalogItem; preview?: WeaponPreview | null }): Promise<string> {
   const s = st();
   const projectPath = skin?.path ?? s.projectPath ?? autosavePath(s.weaponId!);
-  const doc = packDoc(skin?.doc);
+  const preview = skin?.preview ?? s.preview;
+  const doc = packDoc(skin?.doc, skin?.item ?? currentItem(), preview);
   useStore.setState({ busy: t('actions.k5') });
+  await missingSource(doc);
+  // A livery is drawn on the model in the 3D view: right after a weapon is opened its model may still be loading.
+  if (doc.materials?.some((m) => m && hasLivery(m))) await liveryViewReady();
   // The livery first: it becomes the base the dynamic layers play over. Its animated decals' frames are written already,
   // so their layers join the material only after its own layers are baked.
-  const animated = await bakeLivery(doc, s.preview, projectPath, (m) => uvRenderer(m.material ?? '', m.part), (t) => useStore.setState({ busy: t }));
-  await bakeLayers(doc, s.preview, projectPath, (t) => useStore.setState({ busy: t }));
+  const animated = await bakeLivery(doc, preview, projectPath, (m) => uvRenderer(m.material ?? '', m.part), (t) => useStore.setState({ busy: t }));
+  await bakeLayers(doc, preview, projectPath, (t) => useStore.setState({ busy: t }));
   for (const { m, layers } of animated) m.layers = [...layers, ...(m.layers ?? [])];
   await bakeGlyphs(doc, projectPath);
   useStore.setState({ busy: t('actions.k6') });
   const r = await call('pack.build', { project: doc, projectPath, out, sizeMode: s.prefs.sizeMode });
-  for (const w of r.warnings ?? []) s.log(t('actions.k7', { v0: w }));
+  for (const w of r.warnings ?? []) {
+    const m = w.match(/^(.+): (\d+) frames of (\d+x\d+) scaled to (\d+x\d+) to fit/);
+    s.log(m ? t('actions.framesScaled', { v0: m[1], v1: m[2], v2: m[3], v3: m[4] }) : t('actions.k7', { v0: w }));
+  }
   // Warned when the skin first goes over the budget, not on every automatic apply after.
   const prev = useStore.getState().skinMemory;
   const id = doc.id ?? '';
@@ -230,7 +253,7 @@ export async function ensurePlugin(quiet = false): Promise<boolean> {
     if ((e as { code?: string }).code === 'game-running') {
       useStore.setState({ pluginPending: profile.path });
       if (!quiet) s.toast('info', `${why} ${t('actions.pluginUpdate')}`);
-    } else s.fail(e, t('actions.k15'));
+    } else failedAt(e, t('actions.stepPlugin'));
     return false;
   }
 }
@@ -249,6 +272,8 @@ async function apply(quiet: boolean): Promise<void> {
   const profile = s.profiles.find((p) => p.path === s.prefs.profilePath);
   const blocked = profileProblem(profile);
   if (blocked || !profile) return quiet ? undefined : s.toast('error', blocked ?? '');
+  // The step under way, named in the toast when it fails.
+  let step = t('actions.stepPlugin');
   try {
     useStore.setState({ busy: t('actions.k10') });
     if (!(await ensurePlugin())) return;
@@ -259,10 +284,13 @@ async function apply(quiet: boolean): Promise<void> {
       devRestart = (await call('plugin.setDevelopment', { profile: profile.path, on: true })).restartNeeded;
       await s.refreshProfiles();
     }
+    step = t('actions.stepBuild');
     const pack = await build(`${s.dataDir}\\packs\\${s.weaponId}.forgeskin`);
+    step = t('actions.stepInstall');
     useStore.setState({ busy: t('actions.k11') });
     const since = new Date().toISOString();
-    await call('pack.install', { pack, profile: profile.path, activate: true });
+    // The author's apply goes before a choice made in the game's picker for this gear (PLAN §4.8).
+    await call('pack.install', { pack, profile: profile.path, activate: true, pick: true });
     void s.refreshInstalled();
     const now = st().profiles.find((p) => p.path === profile.path) ?? profile;
     const live = (await call('game.locate', {}).catch(() => null))?.running && now.development && !devRestart;
@@ -273,8 +301,17 @@ async function apply(quiet: boolean): Promise<void> {
     else if (!quiet) s.toast('ok', await whenSeen(now, devRestart));
     s.log(t('actions.k14', { v0: pack, v1: profile.path }));
   } catch (e) {
-    s.fail(e, t('actions.k15'));
+    failedAt(e, step);
   }
+}
+
+/** One toast for a failed 应用到游戏: the step it stopped at and why (a backend code in plain words, else the error's own
+ * text, such as the file an image could not be read from); the full error goes to the log. */
+function failedAt(e: unknown, step: string) {
+  const s = st();
+  s.log(t('store.k2', { v0: detail(e) }));
+  const own = (e as { message?: string } | undefined)?.message ?? String(e);
+  s.toast('error', t('actions.applyFailed', { v0: step, v1: friendly(e, own) }));
 }
 
 /** When the game shows a skin change in `profile`, in plain words. */
@@ -302,18 +339,51 @@ export async function activateSkin(id: string, name: string): Promise<void> {
   }
 }
 
-/** Opens a skin project (or an old preset) chosen in the file dialog. */
-/** Opens a Skins library skin group (its manifest.skingroup.json) as a new skin of ours. */
+const isSkinGroup = (path: string) => /manifest\.skingroup\.json$/i.test(path);
+
+/** Imports a Skins library skin group (its manifest.skingroup.json) as skins of ours, one per gear it is for. */
 export async function importSkinGroup(): Promise<void> {
   const [p] = await window.forge.openDialog('files', [{ name: 'Skins (manifest.skingroup.json)', extensions: ['json'] }], 'skingroup');
   if (!p) return;
-  if (!/manifest\.skingroup\.json$/i.test(p)) return st().toast('error', t('skins.notGroup'));
-  await st().loadProject(p);
+  if (!isSkinGroup(p)) return st().toast('error', t('skins.notGroup'));
+  await importSkins(p);
+}
+
+/**
+ * Imports the skin group at `manifest` (onto `weapon` when the group names no gear) and opens its skin of the open item,
+ * else its first; what was left out or changed opens in ui/SkinsReport. A group that names no gear asks for one there.
+ */
+export async function importSkins(manifest: string, weapon?: string): Promise<void> {
+  const s = st();
+  useStore.setState({ busy: t('skinsImport.busy') });
+  let r: SkinsImport;
+  try {
+    r = await call('skins.import', { manifest, root: autosaveRoot(), weapon, lang: lang() });
+  } catch (e) {
+    return s.fail(e, t('skinsImport.failed'));
+  } finally {
+    useStore.setState({ busy: null });
+  }
+  if (r.needsTarget) return void useStore.setState({ skinsTarget: { manifest, notes: r.notes } });
+  const report = () => r.notes.length && useStore.setState({ skinsReport: { title: t('skinsImport.title'), notes: r.notes, weapons: r.skins.map((k) => k.weapon) } });
+  if (!r.skins.length) {
+    s.toast('error', t('skinsImport.nothing'));
+    return void report();
+  }
+  const first = r.skins.find((k) => k.weapon === s.weaponId) ?? r.skins[0];
+  localStorage.setItem(`sf.skin.${first.weapon}`, first.id);
+  if (first.weapon === st().weaponId) {
+    await st().refreshSkins();
+    await st().switchSkin(first.id);
+  } else await st().selectWeapon(first.weapon);
+  const names = r.skins.map((k) => st().catalog.find((c) => c.id === k.weapon)).map((c) => (c ? localName(c) : '')).join('、');
+  s.toast('ok', t('skinsImport.done', { v0: r.skins.length, v1: names }));
+  report();
 }
 
 export async function openProject(): Promise<void> {
   const [p] = await window.forge.openDialog('project', [{ name: t('store.k11'), extensions: ['forgeskinproj', 'gtfoskin', 'gtfdyn', 'json'] }]);
-  if (p) await st().loadProject(p);
+  if (p) await (isSkinGroup(p) ? importSkins(p) : st().loadProject(p));
 }
 
 export async function exportPack(): Promise<void> {
@@ -394,14 +464,15 @@ export async function exportUvTemplates(): Promise<void> {
   });
 }
 
-export async function importMesh(): Promise<void> {
+/** Imports a model as an attachment on the selected part; `charm` hangs it as a charm. */
+export async function importMesh(charm = false): Promise<void> {
   const s = st();
   const [glb] = await window.forge.openDialog('files', [{ name: t('actions.k24'), extensions: ['glb', 'gltf'] }]);
   if (!glb) return;
   useStore.setState({ busy: t('actions.k25') });
   try {
     const r = await call('mesh.import', { glb });
-    s.addAttachment('mesh', { forgeskinmesh: r.forgeskinmesh, glb: r.glb });
+    s.addAttachment('mesh', { forgeskinmesh: r.forgeskinmesh, glb: r.glb }, charm ? hangAsCharm : undefined);
     s.toast('ok', t('actions.k26'));
   } catch (e) {
     s.fail(e);
@@ -415,54 +486,86 @@ export interface ModInfo {
   version: string;
   description: string;
   icon: string;
-  /** Ids of the current item's skins that go in. */
-  skins: string[];
+  /** The skins that go in, any item's (each its autosave); a gun pack takes one per item. */
+  skins: { weapon: string; id: string; path: string }[];
   /** forgeskin: packs applied by ForgeSkin; skins: skin groups applied by the Skins library (still textures only). */
   format: 'forgeskin' | 'skins';
+  /** Skins format: one skin group for every item (a gun pack) instead of one group per skin. */
+  gunPack: boolean;
 }
 
-/** Builds the chosen skins of the current item and packs them as a Thunderstore skin mod zip. Returns false when it stopped. */
+/** Opens item `weapon` in the editor (its livery bakes on its model) and waits until the 3D view shows `materials`. */
+async function openForBake(weapon: string, materials: string[]): Promise<WeaponPreview | null> {
+  await st().selectWeapon(weapon);
+  for (let waited = 0; st().weaponId === weapon && !materials.some((m) => meshesOf(m).length); waited += 200) {
+    if (waited > 30000) throw new Error(t('exportMod.modelTimeout'));
+    await new Promise((r) => setTimeout(r, 200));
+  }
+  return st().preview;
+}
+
+/** Builds the chosen skins and packs them as a Thunderstore skin mod zip. Returns false when it stopped. */
 export async function exportMod(info: ModInfo): Promise<boolean> {
   const s = st();
+  const home = s.weaponId;
   // Every skin that goes in passes the same checks as the edited one; the first that does not is named.
-  let skins: { id: string; skin?: { doc: SkinDocument; path: string } }[];
+  let skins: { item: CatalogItem; doc: SkinDocument; path: string }[];
   try {
     skins = await Promise.all(
-      info.skins.map(async (id) => {
-        const entry = s.skins.find((k) => k.id === id)!;
-        return { id, skin: id === s.doc.id ? undefined : { doc: await call('project.load', { path: entry.path }), path: entry.path } };
-      }),
+      info.skins.map(async (k) => ({
+        item: s.catalog.find((c) => c.id === k.weapon)!,
+        doc: k.id === s.doc.id ? s.doc : await call('project.load', { path: k.path }),
+        path: k.id === s.doc.id ? (s.projectPath ?? k.path) : k.path,
+      })),
     );
   } catch (e) {
     s.fail(e, t('exportMod.failed'));
     return false;
   }
-  for (const { skin } of skins) {
-    const doc = skin?.doc ?? s.doc;
-    const problem = preflight(doc);
+  for (const { doc, item } of skins) {
+    const problem = problems(doc, item)[0]?.text;
     if (problem) return (s.toast('error', t('exportMod.skinProblem', { v0: doc.name ?? '', v1: problem }), openCheck()), false);
   }
   const out = await window.forge.saveDialog(`${info.name}-${info.version}.zip`, [{ name: 'Thunderstore', extensions: ['zip'] }]);
   if (!out) return false;
+  const gunPack = info.format === 'skins' && info.gunPack;
   const done = await exclusive(async () => {
     try {
       const packs: string[] = [];
-      // One skin per colour variant (variants.ts).
-      for (const { skin } of skins)
-        for (const doc of variantDocs(skin?.doc ?? s.doc))
-          packs.push(await build(`${s.dataDir}\\packs\\${doc.id}.forgeskin`, { doc, path: skin?.path ?? s.projectPath ?? autosavePath(s.weaponId!) }));
+      const notes: SkinsNote[] = [];
+      // The open item's skins first (built as they are edited); another item's livery bakes on its own model, so that
+      // item opens in the editor for it.
+      for (const k of [...skins].sort((a, b) => Number(a.item.id !== home) - Number(b.item.id !== home))) {
+        // One skin per colour variant (variants.ts); a gun pack holds one skin per item.
+        let docs = variantDocs(k.doc);
+        if (gunPack && docs.length > 1) {
+          notes.push({ kind: 'variants', skin: k.doc.name ?? '', what: null, n: docs.length - 1 });
+          docs = docs.slice(0, 1);
+        }
+        const livery = docs.flatMap((d) => (d.materials ?? []).filter((m) => m && hasLivery(m)).map((m) => m!.material ?? ''));
+        const preview =
+          k.item.id === st().weaponId ? st().preview : livery.length ? await openForBake(k.item.id, livery) : await call('preview.weapon', { id: k.item.id });
+        for (const doc of docs) packs.push(await build(`${s.dataDir}\\packs\\${doc.id}.forgeskin`, { doc, path: k.path, item: k.item, preview }));
+      }
       useStore.setState({ busy: t('actions.k6') });
-      const { mod, dropped } = await call('pack.exportMod', { packs, out, name: info.name, version: info.version, description: info.description, icon: info.icon, format: info.format });
-      for (const d of dropped) s.log(`${t('exportMod.dropped')}: ${d}`);
-      s.toast('ok', dropped.length ? t('exportMod.doneDropped', { v0: dropped.length }) : t('exportMod.done'), { label: t('actions.k18'), run: () => void window.forge.showInFolder(mod) });
+      const r = await call('pack.exportMod', { packs, out, name: info.name, version: info.version, description: info.description, icon: info.icon, format: info.format, gunPack });
+      const all = [...notes, ...r.dropped];
+      for (const d of all) s.log(`${t('exportMod.dropped')}: ${noteText(d)}`);
+      s.toast('ok', all.length ? t('exportMod.doneDropped', { v0: all.length }) : t('exportMod.done'), { label: t('actions.k18'), run: () => void window.forge.showInFolder(r.mod) });
+      if (all.length) useStore.setState({ skinsReport: { title: t('exportMod.reportTitle'), notes: all, folder: r.mod } });
       return true;
     } catch (e) {
       s.fail(e, t('exportMod.failed'));
       return false;
+    } finally {
+      if (home && st().weaponId !== home) await st().selectWeapon(home);
     }
   });
   return done ?? false;
 }
+
+/** One Skins import or export note in plain words. */
+export const noteText = (n: SkinsNote) => t(`skinsNote.${n.kind}`, { skin: n.skin, what: n.what ?? '', n: n.n });
 
 /** Opens the Thunderstore skin mod export (ui/ExportModDialog). */
 export function exportThunderstore(): void {

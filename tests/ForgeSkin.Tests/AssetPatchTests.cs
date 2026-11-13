@@ -56,7 +56,9 @@ public class AssetPatchTests
         }
         var project = new SkinDocument
         {
-            Id = "skin-assets-test", Name = "Assets test", Target = new SkinTarget { Weapon = "auto_pistol" },
+            Id = "skin-assets-test",
+            Name = "Assets test",
+            Target = new SkinTarget { Weapon = "auto_pistol" },
             Materials = { new MaterialOverride { Material = "Front_UZI_2", Textures = { [TextureChannel.Albedo] = "front.png" } } },
         };
         var projectPath = Path.Combine(dir, "assets.forgeskinproj");

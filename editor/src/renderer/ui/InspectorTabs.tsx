@@ -28,6 +28,15 @@ const read = (id: string) => {
   }
 };
 
+/** Makes `tab` the one the next inspector `id` opens on (e.g. a new charm shows its charm settings). */
+export function showTab(id: string, tab: string) {
+  try {
+    localStorage.setItem(KEY + id, tab);
+  } catch {
+    // a per-viewer convenience only
+  }
+}
+
 /** `side`: which edge of the window the bar is on (its tooltips open inwards). */
 export function InspectorTabs({ id, tabs, side = 'right' }: { id: string; tabs: InspectorTab[]; side?: 'left' | 'right' }) {
   const host = useContext(RailHost);
@@ -35,11 +44,7 @@ export function InspectorTabs({ id, tabs, side = 'right' }: { id: string; tabs: 
   const active = tabs.find((x) => x.id === chosen) ?? tabs[0];
   const pick = (tab: string) => {
     setChosen(tab);
-    try {
-      localStorage.setItem(KEY + id, tab);
-    } catch {
-      // a per-viewer convenience only
-    }
+    showTab(id, tab);
   };
   return (
     <>

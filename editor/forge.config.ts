@@ -1,12 +1,13 @@
 import type { ForgeConfig } from '@electron-forge/shared-types';
 import { MakerSquirrel } from '@electron-forge/maker-squirrel';
 import { VitePlugin } from '@electron-forge/plugin-vite';
-import { execFileSync } from 'node:child_process';
-import { cpSync } from 'node:fs';
-import { join } from 'node:path';
+import { existsSync } from 'node:fs';
+import { basename, join } from 'node:path';
 
-const backend = join(__dirname, '../src/ForgeSkin.Backend');
-const publish = join(backend, 'bin/Release/net10.0/win-x64/publish');
+// The folder Mods/ForgeSkin/tools/build-editor-release.ps1 stages: the self-contained backend exe and plugin/ForgeSkin plus
+// plugin/ForgeCore (the plugin and the ForgeCore package it depends on; Install.PluginSource reads them). It ships as
+// resources/publish, where the app starts the backend.
+const publish = process.env.FORGESKIN_PUBLISH_DIR ?? '';
 
 const config: ForgeConfig = {
   packagerConfig: {
@@ -14,15 +15,14 @@ const config: ForgeConfig = {
     name: 'ForgeSkin',
     executableName: 'ForgeSkin',
     icon: 'assets/icon',
-    // Backend single-file exe with the prebuilt plugin in publish/plugin (Install.PluginSource looks there first).
     // Font licences (SIL OFL) ship next to the app with the fonts they cover.
     extraResource: [publish, 'licenses'],
   },
   hooks: {
-    // Every package carries a fresh self-contained backend and the committed plugin build (repo prebuilt/plugin/).
     prePackage: async () => {
-      execFileSync('dotnet', ['publish', backend, '-c', 'Release', '--self-contained', '-p:PublishSingleFile=true'], { stdio: 'inherit' });
-      cpSync(join(__dirname, '../prebuilt/plugin'), join(publish, 'plugin'), { recursive: true });
+      const staged = ['ForgeSkin.Backend.exe', 'plugin/ForgeSkin/ForgeSkin.Plugin.dll', 'plugin/ForgeCore/ForgeCore.dll'];
+      if (basename(publish) !== 'publish' || staged.some((file) => !existsSync(join(publish, file))))
+        throw new Error('Run Mods/ForgeSkin/tools/build-editor-release.ps1: it stages the backend and the plugin and sets FORGESKIN_PUBLISH_DIR.');
     },
   },
   makers: [new MakerSquirrel({ name: 'ForgeSkin', authors: 'NAinfini', description: 'GTFO weapon skin editor', setupIcon: 'assets/icon.ico' })],

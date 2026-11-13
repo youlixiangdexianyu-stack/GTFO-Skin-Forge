@@ -1,8 +1,7 @@
 // What the skin plugin wrote in the test profile since the game started, refreshed while open.
 import { Badge, Drawer, ScrollArea, Text } from '@mantine/core';
 import { useEffect, useState } from 'react';
-import { plainPluginLine, type PluginLine } from '../gameLog';
-import { call } from '../protocol';
+import { plainPluginLine, pluginLogReader, type PluginLine } from '../gameLog';
 import { useStore } from '../store';
 import { t } from '../i18n';
 
@@ -12,10 +11,18 @@ export function GameLog({ opened, onClose }: { opened: boolean; onClose: () => v
   useEffect(() => {
     if (!opened || !profile) return;
     let live = true;
+    let first = true;
+    // Each read brings only the new lines; they are added to what is shown (the whole log again on opening and after a restart cleared it).
+    const read = pluginLogReader(profile);
     const load = () =>
-      call('plugin.log', { profile }).then(
-        (r) => live && setLines(r.lines),
-        () => live && setLines([]),
+      read().then(
+        (r) => {
+          if (!live || !r) return;
+          const fresh = first || r.reset;
+          first = false;
+          if (fresh || r.lines.length) setLines((shown) => (fresh || !shown ? r.lines : [...shown, ...r.lines]));
+        },
+        () => live && setLines((shown) => shown ?? []),
       );
     void load();
     const id = setInterval(load, 2000);

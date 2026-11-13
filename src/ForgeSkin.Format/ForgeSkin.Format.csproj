@@ -1,6 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
-  <!-- Shared by the backend (net10) and the BepInEx plugin (net6, the GTFO IL2CPP runtime). -->
+  <!-- The skin pack format. The plugin (net6, the GTFO IL2CPP runtime) and the backend (net10) compile these same files
+       directly; this project only builds them on their own. -->
   <PropertyGroup>
     <TargetFramework>net6.0</TargetFramework>
     <LangVersion>latest</LangVersion>

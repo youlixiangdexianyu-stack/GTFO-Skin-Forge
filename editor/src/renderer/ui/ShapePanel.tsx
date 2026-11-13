@@ -1,6 +1,8 @@
 // Built-in shapes: the menu entries that add one, and the inspector section with its parameters.
 import { Menu, Switch } from '@mantine/core';
-import { IconCircle, IconCone, IconCube, IconCylinder, IconGridDots, IconLine, IconRectangle, IconSphere, IconVectorSpline } from '@tabler/icons-react';
+import { IconBox, IconCircle, IconCone, IconCube, IconCylinder, IconGridDots, IconLine, IconPaperclip, IconRectangle, IconSphere, IconVectorSpline } from '@tabler/icons-react';
+import type { ReactNode } from 'react';
+import { importMesh } from '../actions';
 import { addShape, setShape, SHAPES, shapeOf, type ShapeKind } from '../shapes';
 import { useStore } from '../store';
 import { Field, Num } from './fields';
@@ -18,31 +20,47 @@ const ICONS: Record<ShapeKind, typeof IconCube> = {
   panel: IconRectangle,
 };
 
-type ItemsProps = { color?: string; before?: () => void };
+type ItemsProps = { color?: string; before?: () => void; charm?: boolean };
 
-/** One menu item per shape; `before` runs first (e.g. selecting the part it goes on). */
-export function ShapeItems({ color, before }: ItemsProps) {
+/** One menu item per shape; `before` runs first (e.g. selecting the part it goes on); `charm` hangs it as a charm. */
+export function ShapeItems({ color, before, charm }: ItemsProps) {
   return (Object.keys(SHAPES) as ShapeKind[]).map((kind) => {
     const Icon = ICONS[kind];
     return (
-      <Menu.Item key={kind} leftSection={<Icon size={14} color={color} />} onClick={() => (before?.(), void addShape(kind))}>
+      <Menu.Item key={kind} leftSection={<Icon size={14} color={color} />} onClick={() => (before?.(), void addShape(kind, charm))}>
         {t(`shapes.${kind}`)}
       </Menu.Item>
     );
   });
 }
 
-/** 形状 ›: the shapes as a submenu, so the menu it sits in stays short. */
-export function ShapeMenuItems(props: ItemsProps) {
+/** A submenu entry, so the menu it sits in stays short enough to fit the window. */
+export function SubMenu({ icon, label, children }: { icon: ReactNode; label: string; children: ReactNode }) {
   return (
     <Menu.Sub>
       <Menu.Sub.Target>
-        <Menu.Sub.Item leftSection={<IconSphere size={14} color={props.color} />}>{t('shapes.title')}</Menu.Sub.Item>
+        <Menu.Sub.Item leftSection={icon}>{label}</Menu.Sub.Item>
       </Menu.Sub.Target>
-      <Menu.Sub.Dropdown>
-        <ShapeItems {...props} />
-      </Menu.Sub.Dropdown>
+      <Menu.Sub.Dropdown>{children}</Menu.Sub.Dropdown>
     </Menu.Sub>
+  );
+}
+
+/** 形状 › and 挂饰 ›: a shape as a hologram, or a shape or an imported model hung on a rope from a point on the gun. */
+export function ShapeMenuItems(props: ItemsProps) {
+  return (
+    <>
+      <SubMenu icon={<IconSphere size={14} color={props.color} />} label={t('shapes.title')}>
+        <ShapeItems {...props} />
+      </SubMenu>
+      <SubMenu icon={<IconPaperclip size={14} color={props.color} />} label={t('charm.title')}>
+        <Menu.Label>{t('charm.menuHint')}</Menu.Label>
+        <Menu.Item leftSection={<IconBox size={14} color={props.color} />} onClick={() => (props.before?.(), void importMesh(true))}>
+          {t('leftRail.k19')}
+        </Menu.Item>
+        <ShapeItems {...props} charm />
+      </SubMenu>
+    </>
   );
 }
 

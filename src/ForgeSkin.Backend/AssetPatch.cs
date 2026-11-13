@@ -257,6 +257,8 @@ public static class AssetPatch
             foreach (var l in m.Layers) w.Add($"{m.Material}: dynamic layer {Label(l.Name, l.Id)} needs the plugin; not written to game files");
         foreach (var s in doc.Sounds) w.Add($"sound {Label(s.Name, s.Id)} needs the plugin; not written to game files");
         if (doc.Parts.Count > 0) w.Add($"part layout ({doc.Parts.Count} moved, rotated, scaled or hidden parts) needs the plugin; not written to game files");
+        foreach (var c in doc.PlayerColors ?? []) w.Add($"player colour {Label(c.Name, c.Id)} needs the plugin; game files keep its default");
+        foreach (var e in doc.CodeEffects ?? []) w.Add($"code effect {Label(e.Name, e.Id)} needs the plugin; not written to game files");
         return w;
     }
 
@@ -489,7 +491,9 @@ public static class AssetPatch
         {
             var current = Entry("m_Colors", "_EmissiveColor");
             float k = p.EmissiveIntensity ?? 1;
-            float[]? c = p.EmissiveColor is { } e ? [e[0], e[1], e[2], 1] : current is { } cur ? [cur["r"].AsFloat, cur["g"].AsFloat, cur["b"].AsFloat, cur["a"].AsFloat] : null;
+            // The skin's colour is in "as itself" units (MaterialParams.EmissionUnit); the material's own is in the game's.
+            const float u = MaterialParams.EmissionUnit;
+            float[]? c = p.EmissiveColor is { } e ? [e[0] * u, e[1] * u, e[2] * u, 1] : current is { } cur ? [cur["r"].AsFloat, cur["g"].AsFloat, cur["b"].AsFloat, cur["a"].AsFloat] : null;
             if (c != null)
             {
                 c = c.Select(x => x * k).ToArray();
@@ -531,8 +535,7 @@ public static class AssetPatch
         if (unity == 4 && format != 4) warnings.Add($"{what}: the game's texture format {format} has no encoder; written as RGBA32");
         bool block = cf != CompressionFormat.Rgba;
 
-        using var codec = SKCodec.Create(new MemoryStream(png)) ?? throw new SkinFormatException("bad-image", $"{what}: not a readable image");
-        using var decoded = SKBitmap.Decode(codec, new SKImageInfo(codec.Info.Width, codec.Info.Height, SKColorType.Rgba8888, SKAlphaType.Unpremul));
+        using var decoded = Precompress.Pixels(png, channel, what); // a pack's Dds decoded back
         int w = decoded.Width, h = decoded.Height;
         if (block && (w % 4 != 0 || h % 4 != 0))
         {

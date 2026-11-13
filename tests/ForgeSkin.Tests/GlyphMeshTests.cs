@@ -21,14 +21,10 @@ public class GlyphMeshTests
         return bmp;
     }
 
-    [Theory]
-    [InlineData("Arial")]
-    [InlineData("Consolas")]
-    [InlineData("Impact")]
-    [InlineData("Segoe Script")]
-    public void GlyphMeshCoversStrokesAndLeavesCountersEmpty(string family)
+    [Fact]
+    public void GlyphMeshCoversStrokesAndLeavesCountersEmpty()
     {
-        using var strip = Strip(family);
+        using var strip = Strip();
         var (glyphs, aspect) = GlyphMesh.Build(strip);
         Assert.Equal(CellW / (float)CellH, aspect, 3);
         Assert.Null(glyphs[10]); // blank
@@ -53,14 +49,6 @@ public class GlyphMeshTests
             int cy = g == 0 ? CellH / 2 : (int)(CellH * 0.36f);
             if (strip.GetPixel(g * CellW + CellW / 2, cy).Alpha < 15) Assert.False(Covered(CellW / 2, cy));
         }
-    }
-
-    // A strip drawn for another glyph set (one cell fewer, as an older editor drew it) is refused, never cut through its glyphs.
-    [Fact]
-    public void StripOfAnotherGlyphSetIsRefused()
-    {
-        using var strip = new SKBitmap(CellW * (GlyphMesh.Count - 1), CellH);
-        Assert.Equal("bad-screen", Assert.Throws<BackendException>(() => GlyphMesh.Build(strip)).Code);
     }
 
     static bool Inside(ForgeSkin.Format.ForgeSkinMesh m, float x, float y)

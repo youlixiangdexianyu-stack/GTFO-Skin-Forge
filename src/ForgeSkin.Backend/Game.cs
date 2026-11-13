@@ -8,7 +8,7 @@ namespace ForgeSkin.Backend;
 
 public sealed record GameInfo(string? GameDir, string? DataDir, bool Found, bool Running);
 // Reason: why HasBepInEx is false. Modified: last time the profile changed or the game ran from it (BepInEx log).
-// Development: the plugin's hot-reload switch in its config. PluginCurrent: every plugin file in the profile has the same SHA-256 as the build the app ships; false when missing or different.
+// Development: the plugin's hot-reload switch in its config. PluginCurrent: Install.PluginCurrent (the shipped plugin DLL, nothing retired beside it, ForgeCore at least the shipped one).
 public sealed record ProfileInfo(string Name, string Path, bool HasBepInEx, string? PluginVersion, bool PluginCurrent, bool Development, string? Reason, bool Custom, DateTime Modified);
 
 // Finds the GTFO install (saved choice, then Steam registry + libraryfolders.vdf + common dirs) and BepInEx profiles.
@@ -142,12 +142,12 @@ public static class Game
 
     static ProfileInfo Profile(string dir, bool custom)
     {
-        var dll = Path.Combine(PluginDir(dir), "ForgeSkin.Plugin.dll");
+        var dll = Install.InstalledPlugin(dir);
         var reason = NotProfile(dir);
         var modified = new[] { dir, Path.Combine(dir, "BepInEx"), Path.Combine(dir, "BepInEx", "plugins"), Path.Combine(dir, "BepInEx", "LogOutput.log") }
             .Where(p => Directory.Exists(p) || File.Exists(p)).Select(File.GetLastWriteTimeUtc).Max();
         return new ProfileInfo(Path.GetFileName(dir.TrimEnd('\\', '/')), dir, reason == null,
-            File.Exists(dll) ? ShortVersion(FileVersionInfo.GetVersionInfo(dll)) : null, File.Exists(dll) && Install.PluginCurrent(dir), Install.Development(dir), reason, custom, modified);
+            dll != null ? ShortVersion(FileVersionInfo.GetVersionInfo(dll)) : null, dll != null && Install.PluginCurrent(dir), Install.Development(dir), reason, custom, modified);
     }
 
     // Accepts a profile root, its BepInEx folder or a game folder holding BepInEx.
@@ -177,21 +177,36 @@ public static class Game
         return new { removed = dir };
     }
 
-    // Lines the plugin wrote to its own log after `since` (ISO time, UTC): {time, level, message}.
-    public static object PluginLog(string profile, DateTime? since)
+    // Lines the plugin wrote to its own log from byte `from` on (0: the start) and after `since` (ISO time, UTC): {time, level,
+    // message}, with `next`, where the following call goes on, and `head`, the start of the file's first line (its time names this
+    // launch's log). A `head` the file no longer starts with (the game was started again and cleared the log) reads from the start:
+    // `reset`. Only the bytes after `from` are read.
+    public static object PluginLog(string profile, DateTime? since, long from, string? head)
     {
         var file = Path.Combine(PluginDir(profile), "forgeskin.log");
-        if (!File.Exists(file)) return new { lines = Array.Empty<object>() };
+        if (!File.Exists(file)) return new { lines = Array.Empty<object>(), next = 0L, head = "", reset = from > 0 };
         using var s = new FileStream(file, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
-        using var r = new StreamReader(s);
+        var length = s.Length;
+        var start = new byte[Math.Min(length, 64)];
+        s.ReadExactly(start);
+        var startEnd = Array.IndexOf(start, (byte)'\n');
+        var first = System.Text.Encoding.UTF8.GetString(start, 0, startEnd < 0 ? start.Length : startEnd).TrimEnd('\r');
+        var reset = from > 0 && (from > length || first != head);
+        if (reset || from < 0) from = 0;
+        var bytes = new byte[length - from];
+        s.Position = from;
+        s.ReadExactly(bytes);
+        // Only whole lines: one the plugin is still writing is read by the next call.
+        var end = Array.LastIndexOf(bytes, (byte)'\n') + 1;
         var lines = new List<object>();
-        while (r.ReadLine() is { } line)
+        foreach (var raw in System.Text.Encoding.UTF8.GetString(bytes, 0, end).Split('\n'))
         {
+            var line = raw.TrimEnd('\r');
             var parts = line.Split(' ', 3);
             if (parts.Length < 3 || !DateTime.TryParse(parts[0], null, System.Globalization.DateTimeStyles.RoundtripKind, out var t)) continue;
             if (since == null || t.ToUniversalTime() > since.Value.ToUniversalTime()) lines.Add(new { time = parts[0], level = parts[1], message = parts[2] });
         }
-        return new { lines };
+        return new { lines, next = from + end, head = first, reset };
     }
 
     public static string PluginDir(string profile) => Path.Combine(profile, "BepInEx", "plugins", PluginFolder);

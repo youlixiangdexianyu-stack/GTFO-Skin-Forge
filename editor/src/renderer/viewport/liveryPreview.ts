@@ -47,6 +47,8 @@ export class LiveryPreview {
   private inputs: unknown[] = [];
   /** Counts the redraws of `albedo`, for what draws over it. */
   version = 0;
+  /** Redraws running in any livery (the skin thumbnail waits for them). */
+  static busy = 0;
 
   constructor(private material: string) {}
 
@@ -87,6 +89,7 @@ export class LiveryPreview {
 
   private async run() {
     this.running = true;
+    LiveryPreview.busy++;
     while (this.next) {
       const { m, base, baseMs, key } = this.next;
       this.next = null;
@@ -110,6 +113,7 @@ export class LiveryPreview {
       }
     }
     this.running = false;
+    LiveryPreview.busy--;
   }
 
   dispose() {

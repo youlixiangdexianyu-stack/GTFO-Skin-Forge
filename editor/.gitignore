@@ -3,3 +3,4 @@ node_modules/
 out/
 artifacts/
 GTFO_UserData/
+src/renderer/generated/

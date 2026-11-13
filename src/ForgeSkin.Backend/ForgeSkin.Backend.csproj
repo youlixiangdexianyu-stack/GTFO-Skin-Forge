@@ -7,18 +7,36 @@
     <Nullable>enable</Nullable>
     <InvariantGlobalization>true</InvariantGlobalization>
     <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+    <!-- The editor ships a self-contained single-file publish. The single-file analyzer would add the ILLink package of the
+         installed SDK to the publish restore, which packages.lock.json cannot pin across SDK patches; it only flags
+         Assembly.Location, which the backend does not use (AppContext.BaseDirectory). -->
+    <EnableSingleFileAnalyzer>false</EnableSingleFileAnalyzer>
     <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
   </PropertyGroup>
 
   <ItemGroup>
-    <!-- Unity class database for stripped type trees: the AssetRipper-format TPK shipped with UnityPy (MIT); AssetsTools.NET reads it. -->
+    <!-- Unity class database for stripped type trees: UABEA's ReleaseFiles/classdata.tpk (MIT, commit 5adb448); AssetsTools.NET reads it. -->
     <EmbeddedResource Include="classdata.tpk" LogicalName="classdata.tpk" />
     <!-- Weapon names, Chinese names, official order and calibre labels; geometry always comes from the game. -->
     <EmbeddedResource Include="naming.json" LogicalName="naming.json" />
+    <!-- Enemy names (enemy.* keys) for the kill-sound enemy picker, from ForgeCore's language files. -->
+    <EmbeddedResource Include="..\..\ForgeCore\lang\en.forge" LogicalName="lang.en.forge" />
+    <EmbeddedResource Include="..\..\ForgeCore\lang\zh.forge" LogicalName="lang.zh.forge" />
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\ForgeSkin.Format\ForgeSkin.Format.csproj" />
+    <!-- The skin format library, shared source with the game plugin. -->
+    <Compile Include="..\ForgeSkin.Format\*.cs" />
+    <!-- ForgeCore's one relative-path rule, which pack entry names pass. -->
+    <Compile Include="..\..\ForgeCore\Once\PosixPath.cs" Link="ForgeCore\PosixPath.cs" />
+    <!-- ForgeCore's pure enemy name table (data block name to name key). -->
+    <Compile Include="..\..\ForgeCore\Once\EnemyNames.cs" Link="ForgeCore\EnemyNames.cs" />
+    <!-- Code effects are checked against ForgeCore's drawing-program catalogue: its reader and the catalogue itself, the same files
+         ForgeCore.dll is built from (the plugin uses that DLL's). -->
+    <Compile Include="..\..\ForgeCore\Visual\Core\ProceduralCatalog.cs" Link="ForgeCore\ProceduralCatalog.cs" />
+    <EmbeddedResource Include="..\..\ForgeCore\Visual\Data\fx-programs.json" LogicalName="ForgeVisual.Data.fx-programs.json" />
+    <!-- Pack sounds pass the same Ogg Vorbis check the game's audio kit applies when it loads them. -->
+    <Compile Include="..\..\ForgeCore\Audio\Core\AssetValidation.cs;..\..\ForgeCore\Audio\Core\Results.cs" Link="ForgeCore\%(Filename)%(Extension)" />
   </ItemGroup>
 
   <ItemGroup>

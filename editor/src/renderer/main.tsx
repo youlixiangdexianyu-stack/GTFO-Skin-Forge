@@ -6,6 +6,7 @@ import { Notifications } from '@mantine/notifications';
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { App } from './App';
+import { PathDialog } from './ui/PathDialog';
 import { bakeGlyphs } from './frames';
 import { useStore } from './store';
 import { theme } from './theme';
@@ -27,6 +28,7 @@ createRoot(document.getElementById('root')!).render(
     <MantineProvider theme={theme} forceColorScheme="dark">
       <Notifications position="bottom-right" limit={4} />
       <App />
+      <PathDialog />
     </MantineProvider>
   </StrictMode>,
 );

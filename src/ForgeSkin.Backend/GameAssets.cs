@@ -26,29 +26,6 @@ public sealed class GameAssets : IDisposable
         DataDir = Path.Combine(gameDir, "GTFO_Data");
         BuildId = ReadBuildId(gameDir);
         Cache = CacheDir(BuildId);
-        Adopt(Path.Combine(Paths.Cache, "game", Path.GetFileName(Cache)), Cache);
-    }
-
-    // A cache this copy wrote under its own data dir before the cache was shared moves to the shared place (a copy on
-    // another drive cannot be moved and is read again once); the old folder goes either way.
-    static void Adopt(string old, string shared)
-    {
-        if (!Directory.Exists(old)) return;
-        try
-        {
-            if (!Directory.Exists(shared))
-            {
-                Directory.CreateDirectory(Path.GetDirectoryName(shared)!);
-                Directory.Move(old, shared);
-                Log.Write($"cache: moved {old} to {shared}");
-            }
-        }
-        catch (IOException e)
-        {
-            Log.Write($"cache: could not move {old}: {e.Message}");
-        }
-        try { if (Directory.Exists(Path.GetDirectoryName(old))) Directory.Delete(Path.GetDirectoryName(old)!, true); }
-        catch (IOException e) { Log.Write($"cache: could not delete {old}: {e.Message}"); }
     }
 
     // Game build identity for cache keys, read without opening asset files: the game's revision.txt (else the Steam
@@ -67,7 +44,7 @@ public sealed class GameAssets : IDisposable
     // Cache folder of this game build; Catalog deletes the other builds' folders once this build's catalog is ready.
     public readonly string Cache;
     // Bump when the catalog or preview output changes, so caches written by older backends are rebuilt.
-    const int CacheVersion = 10;
+    const int CacheVersion = 12;
     public static string CacheDir(string buildId) => Path.Combine(Paths.GameCache, $"{buildId}-v{CacheVersion}");
     public static string CacheSuffix => $"-v{CacheVersion}";
 
@@ -160,12 +137,10 @@ public sealed class GameAssets : IDisposable
     Dictionary<string, AssetRef> LoadPrefabIndex()
     {
         var cache = Path.Combine(Cache, "prefab-index.json");
-        try
-        {
-            if (JsonSerializer.Deserialize<Dictionary<string, AssetRef>>(File.ReadAllText(cache)) is { } cached) return cached;
-        }
-        catch (IOException) { }
-        catch (JsonException) { }
+        Dictionary<string, AssetRef>? cached = null;
+        try { cached = JsonSerializer.Deserialize<Dictionary<string, AssetRef>>(File.ReadAllText(cache)); }
+        catch (Exception e) when (e is IOException or JsonException) { cached = null; } // no usable cache: rebuild below
+        if (cached is not null) return cached;
 
         var gm = Load("globalgamemanagers");
         var settings = Field(gm, gm.file.GetAssetsOfType(AssetClassID.BuildSettings)[0].PathId);

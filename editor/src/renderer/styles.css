@@ -119,6 +119,8 @@ body {
 .topbar .target .target-name {
   display: block;
   max-width: 150px;
+  /* A line box taller than the glyphs: the button's own 13px line height cut their tops and bottoms off. */
+  line-height: 20px;
   overflow: hidden;
   text-overflow: ellipsis;
 }
@@ -770,7 +772,33 @@ body {
 .item[aria-selected='true'] {
   border-color: var(--flare);
 }
-.drop-card {
+/* Sounds: one block per group (event; for a kill, enemy), each sound a row with its play button beside it. */
+.sound-group {
+  display: grid;
+  gap: 4px;
+  margin-top: 10px;
+}
+.sound-group-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+.sound-group-head .grow {
+  flex: 1;
+}
+.sound-row {
+  display: grid;
+  grid-template-columns: 24px 1fr;
+  align-items: center;
+  gap: 4px;
+}
+.sound-row .item {
+  grid-template-columns: 1fr auto auto;
+}
+.sound-row .item[aria-current='true'] {
+  border-color: var(--ok);
+}.drop-card {
   display: grid;
   justify-items: center;
   gap: 4px;
@@ -1051,4 +1079,70 @@ body {
   width: 100%;
   height: 100%;
   display: block;
+}
+
+/* Pattern picker: the current pattern's picture and name, and a grid of every pattern in the layer's colours. */
+.pattern-trigger {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 4px 8px 4px 4px;
+  border: 1px solid var(--line);
+  border-radius: var(--mantine-radius-sm);
+  background: var(--ground);
+  color: var(--bone);
+}
+.pattern-trigger span {
+  flex: 1;
+  text-align: left;
+  font-size: var(--mantine-font-size-sm);
+}
+.pattern-swatch {
+  display: block;
+  flex: none;
+  width: 28px;
+  height: 28px;
+  border-radius: var(--mantine-radius-sm);
+  background: var(--line-soft) center / cover;
+}
+.pattern-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 4px;
+  max-height: 320px;
+  overflow-x: hidden;
+  overflow-y: auto;
+  outline: none;
+}
+.pattern-option {
+  min-width: 0;
+  display: grid;
+  gap: 3px;
+  padding: 4px;
+  border: 1px solid var(--line-soft);
+  border-radius: var(--mantine-radius-sm);
+  background: var(--ground);
+  color: var(--dust);
+  font-size: var(--mantine-font-size-xs);
+  text-align: center;
+  cursor: pointer;
+}
+.pattern-option .pattern-swatch {
+  width: 100%;
+  height: auto;
+  aspect-ratio: 1;
+}
+.pattern-option span {
+  line-height: 1.2;
+  overflow-wrap: anywhere;
+}
+.pattern-option[data-active] {
+  border-color: var(--line);
+  color: var(--bone);
+}
+.pattern-option[aria-selected='true'] {
+  border-color: var(--paint);
+  box-shadow: 0 0 0 1px var(--paint);
+  color: var(--bone);
 }

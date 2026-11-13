@@ -222,7 +222,11 @@ public static class Catalog
         if (slot is not ("main" or "special")) return (null, null);
         var key = (comps.TryGetValue(1, out var mode) ? mode : 0) switch
         {
-            0 => "SemiArchetype", 1 => "BurstArchetype", 2 => "AutoArchetype", 3 => "SemiBurstArchetype", _ => null,
+            0 => "SemiArchetype",
+            1 => "BurstArchetype",
+            2 => "AutoArchetype",
+            3 => "SemiBurstArchetype",
+            _ => null,
         };
         if (key == null || (uint?)category[key] is not { } id || !g.Blocks("Archetype").TryGetValue(id, out var a)) return (null, null);
         float multiplier = comps.TryGetValue(23, out var mag) && g.Blocks("GearMagPart").TryGetValue(mag, out var m) ? (float)m["ClipSizeMultiplier"]! : 1f;
@@ -311,7 +315,8 @@ public static class Catalog
         }
         foreach (var (material, recipe) in lenses)
             items.Add(new CatalogItem("lens_" + Slug(material), material.Replace('_', ' '), null, "lens", "attachment", null, null,
-                [new CatalogPart("lens", "lens", (string)Naming["partsZh"]!["lens"]!, [material], true)]) { Source = recipe, CategoryZh = CategoryZh("lens") });
+                [new CatalogPart("lens", "lens", (string)Naming["partsZh"]!["lens"]!, [material], true)])
+            { Source = recipe, CategoryZh = CategoryZh("lens") });
 
         // Ammo per calibre, taken from the first weapon that uses it with the most ammo parts (a gun without a magazine has
         // no whole rounds): one piece per ammo part, laid out as in Build.
@@ -319,7 +324,8 @@ public static class Catalog
         {
             var recipe = new Recipe(AmmoOf: weapon);
             items.Add(new CatalogItem("ammo_" + calId, (string)calibre["label"]!, (string?)calibre["nameZh"], "ammo", "ammo", null,
-                (string)calibre["label"]!, Parts(Build(g, recipe))) { Source = recipe, CategoryZh = CategoryZh("ammo") });
+                (string)calibre["label"]!, Parts(Build(g, recipe)))
+            { Source = recipe, CategoryZh = CategoryZh("ammo") });
         }
         return items;
     }

@@ -9,8 +9,6 @@ import { t } from './i18n';
 
 export const GLYPHS = '0123456789 -%';
 export const MAX_FRAMES = 240;
-/** Largest atlas side pack.build lays frames out in (PackBuilder). */
-export const MAX_ATLAS = 4096;
 const collator = new Intl.Collator(undefined, { numeric: true, sensitivity: 'base' });
 
 export const naturalSort = (paths: string[]) => [...paths].sort(collator.compare);

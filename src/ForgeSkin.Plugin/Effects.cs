@@ -1,4 +1,5 @@
 using ForgeSkin.Format;
+using Il2CppInterop.Runtime.InteropTypes.Arrays;
 using UnityEngine;
 using PlayMode = ForgeSkin.Format.PlayMode;
 
@@ -11,25 +12,41 @@ interface ITriggered
     void Update(float time);
 }
 
+// The GPU copy of one material channel that layers draw into. A layer that wrote to it marks it dirty; the gear rebuilds
+// its mips once that frame, after all its layers ran.
+sealed class LayerTarget
+{
+    public readonly Material Material;
+    public readonly int Property;
+    public readonly RenderTexture Texture;
+    public bool Dirty;
+
+    public LayerTarget(Material material, int property, RenderTexture texture) { Material = material; Property = property; Texture = texture; }
+}
+
 // One animated layer: atlas frames copied into the target region on the GPU when the frame changes. An `Always` layer
 // plays from the start; a triggered one shows the base pixels until Start, plays, then copies the cached base back.
+// Frames stored smaller than the region (they did not fit the atlas at full size) are stretched onto `_scaled`, a
+// region-sized copy, and copied from there.
 sealed class Layer : ITriggered
 {
     readonly Texture2D _atlas;
-    readonly RenderTexture _target;
+    readonly LayerTarget _target;
     readonly RenderTexture? _base; // the region as it was, for a triggered layer
-    readonly int _count, _columns, _width, _height, _atlasHeight, _x, _y;
+    readonly RenderTexture? _scaled;
+    readonly int _count, _columns, _width, _height, _regionWidth, _regionHeight, _atlasHeight, _x, _y;
     readonly float _fps, _seconds;
     readonly PlayMode _play;
     float _start;
     bool _playing;
     int _frame = -1;
 
-    public Layer(Texture2D atlas, RenderTexture target, RenderTexture? regionBase, DynamicLayer l, int x, int y)
+    public Layer(Texture2D atlas, LayerTarget target, RenderTexture? regionBase, RenderTexture? scaled, DynamicLayer l, int x, int y)
     {
         var a = l.Atlas!;
-        _atlas = atlas; _target = target; _base = regionBase;
+        _atlas = atlas; _target = target; _base = regionBase; _scaled = scaled;
         _count = a.FrameCount; _columns = a.Columns; _width = a.FrameWidth; _height = a.FrameHeight;
+        _regionWidth = a.TargetRect[2]; _regionHeight = a.TargetRect[3];
         _atlasHeight = atlas.height; _x = x; _y = y; _fps = l.Fps; _seconds = l.PlaySeconds; _play = l.Play;
         _playing = regionBase == null;
     }
@@ -50,16 +67,23 @@ sealed class Layer : ITriggered
         {
             _playing = false;
             if (_base == null) return; // an Always layer that played once holds its last frame
-            Graphics.CopyTexture(_base, 0, 0, 0, 0, _width, _height, _target, 0, 0, _x, _y);
-            _target.GenerateMips();
+            Graphics.CopyTexture(_base, 0, 0, 0, 0, _regionWidth, _regionHeight, _target.Texture, 0, 0, _x, _y);
+            _target.Dirty = true;
             return;
         }
         frame %= _count;
         if (frame == _frame) return;
         _frame = frame;
-        int col = frame % _columns, row = frame / _columns;
-        Graphics.CopyTexture(_atlas, 0, 0, col * _width, _atlasHeight - (row + 1) * _height, _width, _height, _target, 0, 0, _x, _y);
-        _target.GenerateMips();
+        int col = frame % _columns, row = frame / _columns, top = _atlasHeight - (row + 1) * _height;
+        if (_scaled == null) Graphics.CopyTexture(_atlas, 0, 0, col * _width, top, _width, _height, _target.Texture, 0, 0, _x, _y);
+        else
+        {
+            // The frame's texel centres from edge to edge, so filtering never reads the next frame.
+            float w = _atlas.width, h = _atlas.height;
+            Graphics.Blit(_atlas, _scaled, new Vector2((_width - 1) / w, (_height - 1) / h), new Vector2((col * _width + 0.5f) / w, (top + 0.5f) / h));
+            Graphics.CopyTexture(_scaled, 0, 0, 0, 0, _regionWidth, _regionHeight, _target.Texture, 0, 0, _x, _y);
+        }
+        _target.Dirty = true;
     }
 }
 
@@ -84,7 +108,7 @@ sealed class Flash : ITriggered
             _rest[i] = materials[i].GetColor(SkinnedGear.EmissiveColor);
             _emissive[i] = materials[i].IsKeywordEnabled(SkinnedGear.EmissiveKeyword);
         }
-        _peak = new Color(e.Color[0], e.Color[1], e.Color[2]) * (e.Intensity * SkinnedGear.EmissionUnit);
+        _peak = new Color(e.Color[0], e.Color[1], e.Color[2]) * (e.Intensity * MaterialParams.EmissionUnit);
         _seconds = Math.Max(e.Seconds, 0.01f);
     }
 
@@ -103,7 +127,7 @@ sealed class Flash : ITriggered
         float k = t >= 1 ? 0 : 1 - Math.Abs(2 * t - 1);
         for (int i = 0; i < _materials.Length; i++)
         {
-            _materials[i].SetColor(SkinnedGear.EmissiveColor, Color.Lerp(_rest[i], _peak, k));
+            ForgeVisual.Glow.SetColour(_materials[i], Color.Lerp(_rest[i], _peak, k));
             if (t >= 1 && !_emissive[i]) SkinnedGear.SetEmissive(_materials[i], false);
         }
         if (t >= 1) _start = -1;
@@ -143,43 +167,65 @@ sealed class Show : ITriggered
     }
 }
 
-// A charm (Attachment.Swing): a damped pendulum hanging from the attachment's origin. Its tip lags behind the gear's moves
-// and falls toward gravity, pulled back to the rest pose; the attachment turns from its rest pose to point at the tip.
-sealed class Pendulum : ITriggered
+// A charm (Attachment.Charm): Core CharmRope's rope as one mesh under the attachment's root (vertices in its local space),
+// and the pendant (the attachment's model and screen) on the rope's end. Built at rest; Update moves it, called only for the
+// local player's wielded first-person gear, so everything else hangs still along the attachment's -Y.
+sealed class CharmLook
 {
-    const float Length = 0.05f;
-    readonly Transform _t;
-    readonly Quaternion _rest; // local rotation
-    readonly float _stiffness, _keep;
-    Vector3 _tip, _last;
-    bool _started;
+    readonly Transform _root, _pendant;
+    readonly CharmRope _rope;
+    readonly Mesh _mesh;
+    readonly Il2CppStructArray<Vector3> _vertices, _normals;
+    readonly float[] _v, _n;
+    readonly double[] _matrix = new double[16], _pose = new double[7], _body = new double[3];
 
-    public Pendulum(Transform t, float looseness)
+    // `anchor`: the root's localToWorldMatrix as Read writes it, already read by the caller.
+    public CharmLook(CharmRope rope, Transform root, double[] anchor, Transform pendant, Mesh mesh)
     {
-        _t = t;
-        _rest = t.localRotation;
-        _stiffness = Mathf.Lerp(0.2f, 0.01f, looseness); // pull back to the rest pose per frame
-        _keep = Mathf.Lerp(0.85f, 0.985f, looseness); // velocity kept per frame
+        _rope = rope;
+        _root = root;
+        _pendant = pendant;
+        _mesh = mesh;
+        int count = rope.VertexCount;
+        _v = new float[count * 3];
+        _n = new float[count * 3];
+        _vertices = new Il2CppStructArray<Vector3>(count);
+        _normals = new Il2CppStructArray<Vector3>(count);
+        Array.Copy(anchor, _matrix, 16);
+        rope.Rest(_matrix);
+        Write();
+        mesh.triangles = new Il2CppStructArray<int>(rope.Triangles());
     }
 
-    public void Start(float time) { }
-
-    public void Update(float time)
+    public static void Read(Matrix4x4 m, double[] o)
     {
-        var parent = _t.parent;
-        if (parent == null) return;
-        var pivot = _t.position;
-        var restRotation = parent.rotation * _rest;
-        var restTip = pivot + restRotation * Vector3.down * Length;
-        if (!_started)
+        o[0] = m.m00; o[1] = m.m10; o[2] = m.m20; o[3] = m.m30;
+        o[4] = m.m01; o[5] = m.m11; o[6] = m.m21; o[7] = m.m31;
+        o[8] = m.m02; o[9] = m.m12; o[10] = m.m22; o[11] = m.m32;
+        o[12] = m.m03; o[13] = m.m13; o[14] = m.m23; o[15] = m.m33;
+    }
+
+    // `body`: the local player's camera, the player's body for the rope.
+    public void Update(float time, Vector3 body)
+    {
+        Read(_root.localToWorldMatrix, _matrix);
+        _body[0] = body.x; _body[1] = body.y; _body[2] = body.z;
+        _rope.Update(time, _matrix, _body);
+        Write();
+    }
+
+    void Write()
+    {
+        _rope.Pendant(_pose);
+        _pendant.SetPositionAndRotation(new Vector3((float)_pose[0], (float)_pose[1], (float)_pose[2]),
+            new Quaternion((float)_pose[3], (float)_pose[4], (float)_pose[5], (float)_pose[6]));
+        _rope.Mesh(_matrix, _v, _n);
+        for (int i = 0, o = 0; o < _v.Length; i++, o += 3)
         {
-            _tip = _last = restTip;
-            _started = true;
+            _vertices[i] = new Vector3(_v[o], _v[o + 1], _v[o + 2]);
+            _normals[i] = new Vector3(_n[o], _n[o + 1], _n[o + 2]);
         }
-        var dt = Mathf.Min(Time.deltaTime, 0.05f);
-        var next = _tip + (_tip - _last) * _keep + Physics.gravity * (dt * dt) + (restTip - _tip) * _stiffness;
-        _last = _tip;
-        _tip = pivot + (next - pivot).normalized * Length;
-        _t.rotation = Quaternion.FromToRotation(restRotation * Vector3.down, _tip - pivot) * restRotation;
+        _mesh.vertices = _vertices;
+        _mesh.normals = _normals;
     }
 }

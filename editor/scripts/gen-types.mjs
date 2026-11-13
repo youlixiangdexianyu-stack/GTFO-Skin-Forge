@@ -2,36 +2,31 @@
 // Usage: pnpm gen:types            (asks the backend; FORGESKIN_BACKEND_EXE=<exe> picks a specific build)
 //        pnpm gen:types --from x.json  (uses a schema file the backend wrote)
 import { spawn } from 'node:child_process';
-import { existsSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
+import { createInterface } from 'node:readline';
 import { fileURLToPath } from 'node:url';
 import { compile } from 'json-schema-to-typescript';
 
 const appDir = join(dirname(fileURLToPath(import.meta.url)), '..');
-const repo = join(appDir, '..');
+const skin = join(appDir, '..');
 const out = join(appDir, 'src/renderer/generated/skin-document.ts');
 
 function askBackend() {
   const exe = process.env.FORGESKIN_BACKEND_EXE ?? ['Debug', 'Release']
-    .flatMap((c) => ['', 'win-x64/'].map((rid) => join(repo, `src/ForgeSkin.Backend/bin/${c}/net10.0/${rid}ForgeSkin.Backend.exe`)))
+    .flatMap((c) => ['', 'win-x64/'].map((rid) => join(skin, `src/ForgeSkin.Backend/bin/${c}/net10.0/${rid}ForgeSkin.Backend.exe`)))
     .find(existsSync);
   const dataDir = join(appDir, 'GTFO_UserData');
   const child = exe
     ? spawn(exe, ['--data-dir', dataDir])
-    : spawn('dotnet', ['run', '--project', join(repo, 'src/ForgeSkin.Backend'), '--', '--data-dir', dataDir]);
+    : spawn('dotnet', ['run', '--project', join(skin, 'src/ForgeSkin.Backend'), '--', '--data-dir', dataDir]);
   return new Promise((resolve, reject) => {
-    let buf = '';
-    child.stdout.setEncoding('utf8').on('data', (d) => {
-      buf += d;
-      for (let i; (i = buf.indexOf('\n')) >= 0; ) {
-        const line = buf.slice(0, i);
-        buf = buf.slice(i + 1);
-        let msg;
-        try { msg = JSON.parse(line); } catch { continue; }
-        if (msg.id !== 1) continue;
-        child.kill();
-        msg.error ? reject(new Error(msg.error.message)) : resolve(msg.result);
-      }
+    createInterface({ input: child.stdout }).on('line', (line) => {
+      let msg;
+      try { msg = JSON.parse(line); } catch { return; }
+      if (msg.id !== 1) return;
+      child.kill();
+      msg.error ? reject(new Error(msg.error.message)) : resolve(msg.result);
     });
     child.on('error', reject);
     child.on('exit', (code) => reject(new Error(`backend exited (${code}) before answering schema`)));
@@ -47,5 +42,6 @@ const ts = await compile(typeof schema === 'string' ? JSON.parse(schema) : schem
   strictIndexSignatures: false,
   format: false,
 });
+mkdirSync(dirname(out), { recursive: true }); // absent in a fresh checkout (generated output is not tracked)
 writeFileSync(out, ts);
 console.log(`wrote ${out}`);

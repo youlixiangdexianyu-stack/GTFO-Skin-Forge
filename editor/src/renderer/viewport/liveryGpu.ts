@@ -7,6 +7,7 @@ import {
   Color,
   Euler,
   DoubleSide,
+  MathUtils,
   Matrix3,
   Matrix4,
   Mesh,
@@ -14,6 +15,7 @@ import {
   NoBlending,
   NoColorSpace,
   OrthographicCamera,
+  PlaneGeometry,
   Quaternion,
   Scene,
   ShaderMaterial,
@@ -28,7 +30,7 @@ import {
 } from 'three';
 import type { UvRenderer } from '../livery';
 import { PATTERNS, PATTERN_FRAGMENT, UV_VERTEX, WEAR_FRAGMENT } from './uvPrograms';
-import type { LiveryLayer } from '../protocol';
+import type { LiveryLayer, Pattern } from '../protocol';
 import { unityToThree, type Vec3 } from '../space';
 import { anchorObject, viewRefs } from './refs';
 
@@ -36,7 +38,15 @@ let renderer: WebGLRenderer | null = null;
 /** The 3D view hands its renderer over when it mounts (viewport/LiveryTool). */
 export const setLiveryRenderer = (r: WebGLRenderer | null) => void (renderer = r);
 
-const DEG = Math.PI / 180;
+/** Resolves once the 3D view can draw liveries (its renderer and the weapon model are up), waiting up to `ms`. */
+export async function liveryViewReady(ms = 30_000) {
+  for (const end = performance.now() + ms; !(renderer && viewRefs.root); ) {
+    if (performance.now() > end) throw Object.assign(new Error('the 3D view is not ready'), { code: 'no-livery-view' });
+    await new Promise((r) => setTimeout(r, 100));
+  }
+}
+
+const DEG = MathUtils.DEG2RAD;
 
 /**
  * The decal volume in the anchor's three.js space: the unit box x, y in [-0.5, 0.5], z in [-1, 1] maps to the decal's
@@ -223,7 +233,6 @@ const DEFAULT_COLORS = [
 
 /** Draws the meshes of `material` at their UVs with `shader` into a w x h canvas (top-left origin), reused by the next pass. */
 function uvPass(material: string, shader: ShaderMaterial, w: number, h: number): HTMLCanvasElement {
-  const gl = renderer!;
   const scene = new Scene();
   for (const m of meshesOf(material)) {
     if (shader !== decalProgram) curvatureOf(m.geometry);
@@ -235,6 +244,12 @@ function uvPass(material: string, shader: ShaderMaterial, w: number, h: number):
     copy.frustumCulled = false;
     scene.add(copy);
   }
+  return renderToCanvas(scene, w, h);
+}
+
+/** Renders `scene` (UV-space programs) into the reused w x h target and returns the reused canvas holding the pixels. */
+function renderToCanvas(scene: Scene, w: number, h: number): HTMLCanvasElement {
+  const gl = renderer!;
   if (target?.width !== w || target.height !== h) {
     target?.dispose();
     target = new WebGLRenderTarget(w, h, { depthBuffer: false });
@@ -254,6 +269,36 @@ function uvPass(material: string, shader: ShaderMaterial, w: number, h: number):
   if (c.width !== w || c.height !== h) [c.width, c.height] = [w, h];
   c.getContext('2d')!.putImageData(new ImageData(px, w, h), 0, 0);
   return c;
+}
+
+const swatchGeometry = new PlaneGeometry(0.3, 0.3).translate(0.15, 0.15, 0); // a sheet facing +z; its uv 0..1 fills the target
+swatchGeometry.setAttribute('curvature', new BufferAttribute(new Float32Array(4), 1));
+const swatchCache = new Map<string, string>();
+
+/**
+ * A square image of `pattern` in `colors`, made by the same fragment program as the model's livery (fixed size, rotation and
+ * seed so every pattern shows its character), or null while the 3D view's renderer is not ready. Cached by pattern and colours.
+ */
+export function patternSwatch(pattern: Pattern, colors: (number[] | null)[], size = 96): string | null {
+  const k = `${pattern}|${size}|${[0, 1, 2, 3].map((i) => (colors[i] ?? DEFAULT_COLORS[i]).join(',')).join(';')}`;
+  const hit = swatchCache.get(k);
+  if (hit) return hit;
+  if (!renderer) return null;
+  const u = patternProgram.uniforms;
+  u.toRoot.value = new Matrix4();
+  u.pattern.value = Math.max(0, PATTERNS.indexOf(pattern));
+  (u.colors.value as Vector4[]).forEach((v, i) => v.fromArray(colors[i] ?? DEFAULT_COLORS[i]));
+  u.scale.value = 0.06;
+  u.rot.value = new Matrix3();
+  u.seed.value = 3;
+  const scene = new Scene();
+  const quad = new Mesh(swatchGeometry, patternProgram);
+  quad.frustumCulled = false;
+  scene.add(quad);
+  const url = renderToCanvas(scene, size, size).toDataURL('image/png');
+  swatchCache.set(k, url);
+  if (swatchCache.size > 600) swatchCache.delete(swatchCache.keys().next().value!);
+  return url;
 }
 
 /** Each triangle's UV island in `g` (vertices joined where position and UV match), cached on the geometry. */

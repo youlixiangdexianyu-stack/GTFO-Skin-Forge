@@ -1,6 +1,5 @@
 using ForgeSkin.Format;
 using Gear;
-using UnityEngine;
 
 namespace ForgeSkin.Plugin;
 
@@ -26,18 +25,25 @@ static class Icons
     public static void SkinsChanged()
     {
         var now = new Dictionary<string, string>();
-        foreach (var (key, id) in Skins.Targets)
-            now[key] = Skins.ById.TryGetValue(id, out var skin) ? $"{id}@{skin.Stamp.Ticks}" : id;
+        foreach (var (key, id) in Skins.Targets) now[key] = Skins.LookOf(id);
         foreach (var key in now.Keys.Union(_shown.Keys))
             if (!now.TryGetValue(key, out var a) || !_shown.TryGetValue(key, out var b) || a != b) Due.Add(key);
         _shown = now;
-        var globals = string.Join(",", Skins.Globals.Select(id => Skins.ById.TryGetValue(id, out var s) ? $"{id}@{s.Stamp.Ticks}" : id));
+        var globals = Skins.GlobalsLook();
         if (globals != _globals) (_globals, _globalsChanged) = (globals, true);
     }
+
+    static readonly HashSet<string> Early = new(); // target keys whose icon was rendered while their skins were still loading
+
+    /// <summary>The icon of this target was rendered before its skins were loaded: it is rendered again once they are.</summary>
+    public static void RenderedWithout(string key) => Early.Add(key);
 
     /// <summary>Re-renders the icons noted, once the game has its gear and icon renderer.</summary>
     public static void Tick()
     {
+        if (Early.Count > 0)
+            foreach (var key in Early.ToList())
+                if (Skins.Ready(Skins.Wanted(key), ForgeCore.Frame.UnscaledTime)) { Early.Remove(key); Due.Add(key); }
         if (Due.Count == 0 && !_globalsChanged) return;
         if (GearManager.Current == null || GearIconRendering.Current == null) return;
         int rendered = 0;
@@ -48,32 +54,14 @@ static class Icons
             foreach (var range in all)
             {
                 if (range == null || SkinnedGear.Offline(range.PlayfabItemInstanceId) is not { } id) continue;
+                // Only the icons of a gear whose shown skin changed (any gear when a global skin did); a gear whose icons another
+                // package supplies (ForgeUI GearIcons.Supply) is drawn again by that package's own model.
                 if (!_globalsChanged && !Due.Contains(SkinTarget.GearKey(id))) continue;
-                Render(range);
-                rendered++;
+                if (ForgeUI.GearIcons.Redraw(range)) rendered++;
             }
         }
         Due.Clear();
         _globalsChanged = false;
         if (rendered > 0) ForgeSkinPlugin.Info($"icons: rendering {rendered} gear icons again for their skins");
-    }
-
-    // The game's caches of one gear's icons (posted jobs, sprites, render textures, the file) dropped and its jobs posted.
-    static void Render(GearIDRange range)
-    {
-        uint checksum = range.GetChecksum();
-        GearManager.m_allGearWithPostedIconJobs?.Remove(checksum);
-        GearIconRendering.s_cachedSprites?.Remove(checksum);
-        var perKey = GearManager.Current.m_allGearIconTexturesPerInstanceKey;
-        if (perKey != null)
-            foreach (var textures in perKey)
-                textures?.Remove(checksum);
-        string? path;
-        if (GearIconRendering.TryGetGearIconFilePath(checksum, out path) && File.Exists(path))
-        {
-            try { File.Delete(path); }
-            catch (IOException e) { ForgeSkinPlugin.Info($"icons: could not delete {path}: {e.Message}"); }
-        }
-        GearManager.PostIconJobs(range);
     }
 }

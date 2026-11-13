@@ -12,9 +12,8 @@ static class Holograms
     internal static bool UseShader = true; // HologramShader in ForgeSkin.cfg
     // Brightness of a hologram that sets none: the default screen glow (Glow 1.5 x GlowUnit 0.2).
     internal const float Glow = 0.3f;
-    // Which of these the shader has is logged by Source; the colour goes to the first group, colour x gain to the second.
+    // Which of these the shader has is logged by Source; the colour goes to them, colour x gain to its glow colour (Glow).
     static readonly string[] ColourProperties = { "_Color", "_TintColor", "_MainColor", "_HoloColor" };
-    static readonly string[] GlowProperties = { "_EmissiveColor", "_EmissionColor" };
     static Material? _source;
     static bool _looked;
 
@@ -30,10 +29,10 @@ static class Holograms
         var shader = game?.shader ?? Shader.Find(ShaderName);
         if (shader == null)
         {
-            ForgeSkinPlugin.Fail($"hologram: no shader {ShaderName}; holograms use the gear shader's unlit glow");
+            ForgeSkinPlugin.Warn($"hologram: no shader {ShaderName}; holograms use the gear shader's unlit glow");
             return null;
         }
-        _source = new Material(game != null ? game : new Material(shader)) { name = Name, hideFlags = HideFlags.DontUnloadUnusedAsset };
+        _source = ForgeCore.Assets.Keep(new Material(game != null ? game : new Material(shader)) { name = Name });
         var lines = new List<string>();
         for (int i = 0; i < shader.GetPropertyCount(); i++)
         {
@@ -52,7 +51,7 @@ static class Holograms
         return _source;
     }
 
-    // A hologram surface showing `picture` (white when null) in `colour`, glowing by `gain` (EmissionUnit: as itself).
+    // A hologram surface showing `picture` (white when null) in `colour`, glowing by `gain` (MaterialParams.EmissionUnit: as itself).
     public static Material Surface(SkinnedGear gear, Material template, Texture? picture, Color colour, float gain)
     {
         var source = UseShader ? Source() : null;
@@ -85,7 +84,7 @@ static class Holograms
             return;
         }
         foreach (var p in ColourProperties) if (m.HasProperty(p)) m.SetColor(p, colour);
-        foreach (var p in GlowProperties) if (m.HasProperty(p)) m.SetColor(p, colour * gain);
+        ForgeVisual.Glow.SetColour(m, colour * gain);
     }
 }
 

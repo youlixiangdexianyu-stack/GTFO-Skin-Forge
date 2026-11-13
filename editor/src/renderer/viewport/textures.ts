@@ -46,14 +46,17 @@ function metallicSmoothness(img: ImageBitmap): Texture {
   return new CanvasTexture(c);
 }
 
-/** Unity packs metallic in R and smoothness in A; three.js reads metalness from B and roughness from G. In place. */
+/**
+ * The game's gear shader (Cell/Player/CustomGearShader) reads metallic from R and smoothness from G, as its own textures
+ * hold them; three.js reads metalness from B and roughness from G. In place.
+ */
 export function repackMetallicSmoothness(c: HTMLCanvasElement) {
   const ctx = c.getContext('2d', { willReadFrequently: true })!;
   const data = ctx.getImageData(0, 0, c.width, c.height);
   const p = data.data;
   for (let i = 0; i < p.length; i += 4) {
     const metal = p[i];
-    const rough = 255 - p[i + 3];
+    const rough = 255 - p[i + 1];
     p[i] = 0;
     p[i + 1] = rough;
     p[i + 2] = metal;

@@ -33,8 +33,8 @@ public static class Projects
         try
         {
             var json = JsonNode.Parse(File.ReadAllText(path))?.AsObject() ?? throw new SkinFormatException("schema", $"{path} is empty");
-            if (SkinsFormat.IsGroup(path)) doc = SkinsFormat.Import(path, catalog);
-            else if (json.ContainsKey("assignments")) doc = FromGtfoSkin(json, catalog);
+            if (SkinsFormat.IsGroup(path)) throw new BackendException("bad-request", $"{path} is a Skins skin group: import it (skins.import)");
+            if (json.ContainsKey("assignments")) doc = FromGtfoSkin(json, catalog);
             else if (json.ContainsKey("layers") && json.ContainsKey("item_id")) doc = FromGtfDyn(json, catalog);
             else if (json.ContainsKey("anchor_part_id")) doc = FromDly(json, catalog);
             else doc = SkinJson.Read(json.ToJsonString());
@@ -53,17 +53,21 @@ public static class Projects
     {
         var name = Path.GetFileNameWithoutExtension(file);
         JsonObject? json = null;
-        try { json = JsonNode.Parse(File.ReadAllText(file)) as JsonObject; } catch (System.Text.Json.JsonException) { }
+        try { json = JsonNode.Parse(File.ReadAllText(file)) as JsonObject; } catch (System.Text.Json.JsonException) { json = null; }
         return new ProjectEntry(file, (string?)json?["id"] ?? name, (string?)json?["name"] ?? name, File.GetLastWriteTimeUtc(file));
     }).OrderByDescending(e => e.Modified).ToList();
+
+    // Every item's skins under the autosave root (one folder per item id); items without skins are left out.
+    public static Dictionary<string, List<ProjectEntry>> ListAll(string root) => !Directory.Exists(root) ? new()
+        : Directory.GetDirectories(root).Select(d => (Item: Path.GetFileName(d), Skins: List(d))).Where(x => x.Skins.Count > 0).ToDictionary(x => x.Item, x => x.Skins);
 
     public static object Delete(string path)
     {
         if (!path.EndsWith(".forgeskinproj", StringComparison.OrdinalIgnoreCase)) throw new BackendException("bad-request", $"{path} is not a project file");
         File.Delete(path);
-        // A skin's snapshots go with it.
-        var snapshots = Path.ChangeExtension(path, ".snapshots");
-        if (Directory.Exists(snapshots)) Directory.Delete(snapshots, true);
+        // A skin's snapshots and the textures an import generated for it go with it.
+        foreach (var own in new[] { ".snapshots", ".textures" }.Select(e => Path.ChangeExtension(path, e)))
+            if (Directory.Exists(own)) Directory.Delete(own, true);
         return new { removed = path };
     }
 
@@ -88,7 +92,10 @@ public static class Projects
         var dir = Path.GetDirectoryName(path)!;
         Directory.CreateDirectory(dir);
         var copy = SkinJson.Read(SkinJson.Write(doc));
-        MapPaths(copy, p => Path.IsPathRooted(p) && string.Equals(Path.GetPathRoot(p), Path.GetPathRoot(dir), StringComparison.OrdinalIgnoreCase)
+        // Relative only what moves with the project (under its folder or the data folder); a file elsewhere stays absolute,
+        // so a project file copied to another folder still finds it.
+        bool Under(string p, string root) => Path.GetFullPath(p).StartsWith(Path.GetFullPath(root).TrimEnd('\\', '/') + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase);
+        MapPaths(copy, p => Path.IsPathFullyQualified(p) && (Under(p, dir) || Under(p, Paths.Data))
             ? Path.GetRelativePath(dir, p).Replace('\\', '/') : p);
         AtomicFile.WriteText(path, SkinJson.Write(copy));
         return new { path };

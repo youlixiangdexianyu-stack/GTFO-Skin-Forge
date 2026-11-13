@@ -5,7 +5,7 @@ import { IconArrowDown, IconArrowUp, IconBrush, IconBrushOff, IconBucketDroplet,
 import { useEffect, useState, type ComponentType } from 'react';
 import { sourceFrames, type SourceFrames } from '../frames';
 import { addDecal, addLivery, BLENDS, FINISH_IDS, FINISHES, isGifDecal, layersOf, moveLivery, PATTERN_PRESETS, removeLivery, setFinish, updateLivery } from '../livery';
-import { PATTERNS } from '../viewport/uvPrograms';
+import { PatternPicker } from './PatternPicker';
 import { pickDecalImage } from '../stickers';
 import { Playback } from './DynamicInspector';
 import { baseName, fileUrl, type BlendMode, type CatalogPart, type LiveryKind, type LiveryLayer } from '../protocol';
@@ -216,7 +216,7 @@ function PatternSection({ layer, up }: { layer: LiveryLayer; up: (fn: (l: Livery
         ))}
       </div>
       <Field label={t('livery.patternKind')}>
-        <Select value={layer.pattern ?? 'woodland'} data={PATTERNS.map((p) => ({ value: p, label: t(`livery.p.${p}`) }))} allowDeselect={false} searchable onChange={(v) => v && up((l) => void (l.pattern = v as LiveryLayer['pattern']))} />
+        <PatternPicker value={layer.pattern ?? 'woodland'} colors={colors} onChange={(p) => up((l) => void (l.pattern = p))} />
       </Field>
       <Field label={t('livery.colors')}>
         <SimpleGrid cols={2} spacing={4}>

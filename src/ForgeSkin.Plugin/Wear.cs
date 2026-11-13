@@ -1,4 +1,3 @@
-using System.Text.Json;
 using BepInEx;
 using ForgeSkin.Format;
 
@@ -16,10 +15,8 @@ static class Wear
 
     static Dictionary<string, int> Kills()
     {
-        if (_kills != null) return _kills;
-        try { _kills = System.IO.File.Exists(File) ? JsonSerializer.Deserialize<Dictionary<string, int>>(System.IO.File.ReadAllText(File)) : null; }
-        catch (Exception e) when (e is IOException or JsonException) { ForgeSkinPlugin.Fail($"wear: {File} unreadable ({e.Message}); counting from 0"); }
-        return _kills ??= new();
+        // A file that cannot be read is logged by Store and left alone: this session counts from 0 and Save refuses to replace it.
+        return _kills ??= ForgeCore.Store.Read<Dictionary<string, int>>(ForgeSkinPlugin.Guid, File).Value ?? new();
     }
 
     public static int Count(string key) => Kills().GetValueOrDefault(key);
@@ -36,14 +33,8 @@ static class Wear
     public static void Save(float now, bool force = false)
     {
         if (!_dirty || !force && now - _savedAt < 10f) return;
-        try
-        {
-            Directory.CreateDirectory(Path.GetDirectoryName(File)!);
-            var temp = File + ".tmp";
-            System.IO.File.WriteAllText(temp, JsonSerializer.Serialize(_kills));
-            System.IO.File.Move(temp, File, true);
-            (_dirty, _savedAt) = (false, now);
-        }
-        catch (IOException e) { ForgeSkinPlugin.Fail($"wear: could not save {File}: {e.Message}"); }
+        // Store logs a refused or failed write; the next change tries again.
+        ForgeCore.Store.Write(ForgeSkinPlugin.Guid, File, _kills);
+        (_dirty, _savedAt) = (false, now);
     }
 }

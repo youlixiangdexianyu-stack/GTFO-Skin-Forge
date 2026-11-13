@@ -1,7 +1,7 @@
 // The only Unity <-> three.js conversion (PLAN §2).
 // Stored poses are Unity weapon space: left-handed, Y up, metres, Euler degrees applied as Quaternion.Euler
 // (Z, then X, then Y). The preview GLB already mirrors the scene by negating Z, so a pose maps by mirroring Z too.
-import { Euler, Matrix4, Quaternion, Vector3 } from 'three';
+import { Euler, MathUtils, Matrix4, Quaternion, Vector3 } from 'three';
 
 export type Vec3 = [number, number, number];
 
@@ -11,7 +11,7 @@ export interface UnityPose {
   scale: Vec3;
 }
 
-const DEG = Math.PI / 180;
+const DEG = MathUtils.DEG2RAD;
 
 /** Unity Quaternion.Euler(x, y, z) as a Unity-space quaternion: q = qy * qx * qz. */
 function unityEulerToQuat(r: Vec3): Quaternion {

@@ -14,6 +14,28 @@ export function playSound(x: SkinSound) {
   a.volume = x.volume ?? 1;
   void a.play();
 }
+
+/** The group a sound belongs to: its event, and for a kill the enemy it is for (none: every other kill). The
+ *  plugin plays one sound of a group per event. */
+export const soundGroupKey = (x: SkinSound) => (x.trigger === 'kill' && x.enemyId != null ? `kill:${x.enemyId}` : (x.trigger ?? 'kill'));
+
+/** A sound's chance to be the one a firing of its group plays: weight / the group's total. */
+export const soundChance = (x: SkinSound, group: SkinSound[]) => (x.weight ?? 1) / group.reduce((n, s) => n + (s.weight ?? 1), 0);
+
+const lastPlayed = new Map<string, string>();
+
+/** Plays one sound of a group the way the plugin picks it: at random by weight, never the one that played last while the
+ *  group has another. */
+export function playGroup(group: SkinSound[]) {
+  const key = group[0] && soundGroupKey(group[0]);
+  const last = group.length > 1 && key ? lastPlayed.get(key) : undefined;
+  const pool = group.filter((s) => s.id !== last && s.file);
+  let roll = Math.random() * pool.reduce((n, s) => n + (s.weight ?? 1), 0);
+  const pick = pool.find((s) => (roll -= s.weight ?? 1) < 0) ?? pool[pool.length - 1];
+  if (!pick || !key) return;
+  lastPlayed.set(key, pick.id ?? '');
+  playSound(pick);
+}
 const DECODE_RATE = 48000;
 const BLOCK = 65536;
 

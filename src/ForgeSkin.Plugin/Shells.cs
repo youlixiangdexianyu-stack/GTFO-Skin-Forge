@@ -1,3 +1,4 @@
+using ForgeCore;
 using Gear;
 using HarmonyLib;
 using Il2CppInterop.Runtime.InteropTypes.Arrays;
@@ -18,16 +19,26 @@ static class Shells
     static int _base = -1; // index of the first of our pools in m_shellPools, -1 before the game set its pools up
     static readonly IntPtr[] Owners = new IntPtr[Slots]; // item pointer per slot
     static readonly List<int> InUse = new(); // oldest first
+    // The pool we built per slot. Held here as well as in the game's array: the reference keeps the pool alive for the
+    // game's collector, and its root is ours to destroy.
+    static readonly GameObjectPool?[] Pools = new GameObjectPool?[Slots];
+    static readonly int[] Vanilla = new int[Slots]; // the game's pool a slot shows while it has none of ours
 
-    // dump: WeaponShellManager.SetupPools, run once per level; the pool array is rebuilt with ours appended.
+    // dump: WeaponShellManager.Setup (RVA 0x16912F0) makes the pool array and runs SetupPools (RVA 0x1690F80) once per game
+    // start; the array is rebuilt with ours appended. A slot without a pool of ours shows one of the game's (its empty
+    // Shell_None pool at first), so every entry is a pool the game made.
     public static void PoolsSetUp(WeaponShellManager wsm)
     {
         Array.Clear(Owners);
+        Array.Clear(Pools);
+        Array.Clear(Vanilla);
         InUse.Clear();
-        _base = wsm.m_shellPools.Length;
+        var game = wsm.m_shellPools;
+        _base = game.Length;
         var pools = new Il2CppReferenceArray<GameObjectPool>(_base + Slots);
-        for (int i = 0; i < _base; i++) pools[i] = wsm.m_shellPools[i];
-        for (int i = 0; i < Slots; i++) pools[_base + i] = new GameObjectPool();
+        // Stored with the collector's write barrier, as the game's own stores (SetupPools): a pool stored without it into an array the
+        // collector had already visited was freed while the array still pointed at it.
+        for (int i = 0; i < _base + Slots; i++) Il2CppArrays.Store(pools, i, game[i < _base ? i : 0]);
         wsm.m_shellPools = pools;
         ForgeSkinPlugin.Info($"shells: {Slots} pools for skinned casings after the game's {_base}");
     }
@@ -80,7 +91,9 @@ static class Shells
         // Kept as the pool's template (a pool that grows copies it), out of sight under the pool.
         copy.transform.SetParent(pool.GetRootObject().transform, false);
         copy.SetActive(false);
-        wsm.m_shellPools[_base + slot] = pool;
+        Pools[slot] = pool;
+        Vanilla[slot] = (int)type;
+        Il2CppArrays.Store(wsm.m_shellPools, _base + slot, pool);
         Owners[slot] = item.Pointer;
         InUse.Add(slot);
         ForgeSkinPlugin.Info($"{label}: ejected casings ({type}) skinned, {swapped} material slots, pool {_base + slot}");
@@ -94,15 +107,16 @@ static class Shells
         if (slot >= 0) Free(slot);
     }
 
+    // The slot shows the game's pool of the gun's casing type again (an eject already queued under the slot's number
+    // throws a game casing), then the root of the pool we built goes, once.
     static void Free(int slot)
     {
         Owners[slot] = IntPtr.Zero;
         InUse.Remove(slot);
-        var wsm = WeaponShellManager.Current;
-        if (wsm == null || _base < 0 || _base + slot >= wsm.m_shellPools.Length) return;
-        var pool = wsm.m_shellPools[_base + slot];
-        if (pool?.m_root != null) Object.Destroy(pool.m_root);
-        wsm.m_shellPools[_base + slot] = new GameObjectPool();
+        var pools = WeaponShellManager.Current?.m_shellPools;
+        if (pools != null && _base >= 0 && _base + slot < pools.Length) Il2CppArrays.Store(pools, _base + slot, pools[Vanilla[slot]]);
+        if (Pools[slot]?.GetRootObject() is { } root && root != null) Object.Destroy(root);
+        Pools[slot] = null;
     }
 
     // While a gun with a pool ejects, its casing type names that pool; the game's own value goes back right after.
@@ -123,8 +137,8 @@ static class ShellPoolsHook
 {
     static void Postfix(WeaponShellManager __instance)
     {
-        try { if (Native.Is<WeaponShellManager>(__instance)) Shells.PoolsSetUp(__instance); }
-        catch (Exception e) { ForgeSkinPlugin.Fail($"shells: {e.Message}"); }
+        try { if (NativeObjects.Is<WeaponShellManager>(__instance)) Shells.PoolsSetUp(__instance); }
+        catch (Exception e) { ForgeSkinPlugin.Fail("skin-shells-setup-failed", $"shells: {e.Message}", e); }
     }
 }
 
@@ -134,7 +148,7 @@ static class EjectCasingHook
     static void Prefix(BulletWeapon __instance, out (bool Redirected, ShellTypes Original) __state)
     {
         __state = default;
-        if (!Native.Is<BulletWeapon>(__instance)) return;
+        if (!NativeObjects.Is<BulletWeapon>(__instance)) return;
         __state.Redirected = Shells.Redirect(__instance, out __state.Original);
     }
 

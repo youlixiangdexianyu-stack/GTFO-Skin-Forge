@@ -2,10 +2,13 @@
 // colour arrays); `scale` converts for display (e.g. metres shown as millimetres).
 import { ColorInput, Group, NumberInput, Slider as MSlider, Text, type NumberInputProps } from '@mantine/core';
 import type { ReactNode } from 'react';
+import type { ColorSlot } from '../protocol';
+import { PlayerToggle } from './PlayerColors';
 
+/** A labelled control; the label also names the group, so assistive tools and AI control find the control by it. */
 export function Field({ label, children }: { label: string; children: ReactNode }) {
   return (
-    <div className="field">
+    <div className="field" role="group" aria-label={label}>
       <Text size="sm" c="dimmed">
         {label}
       </Text>
@@ -81,8 +84,9 @@ const toHex = (c: number[], alpha: boolean) =>
   '#' + c.slice(0, alpha ? 4 : 3).map((v) => Math.round(Math.min(1, Math.max(0, v ?? 1)) * 255).toString(16).padStart(2, '0')).join('');
 const fromHex = (h: string) => (h.slice(1).match(/../g) ?? []).map((x) => parseInt(x, 16) / 255);
 
-/** Colour as a 0..1 array. `rgb` adds two-decimal R/G/B boxes with ±0.1 steppers; `alpha` edits the 4th component. */
-export function Color({ value, onChange, rgb, alpha }: { value: number[]; onChange: (v: number[]) => void; rgb?: boolean; alpha?: boolean }) {
+/** Colour as a 0..1 array. `rgb` adds two-decimal R/G/B boxes with ±0.1 steppers; `alpha` edits the 4th component; `slot`
+ * adds the button that lets players change this colour in game. */
+export function Color({ value, onChange, rgb, alpha, slot }: { value: number[]; onChange: (v: number[]) => void; rgb?: boolean; alpha?: boolean; slot?: ColorSlot }) {
   const set = (hex: string) => {
     const c = fromHex(hex);
     if (c.length < 3) return;
@@ -92,7 +96,10 @@ export function Color({ value, onChange, rgb, alpha }: { value: number[]; onChan
     <div style={{ display: 'grid', gap: 6 }}>
       {/* Mantine 8's picker calls onChange with the colour before the latest move (its state updater runs after the
           call), so a single click or the end of a drag never arrived; onChangeEnd carries the picked colour. */}
-      <ColorInput format={alpha ? 'hexa' : 'hex'} value={toHex(value, !!alpha)} onChange={set} onChangeEnd={set} withEyeDropper={false} />
+      <Group gap={6} wrap="nowrap">
+        <ColorInput style={{ flex: 1 }} format={alpha ? 'hexa' : 'hex'} value={toHex(value, !!alpha)} onChange={set} onChangeEnd={set} withEyeDropper={false} />
+        {slot && <PlayerToggle slot={slot} value={value} />}
+      </Group>
       {rgb && <Vec value={value.slice(0, 3)} labels={['R', 'G', 'B']} min={0} step={0.1} onChange={(v) => onChange(value.length > 3 ? [...v, value[3]] : v)} />}
     </div>
   );

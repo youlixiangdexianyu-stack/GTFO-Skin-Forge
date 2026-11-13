@@ -9,14 +9,17 @@ import { useGameWarnings } from './gameLog';
 import { baseName, call } from './protocol';
 import { forgetImage } from './frames';
 import { forgetTexture } from './viewport/textures';
-import { useStore } from './store';
+import { logText, useStore } from './store';
 import { AttachInspector } from './ui/AttachInspector';
 import { RailHost } from './ui/InspectorTabs';
 import { LayerInspector, layerFromFiles } from './ui/DynamicInspector';
+import { CodeFxInspector } from './ui/CodeFxInspector';
 import { CheckDialog } from './ui/CheckDialog';
 import { StickerDialog } from './ui/StickerDialog';
 import { Welcome } from './ui/Welcome';
+import { HelpDocs } from './ui/HelpDocs';
 import { ExportModDialog } from './ui/ExportModDialog';
+import { SkinsReport } from './ui/SkinsReport';
 import { LeftPanel } from './ui/LeftRail';
 import { LiveryInspector } from './ui/LiveryPanel';
 import { nativeFiles, SkinInspector, SoundInspector } from './ui/SkinInspector';
@@ -97,7 +100,7 @@ function StatusBar({ onLog }: { onLog: () => void }) {
 }
 
 function LogDrawer({ opened, onClose }: { opened: boolean; onClose: () => void }) {
-  const logs = useStore((s) => s.logs);
+  const logs = useStore((s) => s.logs).map(logText);
   const dataDir = useStore((s) => s.dataDir);
   return (
     <Drawer opened={opened} onClose={onClose} position="bottom" size={300} title={t('app.k3')} withOverlay={false}>
@@ -199,6 +202,7 @@ function Inspector() {
   if (kind === 'layer') return <LayerInspector />;
   if (kind === 'livery') return <LiveryInspector />;
   if (kind === 'sound') return <SoundInspector />;
+  if (kind === 'fx') return <CodeFxInspector />;
   return <SkinInspector />;
 }
 
@@ -272,9 +276,11 @@ export function App() {
             </div>
           </div>
           <ExportModDialog />
+          <SkinsReport />
           <CheckDialog />
           <StickerDialog />
           <Welcome />
+          <HelpDocs />
         </Panel>
         <Separator className="sep-v" />
         <Panel id="stage" minSize={400}>

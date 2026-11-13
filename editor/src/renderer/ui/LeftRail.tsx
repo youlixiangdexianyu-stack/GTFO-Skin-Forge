@@ -1,7 +1,7 @@
 import { ActionIcon, Badge, Checkbox, CloseButton, ScrollArea, TextInput, Tooltip } from '@mantine/core';
 import { IconBox, IconChevronDown, IconChevronRight, IconCopy, IconDeviceDesktop, IconEye, IconEyeOff, IconListTree, IconMovie, IconPalette, IconPencil, IconPlus, IconSearch, IconTrash } from '@tabler/icons-react';
 import { useState } from 'react';
-import { type Attachment, CHANNELS, type DynamicLayer } from '../protocol';
+import { type Attachment, CHANNELS, type CodeEffect, type DynamicLayer } from '../protocol';
 import { editorOf, materialOf, partTransformOf, pendingKey, useItem, useStore } from '../store';
 import { PartAddMenu } from './AddMenu';
 import { kindOf } from './LiveryPanel';
@@ -41,7 +41,7 @@ function AttachmentRow({ a, depth }: { a: Attachment; depth: number }) {
   const visible = a.visible !== false;
   const stop = (fn: () => void) => (e: React.MouseEvent) => (e.stopPropagation(), fn());
   return (
-    <div className="part attach" style={{ paddingLeft: 30 + depth * 14 }} aria-selected={selected} onClick={() => { select({ kind: 'attachment', id: a.id! }); focusSelection(); }}>
+    <div className="part attach" style={{ paddingLeft: 30 + depth * 14 }} role="option" aria-selected={selected} onClick={() => { select({ kind: 'attachment', id: a.id! }); focusSelection(); }}>
       <Tooltip label={visible ? t('leftRail.k10') : t('leftRail.k11')}>
         <ActionIcon variant="subtle" color={visible ? 'gray' : 'flare'} size="sm" onClick={stop(() => updateAttachment(a.id!, (x) => void (x.visible = !visible)))}>
           {visible ? <IconEye size={14} /> : <IconEyeOff size={14} />}
@@ -124,7 +124,9 @@ function PartTree({ query }: { query: string }) {
         const liveries = p.materials.flatMap((m) => [...layersOf(materialOf(doc, m))].reverse().filter(show).map((l) => ({ m, l })));
         const dynamic = p.materials.flatMap((m) => ((materialOf(doc, m)?.layers ?? []).filter(Boolean) as DynamicLayer[]).filter(show).map((l) => ({ m, l })));
         const mounted = attachments.filter((a) => a.part === p.id).filter(show);
-        if (!partHit && !liveries.length && !dynamic.length && !mounted.length) return null;
+        // Code effects on this part's materials or on models attached to it.
+        const fx = (doc.codeEffects ?? []).filter((e): e is CodeEffect => !!e && (e.material ? p.materials.includes(e.material) : attachments.some((a) => a.id === e.attachment && a.part === p.id))).filter(show);
+        if (!partHit && !liveries.length && !dynamic.length && !mounted.length && !fx.length) return null;
         const expanded =
           (!q && !!open[p.id]) ||
           (selection?.kind === 'part' && selection.id === p.id && !!selection.sub) ||
@@ -133,7 +135,7 @@ function PartTree({ query }: { query: string }) {
           <div key={p.id}>
             <div
               className={`part ${enabled ? '' : 'off'}`}
-              aria-selected={selection?.kind === 'part' && selection.id === p.id && !selection.sub}
+              role="option" aria-selected={selection?.kind === 'part' && selection.id === p.id && !selection.sub}
               onClick={() => select({ kind: 'part', id: p.id })}
             >
               <ActionIcon variant="subtle" color="gray" size="sm" disabled={!rows.length} onClick={(e) => (e.stopPropagation(), setOpen({ ...open, [p.id]: !expanded }))}>
@@ -167,7 +169,7 @@ function PartTree({ query }: { query: string }) {
                     key={l.id}
                     className={`part layer ${l.visible === false ? 'off' : ''}`}
                     style={{ paddingLeft: 30 }}
-                    aria-selected={selection?.kind === 'livery' && selection.id === l.id}
+                    role="option" aria-selected={selection?.kind === 'livery' && selection.id === l.id}
                     onClick={() => select({ kind: 'livery', material: m, id: l.id! })}
                   >
                     <K.icon size={13} color={FEATURE.livery.color} />
@@ -180,11 +182,23 @@ function PartTree({ query }: { query: string }) {
                   key={l.id}
                   className="part layer"
                   style={{ paddingLeft: 30 }}
-                  aria-selected={selection?.kind === 'layer' && selection.id === l.id}
+                  role="option" aria-selected={selection?.kind === 'layer' && selection.id === l.id}
                   onClick={() => select({ kind: 'layer', material: m, id: l.id! })}
                 >
                   <IconMovie size={13} color={FEATURE.layer.color} />
                   <span className="label">{l.name}</span>
+                </div>
+              ))}
+            {fx.map((e) => (
+                <div
+                  key={e.id}
+                  className={`part layer ${e.visible === false ? 'off' : ''}`}
+                  style={{ paddingLeft: 30 }}
+                  role="option" aria-selected={selection?.kind === 'fx' && selection.id === e.id}
+                  onClick={() => select({ kind: 'fx', id: e.id! })}
+                >
+                  <FEATURE.fx.icon size={13} color={FEATURE.fx.color} />
+                  <span className="label">{e.name}</span>
                 </div>
               ))}
             {(q ? mounted : attachedTo(p.id, null)).map((a) => (
@@ -196,7 +210,7 @@ function PartTree({ query }: { query: string }) {
                   <div
                     className="part sub"
                     style={{ paddingLeft: 30 + sp.depth * 14 }}
-                    aria-selected={selection?.kind === 'part' && selection.id === p.id && selection.sub === sp.path}
+                    role="option" aria-selected={selection?.kind === 'part' && selection.id === p.id && selection.sub === sp.path}
                     onClick={() => select({ kind: 'part', id: p.id, sub: sp.path })}
                   >
                     <EyeToggle part={p.id} sub={sp.path} />

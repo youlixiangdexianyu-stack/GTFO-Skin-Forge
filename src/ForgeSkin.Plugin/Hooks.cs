@@ -1,7 +1,7 @@
 using System.Reflection;
 using System.Runtime.InteropServices;
+using ForgeCore;
 using Gear;
-using Agents;
 using HarmonyLib;
 using Il2CppInterop.Runtime;
 using Il2CppInterop.Runtime.InteropTypes;
@@ -13,27 +13,15 @@ namespace ForgeSkin.Plugin;
 
 // IL2CPP folds identical native bodies (every empty virtual of the same shape, for one) into one function, so a hooked
 // method can also run for unrelated objects of other classes, even during plugin load. Handlers that read anything from
-// their arguments first check the object's real class; the others only compare pointers with gear they track.
+// their arguments first check the object's real class (ForgeCore NativeObjects.Is); the others only compare pointers with
+// gear they track.
+//
+// A TargetMethods list leaves out a target ForgeCore's patcher would refuse (Hooks.Unsupported: an empty override compiled
+// to a shared `ret` stub, such as MeleeWeaponFirstPerson.OnGearSpawnComplete, or a prologue it cannot relocate) before the
+// class is patched, because a refused target also takes the class's later targets down. Such an item is still handled where
+// its parts spawn.
 static class Native
 {
-    public static bool Is<T>(Il2CppObjectBase? o) where T : Il2CppObjectBase =>
-        o != null && o.Pointer != IntPtr.Zero &&
-        IL2CPP.il2cpp_class_is_assignable_from(Il2CppClassPointerStore<T>.NativeClassPtr, IL2CPP.il2cpp_object_get_class(o.Pointer));
-
-    // An empty override compiles to a shared `ret` stub (MeleeWeaponFirstPerson.OnGearSpawnComplete is one): the detour
-    // would catch every method folded into it and corrupt the bytes after it, which hangs the game at startup. Such a
-    // target is skipped; its item is still handled where its parts spawn.
-    public static bool Hookable(MethodBase? method)
-    {
-        if (method == null) return false;
-        var info = Method(method);
-        var entry = info == IntPtr.Zero ? IntPtr.Zero : Marshal.ReadIntPtr(info);
-        var first = entry == IntPtr.Zero ? (byte)0xC3 : Marshal.ReadByte(entry);
-        if (first is not (0xC3 or 0xC2 or 0xE9 or 0xEB or 0xCC)) return true;
-        ForgeSkinPlugin.Info($"skipped {method.DeclaringType?.Name}.{method.Name}: no native body of its own to hook");
-        return false;
-    }
-
     // The IL2CPP MethodInfo of a generated interop method.
     public static IntPtr Method(MethodBase method) =>
         (IntPtr)Il2CppInterop.Common.Il2CppInteropUtils.GetIl2CppMethodInfoPointerFieldForGeneratedMethod(method)!.GetValue(null)!;
@@ -58,98 +46,117 @@ static class Native
     public static unsafe float Float(Il2CppObjectBase o, IntPtr field) => *(float*)(o.Pointer + (int)IL2CPP.il2cpp_field_get_offset(field));
 }
 
-// dump.cs 614836: runs once every part of a gear is spawned and its GearMaterialFeeder is set up.
-[HarmonyPatch(typeof(GearPartHolder), nameof(GearPartHolder.OnAllPartsSpawned))]
-static class PartsSpawnedHook
+// The game methods other packages read as well are ForgeCore's GameHooks; ForgeSkin subscribes to them. Each subscription
+// stands alone: one whose method the game no longer has loses that event only, not the plugin.
+static class SharedHooks
 {
-    static void Postfix(GearPartHolder __instance) { if (Native.Is<GearPartHolder>(__instance)) SkinnedGear.Spawned(__instance); }
-}
-
-// dump.cs 544371: the funnel every hit on an enemy passes on this machine (the shooter's own hits are applied locally
-// too). With the local player as source and the enemy alive before: dead after is a kill, alive after is a hit; the
-// damage is the health it lost (before minus after, never below 0).
-[HarmonyPatch(typeof(Dam_EnemyDamageBase), nameof(Dam_EnemyDamageBase.ProcessReceivedDamage))]
-static class EnemyDamageHook
-{
-    // The enemy's health before, or -1 when it is not a living enemy.
-    static void Prefix(Dam_EnemyDamageBase __instance, out float __state) =>
-        __state = Native.Is<Dam_EnemyDamageBase>(__instance) && __instance.Owner != null && __instance.Owner.Alive ? __instance.Health : -1;
-
-    static void Postfix(Dam_EnemyDamageBase __instance, Agent damageSource, float __state)
+    public static void Subscribe()
     {
-        if (__state >= 0) SkinnedGear.Damaged(damageSource, !__instance.Owner.Alive, Math.Max(0, __state - Math.Max(0, __instance.Health)));
+        // dump.cs 614836: runs once every part of a gear is spawned and its GearMaterialFeeder is set up.
+        On(GameHooks.GearPartsSpawned, () => GameHooks.GearPartsSpawned.After(static (holder, _) => { if (NativeObjects.Is<GearPartHolder>(holder)) SkinnedGear.Spawned(holder); }));
+        // dump.cs 544371: the funnel every hit on an enemy passes on this machine (the shooter's own hits are applied locally
+        // too). With the local player as source and the enemy alive before (its health, else -1): dead after is a kill, alive
+        // after is a hit; the damage is the health it lost (before minus after, never below 0). The source is compared first (two
+        // pointers), so the host's hits by everybody else read nothing more. The enemy read before is kept for after; a kill reads
+        // which enemy it was once (its EnemyDataBlock persistentID) for that enemy's kill sounds.
+        On(GameHooks.EnemyDamageReceived, () => GameHooks.EnemyDamageReceived.Around(
+            static call => SkinnedGear.IsLocal(call.Source) && NativeObjects.Is<Dam_EnemyDamageBase>(call.Receiver) && call.Receiver.Owner is { } owner && owner.Alive
+                ? (Health: call.Receiver.Health, Enemy: owner) : (Health: -1f, Enemy: null),
+            static (call, before, _) =>
+            {
+                if (before.Enemy == null) return;
+                bool killed = !before.Enemy.Alive;
+                uint? enemy = killed && before.Enemy.EnemyData is { } data ? data.persistentID : null;
+                SkinnedGear.Damaged(killed, Math.Max(0, before.Health - Math.Max(0, call.Receiver.Health)), enemy);
+            }));
+        // dump.cs 565304: a reload starts when the call sets the item's reloading flag (the bracket carries no answer; the flag
+        // is what the game's own `true` stands for, and a call while already reloading starts nothing).
+        On(GameHooks.ReloadTriggered, () => GameHooks.ReloadTriggered.Around(static item => item.IsReloading,
+            static (item, was, ran) => { if (ran && !was && item.IsReloading) SkinnedGear.Event(item.Pointer, Trigger.ReloadStart); }));
+        // The completion callback of that reload sequence: it runs only when the reload animation finished.
+        On(GameHooks.ReloadDone, () => GameHooks.ReloadDone.After(static (item, _) => SkinnedGear.Event(item.Pointer, Trigger.ReloadEnd)));
+        // dump.cs 617326 / 617360: the trigger was pulled on an empty clip; m_weapon is the item. The semi body is one folded
+        // native body with BWA_Burst's, so it also runs for burst guns (as ForgeEngine reads it).
+        On(GameHooks.AutoDryFired, () => GameHooks.AutoDryFired.After(static (action, _) =>
+        {
+            if (NativeObjects.Is<BWA_Auto>(action)) SkinnedGear.Event(action.m_weapon?.Pointer ?? IntPtr.Zero, Trigger.DryFire);
+        }));
+        On(GameHooks.SemiDryFired, () => GameHooks.SemiDryFired.After(static (action, _) =>
+        {
+            if (NativeObjects.Is<BWA_Semi>(action) || NativeObjects.Is<BWA_Burst>(action)) SkinnedGear.Event(action.m_weapon?.Pointer ?? IntPtr.Zero, Trigger.DryFire);
+        }));
+        // dump.cs 565473: the item is put away (the base body and the gun's override; the other kinds' overrides are UnwieldHook).
+        // An override that also runs the base is one event (deduplicated per frame).
+        On(GameHooks.ItemUnwielded, () => GameHooks.ItemUnwielded.After(static (item, _) => SkinnedGear.Event(item.Pointer, Trigger.Unequip)));
+        On(GameHooks.BulletWeaponUnwielded, () => GameHooks.BulletWeaponUnwielded.After(static (item, _) => SkinnedGear.Event(item.Pointer, Trigger.Unequip)));
+        // dump.cs 565476: the item's attached flashlight is switched on or off; only a change is an event.
+        On(GameHooks.FlashlightSet, () => GameHooks.FlashlightSet.After(static (call, _) => SkinnedGear.Flashlight(call.Item.Pointer, call.Enabled)));
+        // Fire for gear without a gun's fire animation: a C-foam burst (dump.cs 571756); for items with their own prefabs, a
+        // throwable thrown (561007) and a resource pack applied (615108 class).
+        On(GameHooks.GlueBurstFired, () => GameHooks.GlueBurstFired.After(static (glue, _) => SkinnedGear.Event(glue.Pointer, Trigger.Fire)));
+        On(GameHooks.ThrowableThrown, () => GameHooks.ThrowableThrown.After(static (thrown, _) => SkinnedGear.Event(thrown.Pointer, Trigger.Fire)));
+        On(GameHooks.ResourcePackApplied, () => GameHooks.ResourcePackApplied.After(static (pack, _) => SkinnedGear.Event(pack.Pointer, Trigger.Fire)));
+        // dump.cs 565443 (ItemEquippable) and 617542 (BulletWeaponSynced override): the item has finished building its gear and
+        // knows its GearPartHolder. Covers items whose holder is not under them when the parts spawn. The other kinds'
+        // overrides are OverriddenGearSpawnCompleteHook.
+        On(GameHooks.GearSpawnCompleted, () => GameHooks.GearSpawnCompleted.Before(BeforeItemSetup));
+        On(GameHooks.GearSpawnCompleted, () => GameHooks.GearSpawnCompleted.After(static (item, _) => ItemReady(item)));
+        On(GameHooks.SyncedGearSpawnCompleted, () => GameHooks.SyncedGearSpawnCompleted.Before(BeforeItemSetup));
+        On(GameHooks.SyncedGearSpawnCompleted, () => GameHooks.SyncedGearSpawnCompleted.After(static (item, _) => ItemReady(item)));
+        // The local player goes down (ForgeCore GameEvents.LocalPlayerDown) and their revive completes (GameHooks.PlayerRevived,
+        // filtered to them): states of the player, raised for the item in their hands only.
+        GameEvents.LocalPlayerDown += static () => SkinnedGear.PlayerState(Trigger.Downed);
+        On(GameHooks.PlayerRevived, () => GameHooks.PlayerRevived.After(static (state, ran) =>
+        {
+            if (ran && NativeObjects.Is<PLOC_Downed>(state) && SkinnedGear.IsLocal(state.m_owner)) SkinnedGear.PlayerState(Trigger.Revived);
+        }));
+        // dump.cs 565768: every item the game builds (ItemSpawnManager.SpawnItem: level pickups, container contents, dropped items,
+        // placed mines, held items); a pickup whose item has a skin takes it.
+        On(GameHooks.ItemSpawned, () => GameHooks.ItemSpawned.After(static (call, _) => SkinnedGear.ItemSpawned(call.Item, call.Id, call.Mode)));
+        // The game state changes (a level starts generating, the level is entered).
+        GameEvents.StateChanged += static () => SkinnedGear.StateChanged(GameStateManager.CurrentStateName);
+    }
+
+    public static void BeforeItemSetup(ItemEquippable item) { if (NativeObjects.Is<ItemEquippable>(item)) SkinnedGear.BeforeItemSetup(item); }
+
+    public static void ItemReady(ItemEquippable item) { if (NativeObjects.Is<ItemEquippable>(item)) SkinnedGear.ItemReady(item); }
+
+    static void On<TCall>(Bracket<TCall> hook, Func<IDisposable> subscribe)
+    {
+        try { subscribe(); }
+        catch (Exception e) { ForgeSkinPlugin.Fail("skin-hook-unavailable", $"hook {hook.Module} not installed", e); }
     }
 }
 
-// dump.cs 565311 / 565304 / 565314 / 565317: the item's own fire, reload, equip and aim animation sequences.
+// dump.cs 565311 / 565314 / 565317: the item's own fire, equip and aim animation sequences.
 [HarmonyPatch(typeof(ItemEquippable), nameof(ItemEquippable.TriggerFireAnimationSequence))]
 static class FireHook
 {
     static void Postfix(ItemEquippable __instance) => SkinnedGear.Event(__instance.Pointer, Trigger.Fire);
 }
 
-[HarmonyPatch(typeof(ItemEquippable), nameof(ItemEquippable.TryTriggerReloadAnimationSequence))]
-static class ReloadHook
-{
-    static void Postfix(ItemEquippable __instance, bool __result)
-    {
-        if (__result) SkinnedGear.Event(__instance.Pointer, Trigger.ReloadStart);
-    }
-}
-
-// The completion callback of the reload sequence started above (the point ForgeCore hooks as ReloadDone): it runs
-// only when the reload animation finished.
-[HarmonyPatch(typeof(ItemEquippable), "_TryTriggerReloadAnimationSequence_b__145_0")]
-static class ReloadEndHook
-{
-    static void Postfix(ItemEquippable __instance) => SkinnedGear.Event(__instance.Pointer, Trigger.ReloadEnd);
-}
-
-// dump.cs 617326 / 617360: the trigger was pulled on an empty clip; m_weapon is the item.
-[HarmonyPatch(typeof(BWA_Auto), nameof(BWA_Auto.OnFireShotEmptyClip))]
-static class AutoDryFireHook
-{
-    static void Postfix(BWA_Auto __instance) { if (Native.Is<BWA_Auto>(__instance)) SkinnedGear.Event(__instance.m_weapon?.Pointer ?? IntPtr.Zero, Trigger.DryFire); }
-}
-
-[HarmonyPatch(typeof(BWA_Semi), nameof(BWA_Semi.OnFireShotEmptyClip))]
-static class SemiDryFireHook
-{
-    static void Postfix(BWA_Semi __instance) { if (Native.Is<BWA_Semi>(__instance)) SkinnedGear.Event(__instance.m_weapon?.Pointer ?? IntPtr.Zero, Trigger.DryFire); }
-}
-
-// dump.cs 565473 and the overrides of the item kinds the catalog has: the item is put away. An override that also runs
-// the base is one event (deduplicated per frame).
+// dump.cs 565473: the item kinds' own unwield overrides, which only ForgeSkin reads.
 [HarmonyPatch]
 static class UnwieldHook
 {
-    static IEnumerable<MethodBase> TargetMethods() =>
-        new[] { typeof(ItemEquippable), typeof(BulletWeapon), typeof(MeleeWeaponFirstPerson), typeof(EnemyScanner), typeof(GlueGun),
-                typeof(MineDeployerFirstPerson), typeof(SentryGunFirstPerson) }
-            .Select(t => (MethodBase?)AccessTools.DeclaredMethod(t, nameof(ItemEquippable.OnUnWield))).Where(Native.Hookable)!;
+    static IEnumerable<MethodBase> TargetMethods() => new MethodBase?[]
+    {
+        AccessTools.DeclaredMethod(typeof(MeleeWeaponFirstPerson), nameof(MeleeWeaponFirstPerson.OnUnWield)),
+        AccessTools.DeclaredMethod(typeof(EnemyScanner), nameof(EnemyScanner.OnUnWield)),
+        AccessTools.DeclaredMethod(typeof(GlueGun), nameof(GlueGun.OnUnWield)),
+        AccessTools.DeclaredMethod(typeof(MineDeployerFirstPerson), nameof(MineDeployerFirstPerson.OnUnWield)),
+        AccessTools.DeclaredMethod(typeof(SentryGunFirstPerson), nameof(SentryGunFirstPerson.OnUnWield)),
+    }.Where(m => m != null && ForgeCore.Hooks.Unsupported(m) == null)!;
 
     static void Postfix(ItemEquippable __instance) => SkinnedGear.Event(__instance.Pointer, Trigger.Unequip);
 }
 
-// dump.cs 565476: the item's attached flashlight is switched on or off; only a change is an event.
-[HarmonyPatch(typeof(ItemEquippable), nameof(ItemEquippable.SetAttachedFlashlightEnabled))]
-static class FlashlightHook
-{
-    static void Postfix(ItemEquippable __instance, bool mode) => SkinnedGear.Flashlight(__instance.Pointer, mode);
-}
-
-// Fire for gear without a gun's fire animation: a melee attack (dump.cs 615568 class), a C-foam burst (571756), a mine
-// placed (568870 class) and a sentry put down (570177 class).
+// Fire for gear without a gun's fire animation: a melee attack (dump.cs 615568 class), a mine placed (568870 class) and a
+// sentry put down (570177 class).
 [HarmonyPatch(typeof(MeleeWeaponFirstPerson), nameof(MeleeWeaponFirstPerson.DoTriggerAttack))]
 static class MeleeAttackHook
 {
     static void Postfix(MeleeWeaponFirstPerson __instance) => SkinnedGear.Event(__instance.Pointer, Trigger.Fire);
-}
-
-[HarmonyPatch(typeof(GlueGun), nameof(GlueGun.FireBurst))]
-static class GlueFireHook
-{
-    static void Postfix(GlueGun __instance) => SkinnedGear.Event(__instance.Pointer, Trigger.Fire);
 }
 
 [HarmonyPatch(typeof(MineDeployerFirstPerson), nameof(MineDeployerFirstPerson.PlaceMine))]
@@ -158,27 +165,40 @@ static class MinePlacedHook
     static void Postfix(MineDeployerFirstPerson __instance) => SkinnedGear.Event(__instance.Pointer, Trigger.Fire);
 }
 
+// dump.cs 568906: the placer's callback once the mine it asked for (a deployer's or a consumable mine's) has spawned; only ForgeSkin
+// reads it. A deployed sentry needs no hook: it is a gear of its own, skinned where its parts spawn.
+[HarmonyPatch]
+static class MineSpawnedCallbackHook
+{
+    static IEnumerable<MethodBase> TargetMethods() => new MethodBase?[]
+    {
+        AccessTools.DeclaredMethod(typeof(MineDeployerFirstPerson), nameof(MineDeployerFirstPerson.OnStickyMineSpawned)),
+    }.Where(m => m != null && ForgeCore.Hooks.Unsupported(m) == null)!;
+
+    static void Postfix(MineDeployerFirstPerson __instance, ISyncedItem __0)
+    {
+        if (NativeObjects.Is<MineDeployerFirstPerson>(__instance)) SkinnedGear.Placed(__instance, __0?.TryCast<Item>());
+    }
+}
+
 [HarmonyPatch(typeof(SentryGunFirstPerson), nameof(SentryGunFirstPerson.PlaceOnGround))]
 static class SentryPlacedHook
 {
     static void Postfix(SentryGunFirstPerson __instance) => SkinnedGear.Event(__instance.Pointer, Trigger.Fire);
 }
 
-// Fire for items with their own prefabs, the moment each is used: a resource pack applied (dump.cs 615108 class), a
-// throwable thrown (561007), a lock melter used (560783), a syringe applied (560904; the call starts the injection)
-// and a carry item inserted, e.g. a power cell into a generator (613847). Consumable mines are
-// placed through MineDeployerFirstPerson.PlaceMine above.
+// Fire for items with their own prefabs, the moment each is used (the pack and the throwable are SharedHooks): a lock
+// melter used (dump.cs 560783), a syringe applied (560904; the call starts the injection) and a carry item inserted,
+// e.g. a power cell into a generator (613847). Consumable mines are placed through MineDeployerFirstPerson.PlaceMine above.
 [HarmonyPatch]
 static class ItemUsedHook
 {
     static IEnumerable<MethodBase> TargetMethods() => new MethodBase?[]
     {
-        AccessTools.DeclaredMethod(typeof(ResourcePackFirstPerson), nameof(ResourcePackFirstPerson.ApplyPack)),
-        AccessTools.DeclaredMethod(typeof(ThrowingWeapon), nameof(ThrowingWeapon.Throw)),
         AccessTools.DeclaredMethod(typeof(LockMelterFirstPerson), nameof(LockMelterFirstPerson.UseLockMelter)),
         AccessTools.DeclaredMethod(typeof(SyringeFirstPerson), nameof(SyringeFirstPerson.ApplySyringe)),
         AccessTools.DeclaredMethod(typeof(CarryItemEquippableFirstPerson), nameof(CarryItemEquippableFirstPerson.InsertItem)),
-    }.Where(Native.Hookable)!;
+    }.Where(m => m != null && ForgeCore.Hooks.Unsupported(m) == null)!;
 
     static void Postfix(ItemEquippable __instance) => SkinnedGear.Event(__instance.Pointer, Trigger.Fire);
 }
@@ -195,28 +215,22 @@ static class AimHook
     static void Postfix(ItemEquippable __instance) => SkinnedGear.Event(__instance.Pointer, Trigger.Aim);
 }
 
-// dump.cs 565443 (ItemEquippable) and 617542 (BulletWeaponSynced override): the item has finished building its gear and
-// knows its GearPartHolder. Covers items whose holder is not under them when the parts spawn.
-[HarmonyPatch(typeof(ItemEquippable), nameof(ItemEquippable.OnGearSpawnComplete))]
-static class GearSpawnCompleteHook
-{
-    static void Prefix(ItemEquippable __instance) { if (Native.Is<ItemEquippable>(__instance)) SkinnedGear.BeforeItemSetup(__instance); }
-
-    static void Postfix(ItemEquippable __instance) { if (Native.Is<ItemEquippable>(__instance)) SkinnedGear.ItemReady(__instance); }
-}
-
-// Overrides of the step for synced guns, melee weapons and tools (dump.cs 617542, 615703, 568870, 570177, 616222);
-// readback and tracking skip a gear they already handled when an override also runs the base.
+// Overrides of the step for melee weapons and tools (dump.cs 615703, 568870, 570177, 616222; the base and the synced gun
+// are SharedHooks); readback and tracking skip a gear they already handled when an override also runs the base.
 [HarmonyPatch]
 static class OverriddenGearSpawnCompleteHook
 {
-    static IEnumerable<MethodBase> TargetMethods() =>
-        new[] { typeof(BulletWeaponSynced), typeof(MeleeWeaponFirstPerson), typeof(MineDeployerFirstPerson), typeof(SentryGunFirstPerson), typeof(EnemyScanner) }
-            .Select(t => (MethodBase?)AccessTools.DeclaredMethod(t, nameof(ItemEquippable.OnGearSpawnComplete))).Where(Native.Hookable)!;
+    static IEnumerable<MethodBase> TargetMethods() => new MethodBase?[]
+    {
+        AccessTools.DeclaredMethod(typeof(MeleeWeaponFirstPerson), nameof(MeleeWeaponFirstPerson.OnGearSpawnComplete)),
+        AccessTools.DeclaredMethod(typeof(MineDeployerFirstPerson), nameof(MineDeployerFirstPerson.OnGearSpawnComplete)),
+        AccessTools.DeclaredMethod(typeof(SentryGunFirstPerson), nameof(SentryGunFirstPerson.OnGearSpawnComplete)),
+        AccessTools.DeclaredMethod(typeof(EnemyScanner), nameof(EnemyScanner.OnGearSpawnComplete)),
+    }.Where(m => m != null && ForgeCore.Hooks.Unsupported(m) == null)!;
 
-    static void Prefix(ItemEquippable __instance) { if (Native.Is<ItemEquippable>(__instance)) SkinnedGear.BeforeItemSetup(__instance); }
+    static void Prefix(ItemEquippable __instance) => SharedHooks.BeforeItemSetup(__instance);
 
-    static void Postfix(ItemEquippable __instance) { if (Native.Is<ItemEquippable>(__instance)) SkinnedGear.ItemReady(__instance); }
+    static void Postfix(ItemEquippable __instance) => SharedHooks.ItemReady(__instance);
 }
 
 // dump.cs 565452: the item puts its renderers on its view layer (first or third person).
@@ -226,16 +240,10 @@ static class ItemLayerHook
     static void Postfix(ItemEquippable __instance) => SkinnedGear.LayerSet(__instance.Pointer);
 }
 
-// The game state changes (a level starts generating, the level is entered).
-[HarmonyPatch(typeof(GameStateManager), nameof(GameStateManager.DoChangeState))]
-static class GameStateHook
-{
-    static void Postfix(GameStateManager __instance, eGameStateName nextState) { if (Native.Is<GameStateManager>(__instance)) SkinnedGear.StateChanged(nextState); }
-}
-
-// dump.cs 658791: the game switches a held object's materials to (or from) the first-person projection.
+// dump.cs 658791: the game switches a held object's materials to (or from) the first-person projection. ForgeCore's own
+// drawing calls it too; the handler leaves every object it does not track alone.
 [HarmonyPatch(typeof(PlayerBackpackManager), nameof(PlayerBackpackManager.SetFPSRendering))]
 static class FpsRenderingHook
 {
-    static void Postfix(GameObject go, bool enable) { if (Native.Is<GameObject>(go)) SkinnedGear.FpsRenderingSet(go, enable); }
+    static void Postfix(GameObject go, bool enable) { if (NativeObjects.Is<GameObject>(go)) SkinnedGear.FpsRenderingSet(go, enable); }
 }

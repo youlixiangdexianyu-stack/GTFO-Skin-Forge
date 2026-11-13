@@ -20,9 +20,10 @@ public sealed record PreviewResult(string Glb, List<PreviewPart> Parts, Dictiona
 
 // How the game draws a material. Kind: opaque; cutout (alpha test); glass (alpha-blended lens: Tint alpha is its opacity,
 // albedo if any is lens dirt); reticle (holographic sight surface: invisible except its reticle layers, drawn additively as
-// texture x colour). Colours are the material's values (Tint = _Color RGBA, EmissiveColor = _EmissiveColor or _EmissionColor RGB).
+// texture x colour). Colours are the material's values (Tint = _Color RGBA), except its glow (_EmissiveColor or
+// _EmissionColor RGB), which is in a skin's units (MaterialParams.GlowFromGame), as the editor previews and edits it.
 public sealed record PreviewMaterial(string Shader, int RenderQueue, string Kind, bool? EmissiveEnabled, float[]? EmissiveColor,
-    float? Metallic, float? Smoothness, float[]? Tint, List<PreviewReticle> Reticles);
+    float? EmissiveIntensity, float? Metallic, float? Smoothness, float[]? Tint, List<PreviewReticle> Reticles);
 
 // One reticle layer of a holographic sight (_ReticuleA/B/C): PNG, colour (RGBA, linear), scale and offset as the shader takes them.
 public sealed record PreviewReticle(string Layer, string Texture, float[] Color, float Scale, float Offset);
@@ -200,8 +201,9 @@ public static class Preview
             : Has("_ALPHATEST_ON") || F("_Mode") == 1 || d.RenderQueue >= 2450 ? "cutout"
             : "opaque";
         int queue = d.RenderQueue >= 0 ? d.RenderQueue : kind switch { "opaque" => 2000, "cutout" => 2450, _ => 3000 };
+        var (glow, intensity) = (C("_EmissiveColor", 3) ?? C("_EmissionColor", 3)) is { } g ? MaterialParams.GlowFromGame(g[0], g[1], g[2]) : default;
         return new PreviewMaterial(d.Shader, queue, kind, F("_EnableEmissive") is { } e ? e > 0.5f : null,
-            C("_EmissiveColor", 3) ?? C("_EmissionColor", 3), F("_Metallic"), F("_Glossiness"), C("_Color", 4), reticles);
+            glow, glow != null ? intensity : null, F("_Metallic"), F("_Glossiness"), C("_Color", 4), reticles);
     }
 
     // Writes a game texture as PNG; Unity DXT5nm normal maps (x in A, y in G) become ordinary RGB normal maps.
@@ -246,6 +248,13 @@ public static class Images
         if (decoded.Copy(SKColorType.Rgba8888) is not { } copy) return decoded;
         decoded.Dispose();
         return copy;
+    }
+
+    // Straight (not premultiplied) RGBA rows from the top, as the game's decoder reads the file.
+    public static SKBitmap Decode(byte[] image, string what)
+    {
+        using var codec = SKCodec.Create(new MemoryStream(image)) ?? throw new SkinFormatException("bad-image", $"{what}: not a readable image");
+        return SKBitmap.Decode(codec, new SKImageInfo(codec.Info.Width, codec.Info.Height, SKColorType.Rgba8888, SKAlphaType.Unpremul));
     }
 
     public static (int Width, int Height) Size(string path)

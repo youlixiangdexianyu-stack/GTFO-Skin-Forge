@@ -3,7 +3,7 @@
 // size or at the base texture's own size; `bakeLivery` writes the result as ordinary textures before pack.build, so the
 // pack and game-file replacement carry plain Albedo / MetallicSmoothness / Emissive images and no livery data. An animated
 // GIF decal is baked at its first frame, and its frames over the region it covers become a dynamic layer of the material.
-import { baseTexturePath, isGif, loadImage, MAX_ATLAS, MAX_FRAMES, sourceFrames, writeLayerFrames, writePng, type Rect } from './frames';
+import { baseTexturePath, isGif, loadImage, MAX_FRAMES, sourceFrames, writeLayerFrames, writePng, type Rect } from './frames';
 import { dirName, type BlendMode, type DynamicLayer, type Finish, type LiveryKind, type LiveryLayer, type MaterialOverride, type MaterialParams, type Pattern, type SkinDocument, type WeaponPreview } from './protocol';
 import { ensureMaterial, materialOf, uid, useStore } from './store';
 import { t } from './i18n';
@@ -11,7 +11,7 @@ import { editColors } from './variants';
 import { pickDecalImage } from './stickers';
 
 type FinishPattern = 'brushed' | 'carbon' | 'worn';
-/** Unity MetallicSmoothness of each finish (metallic in R, smoothness in A) and the pattern it adds. */
+/** MetallicSmoothness of each finish (as the game's gear shader reads it: metallic in R, smoothness in G) and the pattern it adds. */
 export const FINISHES: Record<Finish, { metal: number; smooth: number; pattern?: FinishPattern; swatch: string }> = {
   matte: { metal: 0, smooth: 0.08, swatch: '#7c7f84' },
   gloss: { metal: 0, smooth: 0.88, swatch: '#c9ced6' },
@@ -103,13 +103,17 @@ export const isGifDecal = (l: LiveryLayer) => l.kind === 'decal' && !!l.image &&
 /** Texels a decal is grown into the empty gutter around UV islands, so filtering at island edges shows no seam. */
 const GUTTER = 2;
 
+/** Layer fields that do not change the rendered texture, so they stay out of the cache key. */
+const NOT_SHAPE = ['name', 'visible', 'opacity', 'blend', 'strokes', 'mask'];
+
 /**
  * `render` with its last output per layer kept while the layer, the image (a GIF frame), the size and `extra` stay the
  * same; `cache` outlives the returned renderer.
  */
 export function cachedUv(render: UvRenderer, cache: Map<string, { key: string; image: CanvasImageSource | null; canvas: HTMLCanvasElement }>, extra = ''): UvRenderer {
   return (l, image, w, h) => {
-    const { name: _n, visible: _v, opacity: _o, blend: _b, strokes: _s, mask: _m, ...shape } = l;
+    const shape: Record<string, unknown> = { ...l };
+    for (const k of NOT_SHAPE) delete shape[k];
     const key = JSON.stringify([shape, w, h, extra]);
     const hit = cache.get(l.id!);
     if (hit?.key === key && hit.image === image) return hit.canvas;
@@ -179,7 +183,7 @@ function weave(x: number, y: number, cell: number): number {
 
 const finishCache = new Map<string, { ms: ImageData; look: ImageData | null }>();
 
-/** A finish's MetallicSmoothness (Unity layout) at a size, and the look it puts under the paint (carbon weave). Cached. */
+/** A finish's MetallicSmoothness (the game's layout) at a size, and the look it puts under the paint (carbon weave). Cached. */
 function finishPixels(finish: Finish, w: number, h: number) {
   const key = `${finish}|${w}x${h}`;
   const hit = finishCache.get(key);
@@ -206,8 +210,9 @@ function finishPixels(finish: Finish, w: number, h: number) {
         look.data[i] = look.data[i + 1] = look.data[i + 2] = 22 + 48 * s;
         look.data[i + 3] = 255;
       }
-      ms.data[i] = ms.data[i + 1] = ms.data[i + 2] = Math.round(Math.min(1, Math.max(0, metal)) * 255);
-      ms.data[i + 3] = Math.round(Math.min(1, Math.max(0, smooth)) * 255);
+      ms.data[i] = Math.round(Math.min(1, Math.max(0, metal)) * 255);
+      ms.data[i + 1] = Math.round(Math.min(1, Math.max(0, smooth)) * 255);
+      ms.data[i + 3] = 255;
     }
   // A bake-size finish is tens of MB: keep only the last few (the preview's and the one being baked).
   if (finishCache.size >= 3) finishCache.delete(finishCache.keys().next().value!);
@@ -259,7 +264,7 @@ export async function composeLivery(
     msCtx.globalCompositeOperation = 'copy';
     if (baseMs) msCtx.drawImage(baseMs, 0, 0, w, h);
     else {
-      msCtx.fillStyle = 'rgba(0,0,0,0.35)';
+      msCtx.fillStyle = 'rgb(0,89,0)';
       msCtx.fillRect(0, 0, w, h);
     }
     msCtx.globalCompositeOperation = 'source-over';
@@ -322,8 +327,8 @@ function wearThrough(l: LiveryLayer, mask: CanvasImageSource, base: CanvasImageS
   for (let i = 0; i < p.length; i += 4) {
     const t = a[i + 3] * k;
     if (!t) continue;
-    p[i] = p[i + 1] = p[i + 2] = p[i] + (metal - p[i]) * t;
-    p[i + 3] = p[i + 3] + (smooth - p[i + 3]) * t;
+    p[i] = p[i] + (metal - p[i]) * t;
+    p[i + 1] = p[i + 1] + (smooth - p[i + 1]) * t;
   }
   ms.putImageData(img, 0, 0);
 }
@@ -366,13 +371,8 @@ async function bakeAnimatedDecals(m: MaterialOverride, base: CanvasImageSource |
     // Where the decal lands whatever its frames hold: the projection of an opaque image.
     const rect = covered(render(l, OPAQUE, w, h), w, h);
     if (!rect) continue;
+    // Frames at the region's full size; pack.build stores them smaller where they do not fit one atlas.
     const count = Math.min(MAX_FRAMES, s.frames.length);
-    const columns = Math.floor(MAX_ATLAS / rect.w);
-    if (!columns || Math.ceil(count / columns) * rect.h > MAX_ATLAS)
-      throw Object.assign(
-        new Error(`${m.material}/${l.name}: the animated decal covers ${rect.w}x${rect.h} texels; ${count} frames do not fit a ${MAX_ATLAS}x${MAX_ATLAS} atlas. Make the decal smaller or use a GIF with fewer frames.`),
-        { code: 'bad-atlas' },
-      );
     onProgress(t('livery.bakingFrames', { v0: l.name, v1: count }));
     await writeLayerFrames(projectPath, l.id!, rect, w, h, async (frame) => {
       for (let i = 0; i < count; i++) {

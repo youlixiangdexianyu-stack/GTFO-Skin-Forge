@@ -17,7 +17,7 @@ import { GLTFExporter } from 'three/examples/jsm/exporters/GLTFExporter.js';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { call } from './protocol';
 import { t } from './i18n';
-import { uid, useStore } from './store';
+import { hangAsCharm, uid, useStore } from './store';
 
 export type ShapeKind = 'line' | 'sphere' | 'ring' | 'arc' | 'box' | 'grid' | 'cylinder' | 'cone' | 'panel';
 
@@ -138,18 +138,18 @@ export async function buildShape(id: string, s: Shape): Promise<{ forgeskinmesh:
 
 const shapeLabel = (kind: ShapeKind) => t(`shapes.${kind}`);
 
-/** Adds the shape on the selected part as a cyan hologram (the look most people want from a shape). */
-export async function addShape(kind: ShapeKind): Promise<void> {
+/** Adds the shape on the selected part as a cyan hologram (the look most people want from a shape), or as a solid charm. */
+export async function addShape(kind: ShapeKind, charm = false): Promise<void> {
   const s = useStore.getState();
   const id = uid();
-  const shape = newShape(kind);
+  const shape = { ...newShape(kind), ...(charm && { wire: false }) };
   try {
     const mesh = await buildShape(id, shape);
     s.addAttachment('mesh', mesh, (a, editor) => {
       a.name = shapeLabel(kind);
-      a.position = [0, 0.03, 0];
       a.material!.color = [0.45, 0.9, 1, 1];
-      a.hologram = { flicker: 0.3 };
+      if (charm) hangAsCharm(a);
+      else a.hologram = { flicker: 0.3 };
       editor.shapes = { ...((editor.shapes as Record<string, Shape>) ?? {}), [id]: shape };
     }, id);
   } catch (e) {

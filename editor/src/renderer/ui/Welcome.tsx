@@ -1,10 +1,12 @@
-// First start: what the editor does in four steps, and an example skin on a gun that shows a livery, an ammo screen and
-// a hologram shape, each one click away in the part tree. Settings reopens it (新手引导).
-import { Button, Group, Modal, Stack, Text, ThemeIcon } from '@mantine/core';
+// First start: the spotlight guide (tour/) that walks the player through a first skin, opened by what the editor does in
+// four lines, and closed with an example skin on a gun that shows a livery, an ammo screen and a hologram shape, each one
+// click away in the part tree. Settings and the tutorial restart it.
+import { Group, Stack, Text, ThemeIcon } from '@mantine/core';
 import { IconCrosshair, IconPalette, IconPlayerPlay, IconSparkles } from '@tabler/icons-react';
 import { addLivery } from '../livery';
 import { addShape } from '../shapes';
 import { useStore } from '../store';
+import { Tour } from '../tour/Tour';
 import { partLabel, t } from '../i18n';
 
 const STEPS = [
@@ -37,36 +39,27 @@ async function exampleSkin() {
   useStore.getState().toast('ok', t('welcome.exampleDone', { v0: partLabel(part) }));
 }
 
+/** The guide's first card: what making a skin takes, in four lines. */
+function Overview() {
+  return (
+    <Stack gap="sm">
+      <Text size="sm">{t('tour.introInfo')}</Text>
+      {STEPS.map((x) => (
+        <Group key={x.key} gap="sm" wrap="nowrap" align="center">
+          <ThemeIcon size={28} radius="md" variant="light" color={x.color}>
+            <x.icon size={16} />
+          </ThemeIcon>
+          <Text size="sm" fw={600}>
+            {t(`welcome.${x.key}`)}
+          </Text>
+        </Group>
+      ))}
+    </Stack>
+  );
+}
+
+/** Starts by itself on the first start (once the game is found) and when Settings or the tutorial restarts it. */
 export function Welcome() {
   const opened = useStore((s) => s.ready && !!s.game?.found && !s.prefs.welcomed);
-  const close = () => useStore.getState().setPrefs({ welcomed: true });
-  return (
-    <Modal opened={opened} onClose={close} title={t('welcome.title')} size="lg" centered>
-      <Stack gap="md">
-        {STEPS.map((x, i) => (
-          <Group key={x.key} gap="md" wrap="nowrap" align="flex-start">
-            <ThemeIcon size={36} radius="md" variant="light" color={x.color}>
-              <x.icon size={20} />
-            </ThemeIcon>
-            <div>
-              <Text fw={650}>
-                {i + 1}. {t(`welcome.${x.key}`)}
-              </Text>
-              <Text size="sm" c="dimmed">
-                {t(`welcome.${x.key}Info`)}
-              </Text>
-            </div>
-          </Group>
-        ))}
-        <Group justify="flex-end" mt="sm">
-          <Button variant="default" onClick={close}>
-            {t('welcome.start')}
-          </Button>
-          <Button color="flare" onClick={() => (close(), void exampleSkin())}>
-            {t('welcome.example')}
-          </Button>
-        </Group>
-      </Stack>
-    </Modal>
-  );
+  return opened ? <Tour intro={<Overview />} example={() => void exampleSkin()} /> : null;
 }

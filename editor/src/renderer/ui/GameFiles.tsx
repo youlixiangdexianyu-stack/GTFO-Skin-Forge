@@ -6,6 +6,7 @@ import { useEffect, useState } from 'react';
 import { buildPack, exclusive } from '../actions';
 import { call, type AssetStatus } from '../protocol';
 import { useStore } from '../store';
+import { PROP } from '../gameLog';
 import { t } from '../i18n';
 
 /** A backend warning about something only the plugin can show, in plain words; null for other warnings. */
@@ -17,13 +18,6 @@ function pluginOnly(w: string): string | null {
   if ((m = w.match(/^part layout \((\d+) .+\) needs the plugin; not written to game files$/))) return t('gameFiles.w.layout', { v0: m[1] });
   return null;
 }
-
-const PROP: Record<string, () => string> = {
-  metallic: () => t('skinInspector.k22'),
-  smoothness: () => t('skinInspector.k23'),
-  tint: () => t('skinInspector.k24'),
-  'emissive colour': () => t('skinInspector.k13'),
-};
 
 /** The backend's warnings, in plain words. */
 export function plainWarning(w: string): string {

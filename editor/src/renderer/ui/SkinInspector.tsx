@@ -1,6 +1,6 @@
 import { ActionIcon, Badge, Button, Chip, Group, Menu, Select, SimpleGrid, Switch, Text, Tooltip, UnstyledButton } from '@mantine/core';
 import { Dropzone, type FileWithPath } from '@mantine/dropzone';
-import { IconArrowsMove, IconBox, IconLayoutDashboard, IconCheck, IconChevronRight, IconDeviceDesktop, IconFolderOpen, IconPlayerPlay, IconPlus, IconTrash, IconX } from '@tabler/icons-react';
+import { IconArrowsMove, IconArrowsShuffle, IconBox, IconLayoutDashboard, IconCheck, IconChevronRight, IconDeviceDesktop, IconFolderOpen, IconPlayerPlay, IconPlus, IconTrash, IconX } from '@tabler/icons-react';
 import { importMesh, MEMORY_FINE, MEMORY_HEAVY, mb } from '../actions';
 import { ShapeItems, ShapeMenuItems } from './ShapePanel';
 import { FEATURE, FeatureHead, FeatureTile, Info } from './Features';
@@ -9,12 +9,13 @@ import { PartLayers } from './DynamicInspector';
 import { PartLivery } from './LiveryPanel';
 import { PartModel } from './PartModel';
 import { useState, type ReactElement } from 'react';
-import { MAX_SECONDS, playSound } from '../audio';
-import { baseName, CHANNELS, fileUrl, triggersFor, type Attachment, type CatalogPart, type SkinSound, type TextureChannel, type Trigger } from '../protocol';
-import { editorOf, materialOf, pendingKey, useItem, useStore } from '../store';
+import { MAX_SECONDS, playGroup, playSound, soundChance, soundGroupKey } from '../audio';
+import { baseName, CHANNELS, fileUrl, TRIGGERS, triggersFor, type Attachment, type CatalogPart, type EnemyInfo, type SkinSound, type TextureChannel, type Trigger } from '../protocol';
+import { editorOf, glowOf, materialOf, pendingKey, useItem, useStore } from '../store';
 import { Color, Field, Slider } from './fields';
 import { SelectionLayout } from './SelectionLayout';
 import { Variants } from './Variants';
+import { PlayerColors } from './PlayerColors';
 import { localName, partLabel, t } from '../i18n';
 
 export const CHANNEL_LABEL: Record<TextureChannel, string> = {
@@ -45,7 +46,7 @@ function ChannelSlot({ material, part, channel }: { material: string; part: stri
     if (files[0]) setTexture(material, part, channel, window.forge.pathOf(files[0]));
   };
   return (
-    <div className={`slot ${pending ? 'pending' : ''}`}>
+    <div className={`slot ${pending ? 'pending' : ''}`} role="group" aria-label={CHANNEL_LABEL[channel]}>
       <Dropzone onDrop={set} accept={IMAGE_ACCEPT} multiple={false} getFilesFromEvent={nativeFiles} dragEventsBubbling={false} p={0} radius={0} className="slot-drop">
         <Tooltip label={mine ?? t('skinInspector.k5')} openDelay={600}>
           <div className={`img ${mine ? '' : 'vanilla'}`}>
@@ -96,14 +97,17 @@ function EmissiveSection({ material }: { material: string }) {
   const { m, p, preview } = useParams(material);
   const hasEmissive = !!(m?.textures?.emissive ?? preview?.textures[material]?.emissive);
   if (!hasEmissive) return <p className="hint">{t('skinInspector.k12')}</p>;
+  // Shown as the game shows it (the slider reaches the game's own glow, often far above 1); an edit sets colour and
+  // intensity together, so the pack never scales the game's own glow.
+  const glow = glowOf(preview?.params[material], m?.params ?? {});
   return (
     <>
       <Switch mb="sm" label={t('skinInspector.k13')} checked={p.emissiveEnabled ?? true} onChange={(e) => setParams(material, { emissiveEnabled: e.currentTarget.checked })} />
       <Field label={t('skinInspector.k14')}>
-        <Color rgb value={p.emissiveColor ?? [1, 1, 1]} onChange={(c) => setParams(material, { emissiveColor: c }, `emc-${material}`)} />
+        <Color rgb slot={{ kind: 'emissive', target: material }} value={glow.color} onChange={(c) => setParams(material, { emissiveColor: c, emissiveIntensity: glow.intensity }, `emc-${material}`)} />
       </Field>
       <Field label={t('skinInspector.k15')}>
-        <Slider value={p.emissiveIntensity ?? 1} min={0} max={10} step={0.05} onChange={(v) => setParams(material, { emissiveIntensity: v }, `emi-${material}`)} />
+        <Slider value={glow.intensity} min={0} max={Math.max(10, Math.ceil(preview?.params[material]?.emissiveIntensity ?? 0))} step={0.05} onChange={(v) => setParams(material, { emissiveColor: glow.color, emissiveIntensity: v }, `emi-${material}`)} />
       </Field>
       <Field label={t('skinInspector.k16')}>
         <Group gap={6} wrap="nowrap">
@@ -135,18 +139,28 @@ function EmissiveSection({ material }: { material: string }) {
 
 function MaterialParams({ material }: { material: string }) {
   const { setParams } = useStore.getState();
-  const { p } = useParams(material);
+  const { p, preview } = useParams(material);
+  // Only what the game material has (the preview reads its values from the game files); the plugin ignores the rest.
+  const game = preview?.params[material];
+  const has = (v: unknown) => !game || v != null;
+  if (game && game.metallic == null && game.smoothness == null && game.tint == null) return <p className="hint">{t('skinInspector.noParams')}</p>;
   return (
     <>
-      <Field label={t('skinInspector.k22')}>
-        <Slider value={p.metallic ?? 1} onChange={(v) => setParams(material, { metallic: v }, `met-${material}`)} />
-      </Field>
-      <Field label={t('skinInspector.k23')}>
-        <Slider value={p.smoothness ?? 1} onChange={(v) => setParams(material, { smoothness: v }, `smo-${material}`)} />
-      </Field>
-      <Field label={t('skinInspector.k24')}>
-        <Color value={p.tint ?? [1, 1, 1, 1]} onChange={(c) => setParams(material, { tint: [c[0], c[1], c[2], 1] }, `tint-${material}`)} />
-      </Field>
+      {has(game?.metallic) && (
+        <Field label={t('skinInspector.k22')}>
+          <Slider value={p.metallic ?? 1} onChange={(v) => setParams(material, { metallic: v }, `met-${material}`)} />
+        </Field>
+      )}
+      {has(game?.smoothness) && (
+        <Field label={t('skinInspector.k23')}>
+          <Slider value={p.smoothness ?? 1} onChange={(v) => setParams(material, { smoothness: v }, `smo-${material}`)} />
+        </Field>
+      )}
+      {has(game?.tint) && (
+        <Field label={t('skinInspector.k24')}>
+          <Color slot={{ kind: 'tint', target: material }} value={p.tint ?? [1, 1, 1, 1]} onChange={(c) => setParams(material, { tint: [c[0], c[1], c[2], 1] }, `tint-${material}`)} />
+        </Field>
+      )}
     </>
   );
 }
@@ -226,9 +240,9 @@ function PartPanel({ part }: { part: CatalogPart }) {
 
 const AUDIO_EXT = ['wav', 'mp3', 'ogg', 'flac', 'm4a', 'aac', 'opus', 'webm'];
 
-async function pickSound() {
+async function pickSound(trigger?: Trigger, enemyId?: number | null) {
   const [f] = await window.forge.openDialog('files', [{ get name() { return t('skinInspector.k30'); }, extensions: AUDIO_EXT }]);
-  if (f) await useStore.getState().addSound(f);
+  if (f) await useStore.getState().addSound(f, trigger, enemyId);
 }
 
 /** 弹药屏 / 导入模型, mounted on the selected part (else the first part; the inspector can move it). */
@@ -289,61 +303,213 @@ export function useSoundsTab(): InspectorTab {
   return { id: 'sounds', label: t('tabs.sounds'), icon: FEATURE.sound.icon, color: FEATURE.sound.color, count, content: <Sounds /> };
 }
 
-/** The skin's sounds as a list; clicking one opens it. */
-function Sounds() {
-  const sounds = useStore((s) => s.doc.sounds ?? []).filter((x): x is SkinSound => !!x);
+interface SoundGroup {
+  key: string;
+  trigger: Trigger;
+  enemyId: number | null;
+  label: string;
+  sounds: SkinSound[];
+}
+
+/** An enemy's exact name: what players call it and its data block, or the id alone for an enemy this game does not have
+ *  (another rundown's). */
+function enemyLabel(id: number, enemies: EnemyInfo[]) {
+  const e = enemies.find((x) => x.id === id);
+  if (!e) return t('skinInspector.soundEnemyUnknown', { v0: id });
+  const name = localName(e);
+  return name === e.block ? name : `${name} · ${e.block}`;
+}
+
+/** The skin's sounds by group (one event; for a kill, one enemy), in the order the event list shows them, a kill's
+ *  any-enemy group before the enemies' own. */
+function useSoundGroups(): SoundGroup[] {
+  const all = useStore((s) => s.doc.sounds);
+  const enemies = useStore((s) => s.enemies);
   const triggers = triggersFor(useItem());
+  const order = (g: SoundGroup) => (triggers.findIndex((x) => x.value === g.trigger) + 1 || 99) * 2 + (g.enemyId != null ? 1 : 0);
+  const groups = new Map<string, SoundGroup>();
+  for (const x of all ?? []) {
+    if (!x) continue;
+    const key = soundGroupKey(x);
+    const trigger = x.trigger ?? 'kill';
+    const enemyId = trigger === 'kill' ? (x.enemyId ?? null) : null;
+    const group = groups.get(key) ?? { key, trigger, enemyId, label: soundGroupLabel(trigger, enemyId, enemies, triggers), sounds: [] };
+    group.sounds.push(x);
+    groups.set(key, group);
+  }
+  return [...groups.values()].sort((a, b) => order(a) - order(b) || a.label.localeCompare(b.label));
+}
+
+function soundGroupLabel(trigger: Trigger, enemyId: number | null, enemies: EnemyInfo[], triggers = TRIGGERS) {
+  const event = triggers.find((x) => x.value === trigger)?.label ?? TRIGGERS.find((x) => x.value === trigger)?.label ?? trigger;
+  return enemyId != null ? `${event} · ${enemyLabel(enemyId, enemies)}` : event;
+}
+
+const soundName = (x: SkinSound) => x.name || baseName(x.file ?? '');
+const percent = (x: SkinSound, group: SkinSound[]) => `${Math.round(soundChance(x, group) * 100)}%`;
+
+/** 添加音效: the event comes first, so a new sound joins that event's group; a kill sound's enemy is picked on the sound. */
+function AddSoundMenu({ children }: { children: ReactElement }) {
+  const triggers = triggersFor(useItem()).filter((x) => x.value !== 'always');
+  return (
+    <Menu position="bottom-end" withinPortal>
+      <Menu.Target>{children}</Menu.Target>
+      <Menu.Dropdown mah={420} style={{ overflowY: 'auto' }}>
+        <Menu.Label>{t('skinInspector.soundWhen')}</Menu.Label>
+        {triggers.map((x) => (
+          <Menu.Item key={x.value} onClick={() => void pickSound(x.value)}>
+            {x.label}
+          </Menu.Item>
+        ))}
+      </Menu.Dropdown>
+    </Menu>
+  );
+}
+
+/** One sound of a group: play it, its chance, and opening it. The play button sits beside the row, not inside it. */
+function SoundRow({ x, group, current }: { x: SkinSound; group: SkinSound[]; current?: boolean }) {
   const { select } = useStore.getState();
   return (
-    <div className="section">
-      <FeatureHead feature="sound" title={t('skinInspector.k31')} info={`${t('skinInspector.k33')} ${MAX_SECONDS} ${t('skinInspector.k34')}`}>
-        <Button size="compact-xs" variant="light" color="green" leftSection={<IconPlus size={12} />} onClick={() => void pickSound()}>
-          {t('skinInspector.k32')}
-        </Button>
-      </FeatureHead>
-      {!sounds.length && <p className="hint">{t('skinInspector.noSounds')}</p>}
-      <div className="list">
-        {sounds.map((x) => (
-          <UnstyledButton key={x.id} className="item" onClick={() => select({ kind: 'sound', id: x.id! })}>
-            <ActionIcon size="sm" variant="subtle" color="green" aria-label={t('skinInspector.k35')} onClick={(e) => (e.stopPropagation(), playSound(x))}>
-              <IconPlayerPlay size={14} />
-            </ActionIcon>
-            <div style={{ minWidth: 0 }}>
-              <Text size="sm" truncate>
-                {x.name || baseName(x.file ?? '')}
-              </Text>
-              <Text size="xs" c="dimmed">
-                {triggers.find((g) => g.value === (x.trigger ?? 'kill'))?.label}
-              </Text>
-            </div>
-            <IconChevronRight size={14} />
-          </UnstyledButton>
-        ))}
-      </div>
+    <div className="sound-row">
+      <ActionIcon size="sm" variant="subtle" color="green" aria-label={t('skinInspector.soundPlayOne', { v0: soundName(x) })} onClick={() => playSound(x)}>
+        <IconPlayerPlay size={14} />
+      </ActionIcon>
+      <UnstyledButton className="item" aria-current={current || undefined} aria-label={t('skinInspector.soundOpen', { v0: soundName(x) })} onClick={() => select({ kind: 'sound', id: x.id! })}>
+        <Text size="sm" truncate>
+          {soundName(x)}
+        </Text>
+        {group.length > 1 && (
+          <Text size="xs" c="dimmed" className="chance">
+            {percent(x, group)}
+          </Text>
+        )}
+        <IconChevronRight size={14} />
+      </UnstyledButton>
     </div>
   );
 }
 
-/** One sound: when it plays, how loud, preview and delete. */
+/** A group's head: its event, how many sounds it picks from, playing one of them as the game would, adding another. */
+function SoundGroupHead({ group }: { group: SoundGroup }) {
+  return (
+    <div className="sound-group-head">
+      <Text size="sm" fw={600} truncate>
+        {group.label}
+      </Text>
+      {group.sounds.length > 1 && (
+        <Badge size="xs" variant="light" color="green">
+          {t('skinInspector.soundGroupCount', { v0: group.sounds.length })}
+        </Badge>
+      )}
+      <span className="grow" />
+      {group.sounds.length > 1 && (
+        <Tooltip label={t('skinInspector.soundPlayGroup', { v0: group.label })}>
+          <ActionIcon size="sm" variant="subtle" color="green" aria-label={t('skinInspector.soundPlayGroup', { v0: group.label })} onClick={() => playGroup(group.sounds)}>
+            <IconArrowsShuffle size={14} />
+          </ActionIcon>
+        </Tooltip>
+      )}
+      <Tooltip label={t('skinInspector.soundAddTo', { v0: group.label })}>
+        <ActionIcon size="sm" variant="subtle" color="green" aria-label={t('skinInspector.soundAddTo', { v0: group.label })} onClick={() => void pickSound(group.trigger, group.enemyId)}>
+          <IconPlus size={14} />
+        </ActionIcon>
+      </Tooltip>
+    </div>
+  );
+}
+
+/** The skin's sounds, one block per group; a row opens its sound. */
+function Sounds() {
+  const groups = useSoundGroups();
+  return (
+    <div className="section">
+      <FeatureHead feature="sound" title={t('skinInspector.k31')} info={`${t('skinInspector.k33')} ${MAX_SECONDS} ${t('skinInspector.k34')} ${t('skinInspector.soundWeightInfo')}`}>
+        <AddSoundMenu>
+          <Button size="compact-xs" variant="light" color="green" leftSection={<IconPlus size={12} />}>
+            {t('skinInspector.k32')}
+          </Button>
+        </AddSoundMenu>
+      </FeatureHead>
+      {!groups.length && <p className="hint">{t('skinInspector.noSounds')}</p>}
+      {groups.map((g) => (
+        <div key={g.key} className="sound-group" role="group" aria-label={g.label}>
+          <SoundGroupHead group={g} />
+          <div className="list">
+            {g.sounds.map((x) => (
+              <SoundRow key={x.id} x={x} group={g.sounds} />
+            ))}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+/** One sound: when it plays (event, and for a kill which enemies), how loud, its weight in its group, and the group's
+ *  other sounds right there. */
 export function SoundInspector() {
   const id = useStore((s) => (s.selection?.kind === 'sound' ? s.selection.id : null));
   const x = useStore((s) => s.doc.sounds?.find((v) => v?.id === id));
+  const groups = useSoundGroups();
+  const enemies = useStore((s) => s.enemies);
   const triggers = triggersFor(useItem()).filter((g) => g.value !== 'always');
-  const { updateSound, removeSound, select } = useStore.getState();
+  const { updateSound, removeSound, setSoundEvent, select, edit } = useStore.getState();
   if (!x) return null;
+  // Every enemy of the game by its exact name, searchable; an enemy the game lacks (another rundown's) stays choosable.
+  const enemyOptions = [
+    { value: 'any', label: t('skinInspector.soundEnemyAny') },
+    ...[...enemies, ...(x.enemyId != null && !enemies.some((e) => e.id === x.enemyId) ? [{ id: x.enemyId }] : [])]
+      .map((e) => ({ value: String(e.id), label: enemyLabel(e.id, enemies) }))
+      .sort((a, b) => a.label.localeCompare(b.label)),
+  ];
+  const group = groups.find((g) => g.key === soundGroupKey(x));
+  const siblings = group?.sounds ?? [x];
+  const trigger = x.trigger ?? 'kill';
+  const remove = () => {
+    removeSound(x.id!);
+    const next = siblings.find((v) => v.id !== x.id);
+    select(next ? { kind: 'sound', id: next.id! } : null);
+  };
   return (
     <>
       <div className="insp-head">
         <UnstyledButton className="kind" onClick={() => select(null)}>
           ← {t('skinInspector.k31')}
         </UnstyledButton>
-        <div className="title">{x.name || baseName(x.file ?? '')}</div>
+        <div className="title">{soundName(x)}</div>
         <div className="meta">{baseName(x.file ?? '')}</div>
       </div>
       <div className="section">
         <Field label={t('skinInspector.soundWhen')}>
-          <Select value={x.trigger ?? 'kill'} data={triggers} allowDeselect={false} onChange={(v) => v && updateSound(x.id!, (s) => void (s.trigger = v as Trigger))} />
+          <Select aria-label={t('skinInspector.soundWhen')} value={trigger} data={triggers} allowDeselect={false} onChange={(v) => v && setSoundEvent(x.id!, v as Trigger, x.enemyId)} />
         </Field>
+        {trigger === 'kill' && (
+          <Field label={t('skinInspector.soundEnemy')}>
+            <Group gap={6} wrap="nowrap">
+              <Select
+                style={{ flex: 1 }}
+                aria-label={t('skinInspector.soundEnemy')}
+                value={x.enemyId != null ? String(x.enemyId) : 'any'}
+                data={enemyOptions}
+                searchable
+                nothingFoundMessage={t('skinInspector.soundEnemyNotFound')}
+                allowDeselect={false}
+                renderOption={({ option }) => (
+                  <div>
+                    <Text size="sm">{option.label}</Text>
+                    {option.value === 'any' && (
+                      <Text size="xs" c="dimmed">
+                        {t('skinInspector.soundEnemyAnyInfo')}
+                      </Text>
+                    )}
+                  </div>
+                )}
+                onChange={(v) => v && setSoundEvent(x.id!, 'kill', v === 'any' ? null : Number(v))}
+              />
+              <Info label={t('skinInspector.soundEnemyInfo')} />
+            </Group>
+          </Field>
+        )}
         <Field label={t('skinInspector.k37')}>
           <Slider
             value={Math.round((x.volume ?? 1) * 100)}
@@ -354,18 +520,58 @@ export function SoundInspector() {
             onChange={(v) => updateSound(x.id!, (s) => void (s.volume = Math.min(100, Math.max(0, v)) / 100), 'vol')}
           />
         </Field>
-        {x.trigger === 'lowAmmo' && (
+        <Field label={t('skinInspector.soundWeight')}>
+          <Group gap={6} wrap="nowrap">
+            <div style={{ flex: 1 }}>
+              <Slider value={x.weight ?? 1} min={0.5} max={10} step={0.5} label={(v) => v.toFixed(1)} onChange={(v) => updateSound(x.id!, (s) => void (s.weight = Math.min(10, Math.max(0.5, v))), 'weight')} />
+            </div>
+            <Info label={t('skinInspector.soundWeightInfo')} />
+          </Group>
+          <Text size="xs" c="dimmed">
+            {t('skinInspector.soundChance', { v0: percent(x, siblings) })}
+          </Text>
+        </Field>
+        {trigger === 'lowAmmo' && (
           <Field label={t('skinInspector.k38')}>
-            <Slider value={x.lowAmmoFraction ?? 0.2} min={0.05} max={0.9} step={0.05} onChange={(v) => updateSound(x.id!, (s) => void (s.lowAmmoFraction = v), 'low')} />
+            <Group gap={6} wrap="nowrap">
+              <div style={{ flex: 1 }}>
+                {/* One threshold per group: the plugin fires the group once, so every low-ammo sound takes the same value. */}
+                <Slider
+                  value={x.lowAmmoFraction ?? 0.2}
+                  min={0.05}
+                  max={0.9}
+                  step={0.05}
+                  onChange={(v) => edit((d) => d.sounds?.forEach((s) => s?.trigger === 'lowAmmo' && (s.lowAmmoFraction = v)), 'sound-low-ammo')}
+                />
+              </div>
+              <Info label={t('skinInspector.soundLowAmmoInfo')} />
+            </Group>
           </Field>
         )}
+      </div>
+      <div className="section">
+        <FeatureHead feature="sound" title={t('skinInspector.soundGroupOf', { v0: group?.label ?? '' })} info={t('skinInspector.soundWeightInfo')}>
+          {siblings.length > 1 && (
+            <Button size="compact-xs" variant="subtle" color="green" leftSection={<IconArrowsShuffle size={12} />} onClick={() => playGroup(siblings)}>
+              {t('skinInspector.soundPlayRandom')}
+            </Button>
+          )}
+          <Button size="compact-xs" variant="light" color="green" leftSection={<IconPlus size={12} />} aria-label={t('skinInspector.soundAddTo', { v0: group?.label ?? '' })} onClick={() => void pickSound(trigger, x.enemyId)}>
+            {t('skinInspector.soundAdd')}
+          </Button>
+        </FeatureHead>
+        <div className="list">
+          {siblings.map((v) => (
+            <SoundRow key={v.id} x={v} group={siblings} current={v.id === x.id} />
+          ))}
+        </div>
       </div>
       <div className="section">
         <Group justify="space-between">
           <Button variant="light" color="green" leftSection={<IconPlayerPlay size={14} />} onClick={() => playSound(x)}>
             {t('skinInspector.k35')}
           </Button>
-          <Button variant="default" color="red" leftSection={<IconTrash size={14} />} onClick={() => (removeSound(x.id!), select(null))}>
+          <Button variant="default" color="red" leftSection={<IconTrash size={14} />} onClick={remove}>
             {t('skinInspector.k36')}
           </Button>
         </Group>
@@ -491,6 +697,7 @@ function Overview() {
                 </div>
               )}
               {liveries > 0 && <Variants />}
+              <PlayerColors />
               <div className="section">
                 <h3>{t('skinInspector.addMore')}</h3>
                 <SimpleGrid cols={2} spacing={8}>

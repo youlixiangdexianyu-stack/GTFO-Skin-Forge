@@ -18,7 +18,8 @@ import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment
 import { baseTexturePath } from '../frames';
 import { liveryParams } from '../livery';
 import { CHANNELS, type DynamicLayer, type PreviewMaterial, type SkinDocument, type TextureChannel, type WeaponPreview } from '../protocol';
-import { materialOf } from '../store';
+import { glowOf, materialOf } from '../store';
+import { walkGear } from './refs';
 import { loadTexture, textureKey } from './textures';
 
 const SLOT: Record<TextureChannel, 'map' | 'normalMap' | 'metalnessMap' | 'emissiveMap'> = {
@@ -68,7 +69,7 @@ export function roomReflection(renderer: WebGLRenderer, lamp = '#ffffff'): Textu
 
 /** Gives every mesh one editable material per game material name, kept in `mats`. */
 export function editableMaterials(scene: Object3D, mats: Map<string, MeshStandardMaterial>) {
-  scene.traverse((o) => {
+  walkGear(scene, (o) => {
     const mesh = o as Mesh;
     if (!mesh.isMesh) return;
     const list = (Array.isArray(mesh.material) ? mesh.material : [mesh.material]) as Material[];
@@ -115,11 +116,11 @@ export function paintMaterial(
   }
   const loads: Promise<unknown>[] = [];
   const override = materialOf(doc, name);
-  const params = {
-    ...info,
+  const own = {
     ...(livery ? liveryParams(override) : {}),
     ...Object.fromEntries(Object.entries(override?.params ?? {}).filter(([, v]) => v != null)),
   };
+  const params = { ...info, ...own };
   const layers = (override?.layers ?? []).filter((l): l is DynamicLayer => !!l && l.visible !== false);
   for (const ch of CHANNELS) {
     const path = baseTexturePath(doc, preview, name, ch);
@@ -152,9 +153,9 @@ export function paintMaterial(
   mat.metalness = params.metallic ?? (hasMs ? 1 : 0.4);
   mat.roughness = params.smoothness != null ? 1 - params.smoothness : hasMs ? 1 : 0.55;
   const on = params.emissiveEnabled ?? !!mat.emissiveMap;
-  const c = params.emissiveColor ?? [1, 1, 1];
-  mat.emissive = new Color(c[0], c[1], c[2]);
-  mat.emissiveIntensity = on ? (params.emissiveIntensity ?? 1) : 0;
+  const glow = glowOf(info, own);
+  mat.emissive = new Color(glow.color[0], glow.color[1], glow.color[2]);
+  mat.emissiveIntensity = on ? glow.intensity : 0;
   // Blend mode as the game draws it: lenses see-through with a slight reflection, cutouts alpha-tested.
   const glass = info?.kind === 'glass';
   // Transparency is part of the shader (alphaTest rebuilds it by itself).

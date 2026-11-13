@@ -9,16 +9,18 @@ namespace ForgeSkin.Backend;
 // A Thunderstore skin mod: the built packs plus the `forgeskin.forge` marker the plugin looks for in each mod folder, and
 // the files Thunderstore itself requires (manifest.json, icon.png 256x256, README.md). r2modman unpacks it into
 // BepInEx/plugins/<Team>-<Name>/, where the plugin finds the marker. The mod depends on the base library.
-// In the Skins format (SkinsFormat) each pack is a skin group under Assets/Skins/, which the mod manager unpacks into
-// BepInEx/Assets/Skins/ where the Skins library looks; the mod depends on that library instead.
+// In the Skins format (SkinsFormat) the packs are skin groups under Assets/Skins/, which the mod manager unpacks into
+// BepInEx/Assets/Skins/ where the Skins library looks; the mod depends on that library instead. A gun pack is one group
+// for all the packs (one skin per gear); otherwise each pack is its own group, so a gear may get several to pick from.
 public static class ModExport
 {
-    // Thunderstore ids of the libraries the skin mods depend on.
-    const string BaseLibrary = "NAinfini-ForgeSkin-1.0.0", SkinsLibrary = "food-Skins-0.12.0";
+    // Thunderstore ids of the libraries the skin mods depend on; the base library is this release of the ForgeSkin plugin.
+    const string BaseVersion = "1.1.0"; // package-version: NAinfini-ForgeSkin
+    const string BaseLibrary = "NAinfini-ForgeSkin-" + BaseVersion, SkinsLibrary = "food-Skins-0.12.0";
     const string Marker = "forgeskin.forge";
 
     public static object Export(string[] packs, string output, string name, string version, string description, string icon,
-        string format, Func<List<CatalogItem>> catalog)
+        string format, bool gunPack, Func<List<CatalogItem>> catalog, Func<CatalogItem, Dictionary<string, GameMaterial>> materials)
     {
         if (!Regex.IsMatch(name, "^[A-Za-z0-9_]+$")) throw new BackendException("bad-request", "Mod name: letters, digits and _ only");
         if (!Regex.IsMatch(version, @"^\d+\.\d+\.\d+$")) throw new BackendException("bad-request", "Version must look like 1.0.0");
@@ -26,20 +28,27 @@ public static class ModExport
         if (packs.Length == 0) throw new BackendException("bad-request", "No skin packs to export");
         var docs = packs.Select(p => { using var pack = SkinPack.Open(p); return pack.Manifest; }).ToList();
         bool skins = format == "skins";
-        var dropped = new List<string>();
+        var dropped = new List<SkinsNote>();
 
         using var temp = new AtomicFile(output);
         using (var zip = ZipFile.Open(temp.Temp, ZipArchiveMode.Create))
         {
             Text(zip, "manifest.json", JsonSerializer.Serialize(new
             {
-                name, version_number = version, website_url = "", description, dependencies = new[] { skins ? SkinsLibrary : BaseLibrary },
+                name,
+                version_number = version,
+                website_url = "",
+                description,
+                dependencies = new[] { skins ? SkinsLibrary : BaseLibrary },
             }, new JsonSerializerOptions { WriteIndented = true }));
             using (var s = zip.CreateEntry("icon.png").Open()) Icon(icon, s);
             if (skins)
             {
                 var items = catalog();
-                for (int i = 0; i < packs.Length; i++) SkinsFormat.Write(zip, packs[i], $"Assets/Skins/{Preview.Safe(docs[i].Id)}", items, dropped);
+                bool any = gunPack
+                    ? SkinsFormat.Write(zip, $"Assets/Skins/{name}", name.Replace('_', ' '), description, "forgeskin." + name, packs, items, materials, dropped)
+                    : packs.Select((pack, i) => SkinsFormat.Write(zip, $"Assets/Skins/{Preview.Safe(docs[i].Id)}", docs[i].Name, description, "forgeskin." + docs[i].Id, [pack], items, materials, dropped)).ToList().Contains(true);
+                if (!any) throw new BackendException("bad-request", "None of these skins can go in a Skins mod (Skins skins guns, melee weapons and tools)");
             }
             else
             {

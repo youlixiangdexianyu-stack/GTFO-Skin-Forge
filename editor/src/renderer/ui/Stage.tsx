@@ -17,8 +17,8 @@ import {
   Tooltip,
 } from '@mantine/core';
 import { IconArrowsMove, IconFocusCentered, IconFolder, IconMagnet, IconRotate, IconRotate360, IconSun, IconZoomScan } from '@tabler/icons-react';
-import { playSound } from '../audio';
-import { triggersFor, type Trigger } from '../protocol';
+import { playGroup, soundGroupKey } from '../audio';
+import { triggersFor, type SkinSound, type Trigger } from '../protocol';
 import { useItem, useStore } from '../store';
 import { simulate } from '../viewport/refs';
 import { LiveryBar } from './LiveryPanel';
@@ -247,7 +247,8 @@ function EventBar() {
   const item = useItem();
   const play = (x: Trigger) => {
     simulate(x);
-    for (const s of useStore.getState().doc.sounds ?? []) if (s?.trigger === x && s.file) playSound(s);
+    // One sound of the event's group, picked as the plugin picks it (a simulated kill is of an enemy without its own sounds).
+    playGroup((useStore.getState().doc.sounds ?? []).filter((s): s is SkinSound => !!s && soundGroupKey(s) === x));
   };
   return (
     <Group className="overlay events" gap={2}>

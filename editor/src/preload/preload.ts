@@ -1,6 +1,8 @@
 import { contextBridge, ipcRenderer, webUtils, type IpcRendererEvent } from 'electron';
 
 type FileFilter = { name: string; extensions: string[] };
+/** A file the main process asks the window for (with --ai-control); see ui/PathDialog. */
+export type PathRequest = { id: number; kind: 'folder' | 'files' | 'project' | 'save'; filters: FileFilter[]; start: string };
 
 function subscribe<A extends unknown[]>(channel: string, cb: (...args: A) => void): () => void {
   const fn = (_e: IpcRendererEvent, ...args: unknown[]) => cb(...(args as A));
@@ -23,6 +25,9 @@ const api = {
     ipcRenderer.invoke('dialog:open', kind, filters, purpose),
   saveDialog: (defaultPath: string, filters: FileFilter[]): Promise<string | null> =>
     ipcRenderer.invoke('dialog:save', defaultPath, filters),
+  onPathRequest: (cb: (request: PathRequest) => void) => subscribe('dialog:ask', cb),
+  /** Answers a path request: null cancels; the result is '' when taken, else why the paths are refused. */
+  answerPath: (id: number, paths: string[] | null): Promise<string> => ipcRenderer.invoke('dialog:answer', id, paths),
   writeFile: (path: string, data: Uint8Array): Promise<void> => ipcRenderer.invoke('files:write', path, data),
   exists: (path: string): Promise<boolean> => ipcRenderer.invoke('files:exists', path),
   openPath: (path: string): Promise<string> => ipcRenderer.invoke('shell:open', path),

@@ -66,7 +66,7 @@ sealed class AmmoScreen
         else if (s.BorderColor[3] > 0.01f && bw > 0)
             gear.Child(root, "border", gear.Own(Frame(w, h, bw)), _border = Surface(gear, s.BorderColor, _gain), -Step);
         if (s.PanelColor[3] > 0.01f)
-            gear.Child(root, "panel", gear.Own(Quad(w - 2 * bw, h - 2 * bw)), Surface(gear, s.PanelColor, s.GlowInGame ? SkinnedGear.EmissionUnit : 0f), 0f);
+            gear.Child(root, "panel", gear.Own(Quad(w - 2 * bw, h - 2 * bw)), Surface(gear, s.PanelColor, s.GlowInGame ? MaterialParams.EmissionUnit : 0f), 0f);
 
         _text = Surface(gear, s.TextColor, _gain);
         Surfaces.Remove(_text);
@@ -180,7 +180,7 @@ sealed class AmmoScreen
         if (gain > 0) SkinnedGear.SetEmission(m, colour * gain);
         else
         {
-            if (m.HasProperty(SkinnedGear.EmissiveColor)) m.SetColor(SkinnedGear.EmissiveColor, Color.black);
+            ForgeVisual.Glow.SetColour(m, Color.black);
             SkinnedGear.SetEmissive(m, false);
         }
     }

@@ -113,8 +113,11 @@ public sealed class GlbWriter
             ["asset"] = new JsonObject { ["version"] = "2.0", ["generator"] = "ForgeSkin" },
             ["scene"] = 0,
             ["scenes"] = new JsonArray(new JsonObject { ["nodes"] = new JsonArray(root) }),
-            ["nodes"] = _nodes, ["meshes"] = _meshes, ["materials"] = _materials,
-            ["accessors"] = _accessors, ["bufferViews"] = _views,
+            ["nodes"] = _nodes,
+            ["meshes"] = _meshes,
+            ["materials"] = _materials,
+            ["accessors"] = _accessors,
+            ["bufferViews"] = _views,
             ["buffers"] = new JsonArray(new JsonObject { ["byteLength"] = _bin.Length }),
         };
         if (_materials.Count == 0) json.Remove("materials");

@@ -1,0 +1,80 @@
+/* The tutorial pages: contents on the left, the page on the right. */
+.help-header {
+  border-bottom: 1px solid var(--line-soft);
+  padding: 12px 18px;
+}
+.help {
+  display: grid;
+  grid-template-columns: 230px 1fr;
+  height: min(720px, 76vh);
+}
+.help-nav {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 14px 10px 14px 14px;
+  border-right: 1px solid var(--line-soft);
+  min-height: 0;
+}
+.help-list {
+  flex: 1;
+  min-height: 0;
+}
+.help-body {
+  overflow-y: auto;
+  padding: 18px 28px 28px;
+  user-select: text;
+  line-height: 1.65;
+  font-size: 14px;
+  color: var(--bone);
+}
+.help-body h1 {
+  margin: 0 0 12px;
+  font-family: var(--stencil);
+  font-weight: 400;
+  font-size: 24px;
+  color: var(--flare);
+}
+.help-page p,
+.help-page ul,
+.help-page ol {
+  margin: 0 0 12px;
+}
+.help-page li {
+  margin: 3px 0;
+}
+.help-page strong {
+  color: #fff;
+}
+.help-page a {
+  color: var(--scan);
+  cursor: pointer;
+}
+.help-page code {
+  font-family: 'JetBrains Mono', Consolas, monospace;
+  font-size: 12.5px;
+  padding: 1px 5px;
+  border-radius: 4px;
+  background: var(--ground);
+  color: var(--holo);
+}
+.help-page table {
+  border-collapse: collapse;
+  margin: 4px 0 14px;
+  width: 100%;
+}
+.help-page th,
+.help-page td {
+  text-align: left;
+  vertical-align: top;
+  padding: 7px 10px;
+  border-bottom: 1px solid var(--line);
+}
+.help-page th {
+  color: var(--dust);
+  font-weight: 600;
+}
+.help-page td:first-child {
+  white-space: nowrap;
+  color: var(--warn);
+}

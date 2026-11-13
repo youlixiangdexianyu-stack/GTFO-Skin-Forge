@@ -1,0 +1,54 @@
+/* The spotlight guide. Above menus and popovers (Mantine 300), below toasts (400), so errors stay readable. */
+.tour {
+  position: fixed;
+  inset: 0;
+  z-index: 350;
+  pointer-events: none;
+}
+/* The lit control: everything around it darkens through the hole's own shadow; the hole itself lets clicks through. */
+.tour-hole {
+  position: fixed;
+  box-shadow: 0 0 0 200vmax rgba(5, 6, 8, 0.8);
+}
+.tour-hole[data-lit='true'] {
+  outline: 2px solid var(--flare);
+  animation: tour-pulse 1.6s ease-in-out infinite;
+}
+@keyframes tour-pulse {
+  0%,
+  100% {
+    box-shadow:
+      0 0 0 200vmax rgba(5, 6, 8, 0.8),
+      0 0 0 3px rgba(255, 122, 47, 0.25),
+      0 0 18px 4px rgba(255, 122, 47, 0.45);
+  }
+  50% {
+    box-shadow:
+      0 0 0 200vmax rgba(5, 6, 8, 0.8),
+      0 0 0 7px rgba(255, 122, 47, 0.12),
+      0 0 26px 8px rgba(255, 122, 47, 0.3);
+  }
+}
+/* Four transparent panes around the hole take every click outside it. */
+.tour-block {
+  position: fixed;
+  pointer-events: auto;
+}
+.tour-card {
+  position: fixed;
+  left: 0;
+  top: 0;
+  width: 340px;
+  padding: 14px 16px;
+  pointer-events: auto;
+  background: var(--raised);
+  border: 1px solid var(--line);
+  border-top: 3px solid var(--flare);
+  border-radius: 8px;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.55);
+  color: var(--bone);
+}
+.tour-title {
+  color: var(--flare);
+  font-size: 16px;
+}

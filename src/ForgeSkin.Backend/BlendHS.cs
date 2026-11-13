@@ -6,7 +6,7 @@ namespace ForgeSkin.Backend;
 // GTFO/BlendHS materials have no albedo texture: the shader picks one of up to 16 colour layers per vertex
 // (vertex colour R * 16 = layer index), blends the layer's two colours _L<i>P1 and _L<i>P2 by vertex colour G, and shades
 // with the baked AO/curvature map _AOCurveTex (G channel). This bakes that into UV-space Albedo and MetallicSmoothness
-// textures so the editor shows the game's look and users have a base to paint on. Detail textures, dust, grime and damage
+// (the gear shader's layout: metallic R, smoothness G) textures so the editor shows the game's look and users have a base to paint on. Detail textures, dust, grime and damage
 // the shader adds on top are not reproduced.
 public static class BlendHS
 {
@@ -38,7 +38,7 @@ public static class BlendHS
         {
             var bg = Surface(background);
             ca.Clear(Srgb(bg.Rgb));
-            cm.Clear(new SKColor(0, 0, 0, (byte)Math.Round(255 * bg.Smooth)));
+            cm.Clear(new SKColor(0, (byte)Math.Round(255 * bg.Smooth), 0, 255));
             foreach (var (mesh, sub) in uses)
             {
                 if (mesh.Uv0 == null || mesh.Colors == null || sub >= mesh.SubMeshes.Count) continue;
@@ -46,7 +46,7 @@ public static class BlendHS
                 var points = idx.Select(i => new SKPoint(mesh.Uv0[i].X * w, (1 - mesh.Uv0[i].Y) * h)).ToArray();
                 var surfaces = idx.Select(i => Surface(mesh.Colors[i])).ToArray();
                 ca.DrawVertices(SKVertexMode.Triangles, points, surfaces.Select(s => Srgb(s.Rgb)).ToArray(), paint);
-                cm.DrawVertices(SKVertexMode.Triangles, points, surfaces.Select(s => new SKColor(0, 0, 0, (byte)Math.Round(255 * s.Smooth))).ToArray(), paint);
+                cm.DrawVertices(SKVertexMode.Triangles, points, surfaces.Select(s => new SKColor(0, (byte)Math.Round(255 * s.Smooth), 0, 255)).ToArray(), paint);
             }
         }
 

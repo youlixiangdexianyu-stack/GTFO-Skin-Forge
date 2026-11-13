@@ -1,7 +1,8 @@
 // Thumbnails: each catalog item's preview (the weapon gallery) and each skin (the skin strip), rendered offscreen with
 // the 3D view's materials, one at a time while the app is idle, and kept in localStorage (per viewer convenience). Each
 // image is stored with a hash of what it came from (preview, and the skin's document), so a change renders it again.
-// Skin thumbnails show textures and material settings, not attachments or dynamic layers.
+// The skin open in the 3D view is drawn with the view's materials (livery and dynamic layers as shown); attachments are
+// left out. The weapon gallery shows each item's last edited skin.
 import {
   AmbientLight,
   Box3,
@@ -21,6 +22,8 @@ import { call, fileUrl, type SkinDocument, type WeaponPreview } from '../protoco
 import { useStore } from '../store';
 import { unityDirToThree } from '../space';
 import { holdTextures, releaseTextures } from './textures';
+import { LiveryPreview } from './liveryPreview';
+import { viewRefs } from './refs';
 import { editableMaterials, paintMaterial, restoreUnityNames, roomReflection } from './weaponScene';
 
 export const THUMB_EVENT = 'sf:thumbs';
@@ -37,7 +40,8 @@ const hash = (text: string) => [...text].reduce((h, c) => Math.imul(h ^ c.charCo
 
 let running = false;
 
-async function render(renderer: WebGLRenderer, env: Texture, preview: WeaponPreview, doc = {} as SkinDocument): Promise<string | null> {
+/** `live`: the 3D view's materials, copied as they are (livery and layers included) instead of painted from `doc`. */
+async function render(renderer: WebGLRenderer, env: Texture, preview: WeaponPreview, doc = {} as SkinDocument, live?: Map<string, MeshStandardMaterial>): Promise<string | null> {
   const gltf = await new GLTFLoader().loadAsync(fileUrl(preview.glb));
   restoreUnityNames(gltf);
   const scene = new Scene();
@@ -59,8 +63,13 @@ async function render(renderer: WebGLRenderer, env: Texture, preview: WeaponPrev
   holdTextures(keep);
   try {
     await Promise.allSettled(
-      [...mats].flatMap(([name, mat]) =>
-        paintMaterial(
+      [...mats].flatMap(([name, mat]) => {
+        const shown = live?.get(name);
+        if (shown) {
+          mat.copy(shown);
+          return [];
+        }
+        return paintMaterial(
           mat,
           name,
           doc,
@@ -68,8 +77,8 @@ async function render(renderer: WebGLRenderer, env: Texture, preview: WeaponPrev
           keep,
           () => false,
           () => undefined,
-        ),
-      ),
+        );
+      }),
     );
     gltf.scene.updateMatrixWorld(true);
     const box = new Box3();
@@ -149,20 +158,36 @@ export async function fillThumbnails(): Promise<void> {
 const skinKey = (skinId: string) => key(`skin.${skinId}`);
 export const skinThumbOf = (skinId: string) => read(skinKey(skinId));
 
-/** Renders one skin of `weaponId` (its document, or the file at `path`) unless the stored image is still current. */
-export async function skinThumbnail(weaponId: string, skinId: string, source: { doc?: SkinDocument; path?: string }): Promise<void> {
+/** The weapon gallery's image of an item: its last edited skin (what the 3D view showed of it), else the plain item. */
+export const galleryThumbOf = (weaponId: string) => {
+  const skin = read(`sf.skin.${weaponId}`);
+  return (skin && skinThumbOf(skin)) || thumbOf(weaponId);
+};
+
+/**
+ * Renders one skin of `weaponId` (its document, or the file at `path`) unless the stored image is still current. The
+ * skin open in the 3D view (`live`) is drawn with the view's own materials, so its livery and layers show; another skin
+ * keeps such an image as long as its document is unchanged, else gets textures and material settings only.
+ */
+export async function skinThumbnail(weaponId: string, skinId: string, source: { doc?: SkinDocument; path?: string; live?: boolean }): Promise<void> {
   await idle();
   try {
     const doc = source.doc ?? (source.path ? await call('project.load', { path: source.path }) : null);
     if (!doc) return;
-    const preview = useStore.getState().weaponId === weaponId && useStore.getState().preview ? useStore.getState().preview! : await call('preview.weapon', { id: weaponId });
-    // Editor state (pending matches, previews) does not change the look.
-    const src = String(hash(JSON.stringify(preview) + JSON.stringify({ ...doc, editor: null })));
-    if (skinThumbOf(skinId) && read(`${skinKey(skinId)}.src`) === src) return;
-    const url = await withRenderer((renderer, env) => render(renderer, env, preview, doc));
+    const s = useStore.getState();
+    const preview = s.weaponId === weaponId && s.preview ? s.preview : await call('preview.weapon', { id: weaponId });
+    // Editor state (pending matches, previews) does not change the look, except the colour variant the view shows.
+    const variant = (doc.editor as { variant?: string } | null | undefined)?.variant ?? null;
+    const src = String(hash(JSON.stringify(preview) + JSON.stringify({ ...doc, editor: variant })));
+    const stored = skinThumbOf(skinId) && read(`${skinKey(skinId)}.src`);
+    const live = source.live && s.weaponId === weaponId && s.preview === preview ? viewRefs.materials : null;
+    if (stored === `${src}|live` || (!live && stored === src)) return;
+    // The view's livery redraws (each a frame or two) finish first.
+    for (let i = 0; live && LiveryPreview.busy > 0 && i < 50; i++) await new Promise((r) => setTimeout(r, 100));
+    const url = await withRenderer((renderer, env) => render(renderer, env, preview, doc, live ?? undefined));
     if (!url) return;
     localStorage.setItem(skinKey(skinId), url);
-    localStorage.setItem(`${skinKey(skinId)}.src`, src);
+    localStorage.setItem(`${skinKey(skinId)}.src`, live ? `${src}|live` : src);
     window.dispatchEvent(new Event(THUMB_EVENT));
   } catch {
     /* a missing thumbnail only shows the weapon's own */

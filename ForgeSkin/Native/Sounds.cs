@@ -33,16 +33,35 @@ static class SkinSounds
     }
 }
 
-// A skin sound on its trigger. Until its library has decoded (a moment after a pack loads) and for a sound whose decoding
-// failed (logged by the audio kit) the trigger plays nothing.
-sealed class SoundCue : ITriggered
+// The skin's sounds on one trigger: each firing picks one of them, chance = its weight / the total, and plays it. Until a
+// pack's library has decoded (a moment after it loads) and for a sound whose decoding failed (logged by the audio kit) the
+// trigger plays nothing.
+sealed class SoundPickCue : ITriggered
 {
-    readonly AudioCue _cue;
-    readonly PlayOptions _options;
+    public readonly record struct Pick(AudioCue Cue, PlayOptions Options, float Weight);
 
-    public SoundCue(AudioCue cue, float volume) { _cue = cue; _options = new PlayOptions { Gain = Math.Clamp(volume, 0, 1) }; }
+    readonly Pick[] _picks;
+    readonly float _total;
 
-    public void Start(float time) { if (_cue.IsReady) _cue.Play(_options); }
+    public SoundPickCue(Pick[] picks)
+    {
+        _picks = picks;
+        foreach (var p in picks) _total += MathF.Max(0, p.Weight);
+    }
+
+    public void Start(float time)
+    {
+        if (_total <= 0) return;
+        float roll = UnityEngine.Random.value * _total;
+        for (int i = 0; i < _picks.Length; i++)
+        {
+            roll -= MathF.Max(0, _picks[i].Weight);
+            if (roll >= 0 && i < _picks.Length - 1) continue;
+            var pick = _picks[i];
+            if (pick.Cue.IsReady) pick.Cue.Play(pick.Options);
+            return;
+        }
+    }
 
     public void Update(float time) { }
 }

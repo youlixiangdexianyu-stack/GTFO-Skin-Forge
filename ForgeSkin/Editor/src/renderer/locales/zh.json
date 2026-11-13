@@ -265,6 +265,7 @@
   "skinInspector.k36": "删除",
   "skinInspector.k37": "音量 %",
   "skinInspector.k38": "低于",
+  "skinInspector.soundWeight": "权重（同一事件多个音效随机播一个）",
   "skinInspector.k39": "换皮",
   "skinInspector.k40": "选一把武器",
   "skinInspector.k41": "已替换 {{v0}} 张贴图",

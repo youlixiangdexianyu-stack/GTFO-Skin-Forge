@@ -2,6 +2,7 @@ using Gear;
 using HarmonyLib;
 using Il2CppInterop.Runtime.InteropTypes.Arrays;
 using Player;
+using ForgeAudio;
 using ForgeSkin.Format;
 using ForgeVisual;
 using UnityEngine;
@@ -414,13 +415,19 @@ sealed class SkinnedGear
             foreach (var a in doc!.Attachments)
                 if (a.Visible) { Attach(weapon, a); attachments++; }
         // First-person gear only: the third-person copy of the same weapon would play every sound a second time.
+        // Sounds on one trigger are a group: each firing plays one of them, picked by weight. For LowAmmo the group's
+        // largest fraction sets when it fires, so no sound on that trigger is left out.
         int sounds = 0;
         if (weapon != null && _item != null && _item.m_isFirstPerson)
-            foreach (var s in doc!.Sounds)
+            foreach (var group in doc!.Sounds.GroupBy(s => s.Trigger))
             {
-                On(s.Trigger, new SoundCue(weapon.Sound(s.File), s.Volume), s.LowAmmoFraction);
-                sounds++;
-                ForgeSkinPlugin.Info($"{_label}: sound {s.Id} ({s.Name}) {s.File} -> {s.Trigger}, volume {s.Volume}");
+                var picks = group.Select(s => new SoundPickCue.Pick(weapon.Sound(s.File), new PlayOptions { Gain = Math.Clamp(s.Volume, 0, 1) }, s.Weight)).ToArray();
+                On(group.Key, new SoundPickCue(picks), group.Max(s => s.LowAmmoFraction));
+                foreach (var s in group)
+                {
+                    sounds++;
+                    ForgeSkinPlugin.Info($"{_label}: sound {s.Id} ({s.Name}) {s.File} -> {s.Trigger}, volume {s.Volume}, weight {s.Weight}");
+                }
             }
         // After the attachments, so hiding a part also hides what is mounted under it. Other parts mounted under it
         // (a sight on the receiver's sight align) are theirs to hide.

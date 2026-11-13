@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Several sounds can share one event: each firing plays one of them, picked at random by weight (a new Weight slider in the sound inspector shows the chance).
 - New events for layers, attachment effects and sounds: Downed and Revived — the local player going down and their revive completing. They belong to the item in their hands (the one held last, when going down stows it).
 - Needs ForgeCore, which the mod manager installs with it. `ForgeSkin.Format.dll` and `NVorbis.dll` are no longer shipped; the pack reader is part of `ForgeSkin.Plugin.dll`.
 - Skin sounds play through ForgeCore's audio, so the game's sound volume now applies to them.

@@ -158,8 +158,8 @@ public sealed class SkinPack : IDisposable
         }
         foreach (var s in doc.Sounds)
         {
-            if (s.Trigger == Trigger.Always || !Fraction(s.Volume) || !Fraction(s.LowAmmoFraction))
-                throw new SkinFormatException("bad-trigger", $"{s.Id}: a sound needs an event trigger, a volume 0 to 1 and a lowAmmoFraction 0 to 1");
+            if (s.Trigger == Trigger.Always || !Fraction(s.Volume) || !Fraction(s.LowAmmoFraction) || !(s.Weight > 0) || float.IsInfinity(s.Weight))
+                throw new SkinFormatException("bad-trigger", $"{s.Id}: a sound needs an event trigger, a volume 0 to 1, a lowAmmoFraction 0 to 1 and a weight above 0");
             File(s.File, s.Id, audio: true);
         }
         foreach (var a in doc.Attachments)

@@ -329,9 +329,15 @@ function Sounds() {
 export function SoundInspector() {
   const id = useStore((s) => (s.selection?.kind === 'sound' ? s.selection.id : null));
   const x = useStore((s) => s.doc.sounds?.find((v) => v?.id === id));
+  const all = useStore((s) => s.doc.sounds);
   const triggers = triggersFor(useItem()).filter((g) => g.value !== 'always');
   const { updateSound, removeSound, select } = useStore.getState();
   if (!x) return null;
+  // One sound of a trigger's group plays per firing: its share of the group's weights, shown with the weight.
+  const weight = Math.max(0.1, x.weight ?? 1);
+  const groupTotal = (all ?? []).filter((v): v is SkinSound => !!v && (v.trigger ?? 'kill') === (x.trigger ?? 'kill'))
+    .reduce((a, v) => a + Math.max(0.1, v.weight ?? 1), 0);
+  const share = Math.round((weight / groupTotal) * 100);
   return (
     <>
       <div className="insp-head">
@@ -360,6 +366,16 @@ export function SoundInspector() {
             <Slider value={x.lowAmmoFraction ?? 0.2} min={0.05} max={0.9} step={0.05} onChange={(v) => updateSound(x.id!, (s) => void (s.lowAmmoFraction = v), 'low')} />
           </Field>
         )}
+        <Field label={t('skinInspector.soundWeight')}>
+          <Slider
+            value={weight}
+            min={0.1}
+            max={10}
+            step={0.1}
+            label={() => `${weight.toFixed(1)} · ${share}%`}
+            onChange={(v) => updateSound(x.id!, (s) => void (s.weight = v), 'weight')}
+          />
+        </Field>
       </div>
       <div className="section">
         <Group justify="space-between">

@@ -789,7 +789,7 @@ export const useStore = create<State>((set, get) => ({
       const out = `${dirName(s.projectPath ?? autosavePath(s.weaponId!))}\\sounds\\${id}.ogg`;
       await window.forge.writeFile(out, ogg);
       get().edit((d) => {
-        d.sounds = [...(d.sounds ?? []), { id, name: baseName(file).replace(/\.[^.]+$/, ''), trigger: 'kill', file: out, volume: 1, lowAmmoFraction: 0.2 }];
+        d.sounds = [...(d.sounds ?? []), { id, name: baseName(file).replace(/\.[^.]+$/, ''), trigger: 'kill', file: out, volume: 1, lowAmmoFraction: 0.2, weight: 1 }];
       });
     } catch (e) {
       if (e instanceof AudioError) get().toast('error', e.message);

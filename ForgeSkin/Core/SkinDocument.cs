@@ -286,6 +286,9 @@ public sealed class SkinSound
     public string File { get; set; } = "";             // Ogg Vorbis, mono or stereo, at most 10 seconds
     public float Volume { get; set; } = 1;              // 0-1
     public float LowAmmoFraction { get; set; } = 0.2f;  // LowAmmo: plays when clip / clip size falls below this
+    // Relative chance to be the sound that plays when the trigger fires: with several sounds on one trigger, each firing
+    // picks one, its chance = its weight / the weights of all sounds on that trigger.
+    public float Weight { get; set; } = 1;
 }
 
 // Events of the local player's own gear (PLAN §3.4).

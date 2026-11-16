@@ -144,14 +144,8 @@ function ensureSlot(d: SkinDocument, s: ColorSlot, shown: number[]) {
   else if (s.kind === 'attachmentColor' && a) a.material ??= { textures: {}, color: [...rgb, 1], unlit: false, params: {} };
 }
 
-/** At most this many player colours in one skin (SkinPack.MaxPlayerColors: each travels to teammates by its index). */
-export const MAX_PLAYER_COLORS = 8;
-
 /** Lets players change the colour at `s`: as a new player colour (`to` null), or as part of player colour `to` (it takes that colour). */
 export function linkSlot(s: ColorSlot, shown: number[], to: string | null) {
-  const { doc, toast } = useStore.getState();
-  const others = (doc.playerColors ?? []).filter((c) => c?.slots?.some((x) => x && !sameSlot(x, s)));
-  if (!(to && others.some((c) => c?.id === to)) && others.length >= MAX_PLAYER_COLORS) return toast('error', t('playerColors.tooMany', { v0: MAX_PLAYER_COLORS }));
   useStore.getState().edit((d) => {
     ensureSlot(d, s, shown);
     for (const c of d.playerColors ?? []) if (c?.slots) c.slots = c.slots.filter((x) => x && !sameSlot(x, s));

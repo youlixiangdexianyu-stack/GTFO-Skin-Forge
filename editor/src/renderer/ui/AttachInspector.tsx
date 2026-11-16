@@ -15,7 +15,7 @@ import {
   IconWind,
   IconX,
 } from '@tabler/icons-react';
-import { CHARM_DEFAULTS, MAX_PER_GEAR, MAX_SEGMENTS, type CharmSettings } from '../viewport/charm';
+import { CHARM_DEFAULTS, maxSegments, type CharmSettings } from '../viewport/charm';
 import { InspectorTabs } from './InspectorTabs';
 import { newHologram } from '../hologram';
 import { FontPicker } from './FontPicker';
@@ -266,22 +266,19 @@ const MOTIONS: { motion: CharmMotion; icon: typeof IconWind }[] = [
 /** Charm: a rope or chain from the attachment's origin with the model hanging on its end; the game's rope (the backend's charm.simulate). */
 function CharmSection({ a }: { a: Attachment }) {
   const { updateAttachment } = useStore.getState();
-  const charms = useStore((s) => (s.doc.attachments ?? []).filter((x) => x?.charm).length);
   const c = a.charm;
   const set = <K extends keyof CharmSettings>(k: K, v: CharmSettings[K], key = true) =>
     updateAttachment(a.id!, (x) => void (x.charm && (x.charm[k] = v as never)), key ? `${a.id}-charm-${k}` : undefined);
-  const full = !c && charms >= MAX_PER_GEAR;
   return (
     <Section
       title={t('charm.title')}
       icon={IconPaperclip}
       color="var(--warn)"
-      info={full ? t('charm.full', { v0: MAX_PER_GEAR }) : c ? `${t('charm.info')} ${t('charm.pointHint')}` : t('charm.info')}
+      info={c ? `${t('charm.info')} ${t('charm.pointHint')}` : t('charm.info')}
       actions={
         <Switch
           aria-label={t('charm.title')}
           checked={!!c}
-          disabled={full}
           onChange={(e) => {
             const on = e.currentTarget.checked;
             updateAttachment(a.id!, (x) => void (x.charm = on ? newCharm() : null));
@@ -318,7 +315,7 @@ function CharmSection({ a }: { a: Attachment }) {
             <Slider value={c.stiffness ?? CHARM_DEFAULTS.stiffness} onChange={(v) => set('stiffness', v)} />
           </Field>
           <Field label={t('charm.segments')}>
-            <Slider value={c.segments ?? CHARM_DEFAULTS.segments} min={1} max={MAX_SEGMENTS} step={1} onChange={(v) => set('segments', Math.round(v))} />
+            <Slider value={c.segments ?? CHARM_DEFAULTS.segments} min={1} max={maxSegments(c.length ?? CHARM_DEFAULTS.length)} step={1} onChange={(v) => set('segments', Math.round(v))} />
           </Field>
           <div className="switch-row" style={{ marginTop: 10 }}>
             <Switch label={t('charm.collide')} checked={c.collide ?? CHARM_DEFAULTS.collide} onChange={(e) => set('collide', e.currentTarget.checked, false)} />

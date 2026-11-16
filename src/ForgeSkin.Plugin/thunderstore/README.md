@@ -1,5 +1,14 @@
 # ForgeSkin
 
+![The ForgeSkin editor: works, the 3D view and a part's livery layers](https://raw.githubusercontent.com/NAinfini/GTFO-Forge-Mods/main/ForgeSkin/docs/images/editor-overview.jpg)
+
+- **Skin editor (Windows)**: download the installer (`Setup.exe`) from https://github.com/NAinfini/GTFO-Forge-Mods/releases/latest
+- **Source code**: https://github.com/NAinfini/GTFO-Forge-Mods
+- **Skins**: each skin is its own mod. Install skin mods from Thunderstore, or make your own with the editor.
+
+皮肤编辑器（Windows）下载：https://github.com/NAinfini/GTFO-Forge-Mods/releases/latest 里的安装包 `Setup.exe`。源码：https://github.com/NAinfini/GTFO-Forge-Mods。
+皮肤是单独的模组：在 Thunderstore 上装，或用编辑器自己做。
+
 Applies ForgeSkin weapon skins to your own gear in GTFO: replaced textures and materials, models mounted on the gun,
 live screens (ammo, kills, damage dealt and taken, accuracy, health, infection — as digits or a bar), animated layers,
 flashes and sounds played on game events (kill, hit, miss, fire, reload, aim, low ammo, empty, going down, revived, ...;
@@ -15,7 +24,36 @@ figure wears it too.
 You normally don't install this by hand: skin mods made with the ForgeSkin editor list it as a dependency, so your mod
 manager installs it with them.
 
-Please also update ForgeCore to 1.0.2 (请同时更新 ForgeCore 到 1.0.2).
+Please also update ForgeCore to 1.0.1 (请同时更新 ForgeCore 到 1.0.1).
+
+## Get skins, make skins
+
+Forge provides the editor and this base mod; the skins themselves are mods their authors publish on Thunderstore.
+
+- **Get skins**: find skin mods on Thunderstore and install them with your mod manager, like any other mod (they list
+  ForgeSkin as a dependency), then pick them in the lobby with the SKINS button.
+- **Make or change skins**: the ForgeSkin editor, for Windows. Download the installer (`Setup.exe`, updates itself) or the
+  portable zip from the latest release: https://github.com/NAinfini/GTFO-Forge-Mods/releases/latest. Its built-in tutorial
+  (the book button) walks through a first gun skin and a character.
+- **Share skins**: in the editor, **Export** → **Export as Thunderstore skin mod…** makes a zip ready for Thunderstore;
+  upload it there yourself. Teammates see your skin once they install that mod.
+- **A single skin file**: a `.forgeskin` someone sent you goes into `BepInEx/ForgeSkin/skins/` of your profile.
+- **Source**: https://github.com/NAinfini/GTFO-Forge-Mods.
+
+下载编辑器：https://github.com/NAinfini/GTFO-Forge-Mods/releases/latest （安装版 `Setup.exe` 会自动更新，也有免安装 zip）。
+皮肤由作者各自发布在 Thunderstore，用模组管理器安装；自己做的皮肤在编辑器里点 **导出** → **导出为 Thunderstore 皮肤模组…**，
+再自己上传到 Thunderstore。单个 `.forgeskin` 皮肤文件放进档案的 `BepInEx/ForgeSkin/skins/`。装好后在大厅点 SKINS 选用。
+
+## Screenshots
+
+![The Critical Line skin on the Omneco LRG, rendered in the editor](https://raw.githubusercontent.com/NAinfini/GTFO-Forge-Mods/main/ForgeSkin/docs/images/rifle-editor-render.jpg)
+![A sniper skin, rendered in the editor](https://raw.githubusercontent.com/NAinfini/GTFO-Forge-Mods/main/ForgeSkin/docs/images/sniper-editor-render.jpg)
+![A live ammo screen on a skinned pistol](https://raw.githubusercontent.com/NAinfini/GTFO-Forge-Mods/main/ForgeSkin/docs/images/gun-live-ammo-screen.jpg)
+![A skinned pistol in a level](https://raw.githubusercontent.com/NAinfini/GTFO-Forge-Mods/main/ForgeSkin/docs/images/gun-glitch-corridor.jpg)
+![The editor's works list and a pistol skin with a charm](https://raw.githubusercontent.com/NAinfini/GTFO-Forge-Mods/main/ForgeSkin/docs/images/editor-works-list.jpg)
+![The lobby skin picker, choosing a character](https://raw.githubusercontent.com/NAinfini/GTFO-Forge-Mods/main/ForgeSkin/docs/images/picker-characters.jpg)
+![Imported character models in the lobby](https://raw.githubusercontent.com/NAinfini/GTFO-Forge-Mods/main/ForgeSkin/docs/images/lobby-character-skins.jpg)
+![A teammate's skinned rifle, seen from your side](https://raw.githubusercontent.com/NAinfini/GTFO-Forge-Mods/main/ForgeSkin/docs/images/teammate-sees-your-skin.jpg)
 
 Your skins show on your gear: in your hands, on a sentry or mine you placed, on the magazines your gun drops, and on
 pickups lying in the level whose item has a skin (they keep it when you pick them up). Teammates who have the same skin mod

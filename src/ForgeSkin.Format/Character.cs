@@ -28,11 +28,10 @@ public sealed class CharacterSkin
 {
     /// <summary>The target key of every character skin (SkinTarget.Weapon and the picker's slot).</summary>
     public const string Target = "character";
-    public const int MaxChains = 16, MaxStrands = 32, MaxStrandBones = 32, MaxCapsules = ChainState.MaxCapsules;
     public const float MaxRadius = 0.5f;
 
     // The model: ForgeCore ImportedModels format 2 (a skinned mesh with its own humanoid skeleton). `descriptor` is the JSON descriptor
-    // (ImportedModelDescriptor, format 2, its limits: at most 256 bones, 1,000,000 vertices, 32 materials and textures), `mesh` its
+    // (ImportedModelDescriptor, format 2, with only its technical bounds: MaxBones, MaxTextureSide and MaxArray), `mesh` its
     // mesh file (FMSH format 2), `textures` its PNGs in the descriptor's order. The plugin checks each file's SHA-256 against the
     // descriptor before building the model.
     public CharacterModelFiles Model { get; set; } = new();
@@ -80,7 +79,7 @@ public sealed class CharacterArms
 public sealed class CharacterSprings
 {
     public List<SpringChain> Chains { get; set; } = new();
-    // Shared by every chain: what they are kept out of (at most CharacterSkin.MaxCapsules).
+    // Shared by every chain: what they are kept out of.
     public List<SpringCapsule> Capsules { get; set; } = new();
 }
 

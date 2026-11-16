@@ -6,7 +6,7 @@
 param([Parameter(Mandatory)][string]$BepInEx)
 $ErrorActionPreference = 'Stop'
 $root = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
-$core = Join-Path $BepInEx 'plugins/NAinfini-ForgeCore'
+$core = Join-Path $BepInEx 'plugins/NAinfini-ForgeCore/ForgeCore'
 if (-not (Test-Path (Join-Path $core 'ForgeCore.dll'))) { throw "ForgeCore is not installed in this profile ($core); install NAinfini-ForgeCore with the mod manager first" }
 dotnet build (Join-Path $root 'src/ForgeSkin.Plugin') -c Release "-p:GTFOBepInExPath=$BepInEx" --nologo -v q
 if ($LASTEXITCODE) { throw "plugin build failed (exit $LASTEXITCODE)" }

@@ -2,8 +2,7 @@
 // colour fading up to a lighter one, the same flicker and lit outline), placed from the open gear's parts. Each element is
 // an ordinary shape attachment afterwards; its default name (attachmentName) names its set.
 import { Vector3, type Box3 } from 'three';
-import { MAX_CODE_EFFECTS } from './codeFx';
-import { hologramEffects, newHologram, skinAccent } from './hologram';
+import { newHologram, skinAccent } from './hologram';
 import { t } from './i18n';
 import { addShape, type ShapeKind } from './shapes';
 import { useStore } from './store';
@@ -119,9 +118,8 @@ function stripSet(): { part: string; elements: Element[] } | null {
 const BUILD: Record<HoloSet, () => { part: string; elements: Element[] } | null> = { sight: sightSet, barrel: barrelSet, strip: stripSet };
 
 /**
- * Adds a hologram set on the open gear. The lit outline costs one code effect per element; when the skin has too few of
- * its 8 left, the set comes without it and a message says so. Resolves to the new attachments' ids (empty when the gear
- * has no model to place them on).
+ * Adds a hologram set on the open gear, each element with the lit outline (one code effect per element). Resolves to the new
+ * attachments' ids (empty when the gear has no model to place them on).
  */
 export async function addHoloSet(set: HoloSet): Promise<string[]> {
   const s = useStore.getState();
@@ -130,8 +128,6 @@ export async function addHoloSet(set: HoloSet): Promise<string[]> {
     s.toast('error', t('holoSets.noPart'));
     return [];
   }
-  const used = (s.doc.codeEffects?.length ?? 0) + hologramEffects(s.doc).length;
-  const glow = used + plan.elements.length <= MAX_CODE_EFFECTS;
   const accent = skinAccent(s.doc);
   const top = accent.slice(0, 3).map((v) => v + (1 - v) * 0.6);
   const ids: string[] = [];
@@ -146,11 +142,10 @@ export async function addHoloSet(set: HoloSet): Promise<string[]> {
         a.position = e.position;
         a.rotation = e.rotation ?? [0, 0, 0];
         a.material!.color = accent;
-        a.hologram = { ...newHologram(), flicker: 0.12, opacity: 0.9, color2: top, edgeGlow: glow ? 0.4 : 0 };
+        a.hologram = { ...newHologram(), flicker: 0.12, opacity: 0.9, color2: top, edgeGlow: 0.4 };
       },
     });
     if (id) ids.push(id);
   }
-  if (!glow) s.toast('info', t('holoSets.noGlow', { v0: plan.elements.length, v1: MAX_CODE_EFFECTS - used }));
   return ids;
 }

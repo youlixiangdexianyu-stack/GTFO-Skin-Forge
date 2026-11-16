@@ -22,6 +22,7 @@
   "picker.teammateMissing": "{0}'s {1} wears a skin you do not have, so you see its original look. {2}",
   "picker.teammateMismatch": "{0}'s {1} wears {2} in a different version from yours, so you see its original look. {3}",
   "picker.teammateInstall": "Install {0} from Thunderstore to see it.",
+  "chat.teammateMissing": "{0} is wearing a skin you have not installed, so you see their original look. {1}",
   "picker.adjust": "ADJUST",
   "picker.previewLoading": "Preparing the preview…",
   "picker.previewOld": "This pack has no preview. Export it again with the latest ForgeSkin editor to get one.",

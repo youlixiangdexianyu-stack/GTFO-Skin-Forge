@@ -13,7 +13,8 @@ namespace ForgeSkin.Plugin;
 // the game's body pose every frame. Everything is ForgeCore's: the model is built by ImportedModels (format 2), the pose copy with its
 // fingers and the arms reaching the grip is Models.CopyPose over HumanRig's links, hair and skirts are Chains bound after the copy, and the
 // original person is hidden by Persons.Hide (counted, so an exosuit hiding the same pilot does not show them again). The model hangs on
-// the body through PlayerLooks.Hang (a hidden person keeps it, the own-body view draws it, a copy of the body leaves it out). The local
+// the body through PlayerLooks.Hang (this look's own hold keeps it, a hold that is not a look, an exosuit worn over the person, hides it with
+// the person until it lets go; the own-body view draws it, a copy of the body leaves it out). The local
 // player wears their own pick; a teammate the character their look names (a pack installed here with the same content, else the
 // original person); a bot always the original. The shared look (Looks, character and gear skins together) is also ForgeCore's player
 // look (PlayerLooks): a replay stand-in asks for it, wears the character on its own body and its weapons' skins through Hold. A model
@@ -62,7 +63,13 @@ static class Characters
 
         public void Hold(ItemEquippable item)
         {
-            if (!Released && item != null && Gear.TryGetValue(SkinnedGear.KeyOf(item), out var worn)) Held.Add(SkinnedGear.Dress(item, worn));
+            if (Released || item == null) return;
+            var key = SkinnedGear.KeyOf(item);
+            if (Gear.TryGetValue(key, out var worn)) { Held.Add(SkinnedGear.Dress(item, worn)); return; }
+            // Never silent: a gear whose id cannot be worked out here matches no skin of the look; any other key is a gear the look has no skin for.
+            if (key == SkinTarget.GearKey(0))
+                ForgeSkinPlugin.Fail("skin-look-gear-unknown", $"a stand-in's {item.PublicName}: its gear range matches no gear here, so the look's skins ({string.Join(", ", Gear.Keys)}) cannot be matched to it; shown in its original look");
+            else ForgeSkinPlugin.Note($"a stand-in's {item.PublicName} ({key}): the look has no skin for it ({(Gear.Count == 0 ? "none" : string.Join(", ", Gear.Keys))}); shown in its original look");
         }
 
         public void Release()
@@ -96,9 +103,13 @@ static class Characters
 
     static bool _ownChanged;
 
-    // The skins the worn models need kept loaded (a stand-in's gear keeps its own, as every gear does).
+    // The skins the worn models need kept loaded (a stand-in's gear keeps its own, as every gear does), and the characters the players
+    // here wear while no body shows them (between the lobby and the level, a dead body): kept for as long as the player picks it or a
+    // teammate's look names it, so the drop never frees a model the landing wears again.
     public static void InUse(HashSet<Skin> used)
     {
+        if (Skins.Own(CharacterSkin.Target) is { } own) used.Add(own);
+        Looks.Wearing(CharacterSkin.Target, used);
         foreach (var (_, worn) in ByAgent.Values) used.Add(worn.Skin);
         foreach (var (_, worn) in InLobby.Values) used.Add(worn.Skin);
         StandIns.RemoveAll(d => d.Released || d.Person == null || NativeObjects.Gone(d.Person.Model));
@@ -119,12 +130,21 @@ static class Characters
     static bool Lost()
     {
         foreach (var (_, worn) in ByAgent.Values)
-            if (worn.Hide is { Active: false } || worn.Arms is { Alive: false } || NativeObjects.Gone(worn.Model)) return true;
+            if (Loss(worn) != null) return true;
         // A figure the lobby rebuilt; one it has not built yet keeps Lobby waiting.
         foreach (var (body, worn) in InLobby.Values)
             if (NativeObjects.Gone(worn.Model) || NativeObjects.Gone(body) || worn.Hide is { Active: false }) return true;
         return false;
     }
+
+    const string ArmsLost = "its first-person arms are gone";
+
+    // What a player's worn character lost (null: nothing; ArmsLost: only the local player's first-person arms).
+    static string? Loss(Worn worn) =>
+        NativeObjects.Gone(worn.Model) ? "its model is gone"
+        : worn.Hide is not { Active: true } ? "the person's hold ended"
+        : worn.Arms is { Alive: false } ? ArmsLost
+        : null;
 
     static readonly List<(IntPtr Bar, Animator Body, SNet_Player Player)> FiguresNow = new();
 
@@ -212,7 +232,17 @@ static class Characters
             var want = agent.Owner is { } owner ? Wanted(owner) : null;
             if (ByAgent.TryGetValue(agent.Pointer, out var had))
             {
-                if (had.Worn.Skin == want && had.Worn.Hide is { Active: true } && had.Worn.Arms is not { Alive: false } && !NativeObjects.Gone(had.Worn.Model)) continue;
+                var loss = had.Worn.Skin == want ? Loss(had.Worn) : "another character is worn now";
+                if (loss == null) continue;
+                // Only the first-person arms went (the game built that body again): those alone are worn anew, the model stays.
+                if (loss == ArmsLost)
+                {
+                    had.Worn.Arms!.Destroy();
+                    had.Worn.Arms = Arms(had.Worn.Skin, agent, Label + " " + had.Worn.Skin.Doc.Id);
+                    ForgeSkinPlugin.Info($"character {had.Worn.Skin.Doc.Id} by {agent.Owner?.NickName}: {loss}, worn on the new ones");
+                    continue;
+                }
+                ForgeSkinPlugin.Info($"character {had.Worn.Skin.Doc.Id} by {agent.Owner?.NickName} taken off: {loss}");
                 had.Worn.Release();
                 ByAgent.Remove(agent.Pointer);
             }

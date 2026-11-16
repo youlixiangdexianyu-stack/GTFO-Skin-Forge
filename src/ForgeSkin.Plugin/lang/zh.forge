@@ -22,6 +22,7 @@
   "picker.teammateMissing": "{0} 的 {1} 用的皮肤你没装，你看到的是原版外观。{2}",
   "picker.teammateMismatch": "{0} 的 {1} 用的皮肤「{2}」和你装的不是同一版，你看到的是原版外观。{3}",
   "picker.teammateInstall": "在 Thunderstore 装 {0} 就能看到。",
+  "chat.teammateMissing": "{0} 穿着你没装的皮肤，你看到的是原版外观。{1}",
   "picker.adjust": "调整",
   "picker.previewLoading": "预览图准备中……",
   "picker.previewOld": "这个皮肤包没有预览图，用新版 ForgeSkin 编辑器重新导出一次就有了。",

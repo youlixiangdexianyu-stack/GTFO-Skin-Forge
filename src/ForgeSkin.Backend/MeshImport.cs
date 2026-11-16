@@ -50,11 +50,8 @@ public static class MeshImport
         };
     }
 
-    // Longest side of an imported model's picture: at most a 2k texture, as the pack's 2k size.
-    public const int MaxPicture = 2048;
-
-    // The model's pictures as the attachment's material textures (`<stem>_<channel>.png`): at most MaxPicture on the longest
-    // side, metallic-roughness turned into the gear shader's metallic (R) and smoothness (G). A picture that cannot be read
+    // The model's pictures as the attachment's material textures (`<stem>_<channel>.png`): their own size, scaled down only past
+    // the side the game can make a texture of (Dds.MaxSide), metallic-roughness turned into the gear shader's metallic (R) and smoothness (G). A picture that cannot be read
     // is left out with a note; every kept one notes its size.
     static Dictionary<TextureChannel, string> Pictures(GlbLook look, string stem)
     {
@@ -67,7 +64,7 @@ public static class MeshImport
             catch (SkinFormatException) { look.Notes.Add($"{channel}: not a readable picture; left out"); return; }
             using (bmp)
             {
-                double k = Math.Min(1, (double)MaxPicture / Math.Max(bmp.Width, bmp.Height));
+                double k = Math.Min(1, (double)Dds.MaxSide / Math.Max(bmp.Width, bmp.Height));
                 int w = Math.Max(1, (int)Math.Round(bmp.Width * k)), h = Math.Max(1, (int)Math.Round(bmp.Height * k));
                 look.Notes.Add(k < 1 ? $"{channel}: {bmp.Width}x{bmp.Height} scaled to {w}x{h}" : $"{channel}: {w}x{h}");
                 // Named by the model's content: an earlier import's file is the same picture (and may be open in the editor).

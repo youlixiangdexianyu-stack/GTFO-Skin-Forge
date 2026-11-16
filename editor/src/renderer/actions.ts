@@ -1,8 +1,7 @@
 // Multi-step user actions: apply to game, export pack, export OBJ.
 import { bakeGlyphs, bakeLayers, baseTexturePath, layerName, loadImage, writePng } from './frames';
 import { bakeLivery, hasLivery, liveryName, paintTint, tintedPicture } from './livery';
-import { bakeHolograms, tooManyEffects } from './hologram';
-import { MAX_CODE_EFFECTS } from './codeFx';
+import { bakeHolograms } from './hologram';
 import { drawUvWireframe, liveryViewReady, meshesOf, uvRenderer } from './viewport/liveryGpu';
 import { LiveryPreview } from './viewport/liveryPreview';
 import { skinPicture } from './viewport/thumbnails';
@@ -93,7 +92,6 @@ export function problems(doc = st().doc, item = currentItem()): Problem[] {
   const pending = Object.keys(editorOf(doc).pending);
   if (pending.length) out.push({ text: t('actions.k1', { v0: pending.length }), select: partOf(pending[0].slice(0, pending[0].lastIndexOf('|'))) });
   out.push(...badVectors(doc));
-  if (tooManyEffects(doc)) out.push({ text: t('hologram.tooManyEffects', { v0: MAX_CODE_EFFECTS }) });
   const hasContent = (doc.materials ?? []).some(
     (m) => m && !attachedOf(m.material) && (Object.keys(m.textures ?? {}).length || m.layers?.length || hasLivery(m) || Object.values(m.params ?? {}).some((v) => v != null)),
   );

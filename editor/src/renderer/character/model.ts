@@ -49,9 +49,6 @@ import { COLLIDER_JOINTS, COLLIDER_RADIUS, matchOf, useCharacter, type BoneRow, 
 export const BODY_JOINTS = HumanJoints;
 export const FINGER_JOINTS = HumanFingerJoints;
 
-// The format's limits (ForgeCore ImportedModelDescriptor): more bones or vertices and the game will not build the model.
-export const MAX_BONES = 256,
-  MAX_VERTICES = 1_000_000;
 const CANONICAL_HIP = 1.04;
 
 let scene: Group | null = null;
@@ -244,7 +241,6 @@ export async function importModel(path: string) {
       playing: false,
     });
     toast('ok', t(r.vrm ? 'character.importedVrm' : 'character.imported', { v0: loaded.rows.length, v1: r.springs.length, v2: r.capsules.length }));
-    if (r.dropped.chains || r.dropped.capsules) toast('info', t('character.droppedOver', { v0: r.dropped.chains, v1: r.dropped.capsules }));
     await checkMatch();
     await saveCharacter();
     void stageIcon();

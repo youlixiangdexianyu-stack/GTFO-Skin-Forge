@@ -15,7 +15,7 @@ public static class CharacterPreview
     public sealed record Node(int Parent, double[] At);
     public sealed record Frame(double Time, double[] M, double[] Body, List<double[]>? Capsules);
 
-    public const int MaxFrames = 1200, MaxNodes = 512;
+    public const int MaxFrames = 1200;
 
     /// <summary>The author values each preset starts from, for the editor's sliders (the format's own preset rule, SpringChain.Spec).</summary>
     public static object Presets() => Enum.GetValues<SpringKind>().ToDictionary(k => JsonNamingPolicy.CamelCase.ConvertName(k.ToString()), k =>
@@ -32,7 +32,7 @@ public static class CharacterPreview
         if (frames.Count is 0 or > MaxFrames) throw new BackendException("bad-request", $"frames: 1 to {MaxFrames}");
         if (frames.Any(f => f.M is not { Length: 16 } || f.Body is not { Length: 3 } || f.Capsules?.Any(c => c is not { Length: 7 }) == true))
             throw new BackendException("bad-request", "frames: m has 16 numbers, body 3, a capsule 7");
-        if (nodes.Count is < 2 or > MaxNodes || nodes[0].Parent != -1) throw new BackendException("bad-request", $"nodes: a root first, 2 to {MaxNodes}");
+        if (nodes.Count < 2 || nodes[0].Parent != -1) throw new BackendException("bad-request", "nodes: a root first, two or more");
         var spec = chain.Spec();
         var shape = new ChainShape();
         foreach (var n in nodes)
@@ -72,7 +72,7 @@ public static class CharacterPreview
     /// <summary>The game's pose copy for a bone match (canonical joint to model bone), as the motion preview plays it: per canonical
     /// joint the link ForgeCore's HumanRig gives (the joint its frame points at or comes from, -1 for none) and whether the copy leaves
     /// it out (PoseSolver.Skipped: an optional joint the model lacks, a hand with only some of its fingers, every finger when the
-    /// playing body has none), and the limbs that reach (HumanRig.ArmReach: upper, lower, end, anchor).</summary>
+    /// playing body has none), and the limbs that reach (HumanRig.ArmReach: upper, lower, end).</summary>
     public static object Links(Dictionary<string, string> bones, bool fingers)
     {
         var names = new string?[ClipRig.Count];
@@ -89,7 +89,7 @@ public static class CharacterPreview
         return new
         {
             links = links.Select((l, j) => new { joint = ClipRig.Names[j], toward = l.Toward, from = l.From, skip = skip[j] }),
-            reach = HumanRig.ArmReach.Select(r => new[] { r.Upper, r.Lower, r.End, r.Anchor }),
+            reach = HumanRig.ArmReach.Select(r => new[] { r.Upper, r.Lower, r.End }),
         };
     }
 

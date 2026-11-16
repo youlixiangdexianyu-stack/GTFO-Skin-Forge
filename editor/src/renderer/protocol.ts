@@ -526,8 +526,8 @@ export interface Methods {
     },
   ];
   /** The game's pose copy for a bone match (ForgeCore HumanRig): per canonical joint its link and whether the copy leaves it out;
-   * `fingers`: the playing body has finger joints. `reach`: upper, lower, end and anchor joint of each limb that reaches. */
-  'character.links': [{ bones: Record<string, string>; fingers: boolean }, { links: { joint: string; toward: number; from: number; skip: boolean }[]; reach: [number, number, number, number][] }];
+   * `fingers`: the playing body has finger joints. `reach`: upper, lower and end joint of each limb that reaches. */
+  'character.links': [{ bones: Record<string, string>; fingers: boolean }, { links: { joint: string; toward: number; from: number; skip: boolean }[]; reach: [number, number, number][] }];
   /** The first-person arms the game cuts from the model for a bone match (ForgeCore HumanRig.ArmWear and MeshCut), the materials in
    * `hide` left out: the kept vertices in Unity's axes (base64 little-endian: positions, normals float32 ×3, uvs ×2, bone indices
    * uint16 ×4 into `bones`, weights float32 ×4) and per submesh its material and triangles (uint32). */

@@ -331,12 +331,12 @@ sealed partial class SkinnedGear
         }
     }
 
-    // A teammate's look arrived, changed or went: their gear puts on what it says now.
+    // A teammate's look arrived, changed or went: their gear whose entry changed (Looks keeps an unchanged entry) puts on what it says now.
     public static void OwnerChanged(ulong owner)
     {
         var now = ForgeCore.Frame.UnscaledTime;
         foreach (var gear in Live)
-            if (gear._owner == owner) gear.Refresh(now);
+            if (gear._owner == owner && (gear._waiting || gear._key.Length == 0 || Looks.WornBy(owner, gear._key) != gear._mate)) gear.Refresh(now);
         Characters.Dirty();
     }
 
@@ -542,7 +542,9 @@ sealed partial class SkinnedGear
     {
         if (_root == null) { Revert(); return; }
         _key = _fixedKey ?? (_holder != null ? SkinTarget.GearKey(GearId(_holder)) : SkinTarget.ItemKey(_itemId));
-        var wanted = ForgeVisual.GunMount.Of(_holder) != null ? new List<Skin>() : _dressed != null ? new List<Skin> { _dressed.Skin } : Skins.Wanted(_key);
+        // A teammate's gear waits for the skin their look names, never this player's own pick for the same gear (Apply wears only theirs).
+        var wanted = ForgeVisual.GunMount.Of(_holder) != null ? new List<Skin>() : _dressed != null ? new List<Skin> { _dressed.Skin }
+            : _owner != 0 ? Looks.Wanted(_owner, _key) : Skins.Wanted(_key);
         if (!Skins.Ready(wanted, now))
         {
             if (!_waiting)
@@ -679,7 +681,7 @@ sealed partial class SkinnedGear
     {
         if (_worldLooks.TryGetValue(look.Pointer, out var made)) return made;
         made = Own(new Material(look) { name = look.name + " world" });
-        Fps(made, false);
+        LitMaterial.SetFirstPerson(made, false);
         return _worldLooks[look.Pointer] = made;
     }
 
@@ -730,10 +732,10 @@ sealed partial class SkinnedGear
                 // The game's first-person switch since went to our material (TakeBack), so the original lacks its keyword:
                 // the renderer gets what the game would have given it, a copy of the original with the keyword. A dropped
                 // magazine is never switched.
-                if (_fps is bool fps && !_dropped.Contains(renderer.Pointer) && original[i] != null && original[i].IsKeywordEnabled(FpsKeyword) != fps)
+                if (_fps is bool fps && !_dropped.Contains(renderer.Pointer) && original[i] != null && LitMaterial.IsFirstPerson(original[i]) != fps)
                 {
                     original[i] = new Material(original[i]) { name = original[i].name };
-                    Fps(original[i], fps);
+                    LitMaterial.SetFirstPerson(original[i], fps);
                 }
             }
             renderer.sharedMaterials = original;
@@ -1005,7 +1007,7 @@ sealed partial class SkinnedGear
         // Assets only referenced from here must survive the game's Resources.UnloadUnusedAssets.
         if (typeof(T) != typeof(GameObject)) ForgeCore.Assets.Keep(o);
         // A material made after the game's first-person switch starts with the projection the gear is drawn with now.
-        if (_fps is bool fps && o is Material m) Fps(m, fps);
+        if (_fps is bool fps && o is Material m) LitMaterial.SetFirstPerson(m, fps);
         _created.Add(o);
         return o;
     }
@@ -1181,7 +1183,7 @@ sealed partial class SkinnedGear
     }
 
     // The gear's body for charms to stay out of: per part, the box (in the gear's frame) around its models' bounds,
-    // leaving out other parts mounted under it and ForgeSkin's own objects. At most CharmRope.MaxBoxes, largest first.
+    // leaving out other parts mounted under it and ForgeSkin's own objects.
     List<(double[] Min, double[] Max)> BodyBoxes()
     {
         var self = _root.transform;
@@ -1213,9 +1215,6 @@ sealed partial class SkinnedGear
             }
             if (lo.x <= hi.x) boxes.Add((new double[] { lo.x, lo.y, lo.z }, new double[] { hi.x, hi.y, hi.z }));
         }
-        static double Volume((double[] Min, double[] Max) b) => (b.Max[0] - b.Min[0]) * (b.Max[1] - b.Min[1]) * (b.Max[2] - b.Min[2]);
-        boxes.Sort((x, y) => Volume(y).CompareTo(Volume(x)));
-        if (boxes.Count > CharmRope.MaxBoxes) boxes.RemoveRange(CharmRope.MaxBoxes, boxes.Count - CharmRope.MaxBoxes);
         return boxes;
     }
 
@@ -1311,7 +1310,7 @@ sealed partial class SkinnedGear
             for (int i = 0; i < mine.Length; i++)
             {
                 if (original != null && mine[i] == original[i]) continue;
-                Fps(mine[i], enable);
+                LitMaterial.SetFirstPerson(mine[i], enable);
                 if (i >= now.Length || now[i] == mine[i]) continue;
                 ForgeSkinPlugin.Info($"{_label}: fps rendering {enable}: {renderer.name}[{i}] was given {Describe(now[i])}, ours {Describe(mine[i])} put back");
                 if (now[i] != null && now[i].name.StartsWith(mine[i].name, StringComparison.Ordinal)) Object.Destroy(now[i]);
@@ -1321,14 +1320,7 @@ sealed partial class SkinnedGear
         }
     }
 
-    const string FpsKeyword = "ENABLE_FPS_RENDERING";
     bool? _fps; // the last first-person switch the game made on this gear; null before the first
-
-    static void Fps(Material m, bool on)
-    {
-        if (on) m.EnableKeyword(FpsKeyword);
-        else m.DisableKeyword(FpsKeyword);
-    }
 
     void SyncLayers()
     {

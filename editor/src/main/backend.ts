@@ -1,6 +1,5 @@
 // Spawns ForgeSkin.Backend and speaks PLAN §3.3: one JSON object per line on stdio.
 import { execFileSync, spawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
-import { existsSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { createInterface } from 'node:readline';
 import { app } from 'electron';
@@ -38,17 +37,8 @@ export class Backend {
     } catch (e) {
       this.onLog(`backend build failed: ${(e as { stdout?: Buffer }).stdout?.toString() ?? e}`);
     }
-    // The backend installs the plugin from artifacts/forge-skin-release/publish/plugin (Install.PluginSource); when that is
-    // missing (artifacts/ gets cleaned) stage it with the release script's plugin-only mode.
-    const root = join(project, '..', '..', '..');
-    if (!existsSync(join(root, 'artifacts', 'forge-skin-release', 'publish', 'plugin', 'ForgeSkin', 'ForgeSkin.Plugin.dll'))) {
-      this.onLog('plugin staging missing, building it (build-editor-release.ps1 -PluginOnly)');
-      try {
-        execFileSync('pwsh', ['-NoProfile', '-File', join(root, 'Mods', 'ForgeSkin', 'tools', 'build-editor-release.ps1'), '-PluginOnly'], { cwd: root, windowsHide: true, stdio: 'pipe' });
-      } catch (e) {
-        this.onLog(`plugin staging failed: ${(e as { stdout?: Buffer }).stdout?.toString() ?? e}`);
-      }
-    }
+    // The backend installs the plugin from artifacts/forge-skin-release/publish/plugin (Install.PluginSource), which
+    // build-editor-release.ps1 -PluginOnly -ForgeCore <release-set ForgeCore zip> stages; without it the backend says so (no-plugin).
     const file = join(project, 'bin', 'Debug', 'net10.0', 'win-x64', 'ForgeSkin.Backend.exe');
     return { file, args: dataArgs, cwd: dirname(file) };
   }

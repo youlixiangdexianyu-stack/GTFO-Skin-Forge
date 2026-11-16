@@ -9,7 +9,7 @@
     <AssemblyName>ForgeSkin.Plugin</AssemblyName>
     <RootNamespace>ForgeSkin.Plugin</RootNamespace>
     <IsPackable>false</IsPackable>
-    <Version>1.1.1</Version>
+    <Version>1.0.0</Version>
     <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
     <!-- Line numbers in error logs without the builder's local paths. -->
     <DebugType>embedded</DebugType>
@@ -17,7 +17,7 @@
   </PropertyGroup>
   <!-- ForgeCore comes built, from the profile's installed package; -p:ForgeCoreDll=<path> picks another build. -->
   <PropertyGroup>
-    <ForgeCoreDll Condition="'$(ForgeCoreDll)' == ''">$(GTFOBepInExPath)/plugins/NAinfini-ForgeCore/ForgeCore.dll</ForgeCoreDll>
+    <ForgeCoreDll Condition="'$(ForgeCoreDll)' == ''">$(GTFOBepInExPath)/plugins/NAinfini-ForgeCore/ForgeCore/ForgeCore.dll</ForgeCoreDll>
   </PropertyGroup>
   <Target Name="RequireGameReferences" BeforeTargets="ResolveReferences">
     <Error Condition="!Exists('$(GTFOBepInExPath)/core/BepInEx.Unity.IL2CPP.dll') or !Exists('$(GTFOBepInExPath)/interop/Modules-ASM.dll')"

@@ -61,6 +61,11 @@ static class Holograms
             m = gear.Own(new Material(source) { name = Name });
             // The shader reads its picture from _EmissiveMap (no _MainTex, see the properties Source logs).
             if (picture != null) m.SetTexture(m.HasProperty(SkinnedGear.EmissiveMap) ? SkinnedGear.EmissiveMap : SkinnedGear.MainTex, picture);
+            // Drawn through the gear's own camera. The game draws a material with the first-person item camera only when it supports it
+            // (_SupportsFPSRendering: SetFPSRendering switches only such materials) and ENABLE_FPS_RENDERING is on; the source is whichever
+            // game display was found first (a held one, or one in the world), so its state is not this gear's. The surface takes the gear's
+            // part material's (the template, which the game switched), and TakeBack keeps the keyword in step with the game's later switches.
+            ForgeVisual.LitMaterial.SetFirstPerson(m, ForgeVisual.LitMaterial.IsFirstPerson(template));
         }
         else
         {

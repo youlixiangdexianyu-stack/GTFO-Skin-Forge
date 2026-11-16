@@ -7,11 +7,11 @@ namespace ForgeSkin.Format;
 // A player's look as it travels to teammates: ForgeSkin's lobby value "look" over ForgeCore Net, one per player, written only by
 // that player (PLAN §4.11). Little-endian, in this order:
 //   version 1 | flags 1 (0; reserved)
-//   character: skin number 4 (0: none, nothing else follows) | content hash 8 | pack name | change count 1 | changes
+//   character: skin number 4 (0: none, nothing else follows) | content hash 8 | pack name | change count 2 | changes
 //   gear count 1 (at most MaxGear), then per gear: gear id 4 | skin number 4 (not 0) | content hash 8 | pack name | wear stage 1 |
-//     change count 1 | changes
+//     change count 2 | changes
 //   pack name: length 1 (at most MaxPackName) and that many UTF-8 bytes; empty for a pack not from a Thunderstore mod
-//   change: id 1 = slot << 5 | kind << 3 | name, then by kind: param or transform 2 (the value across the catalogue's range as
+//   change: kind 1 | slot 2 | name 2, then by kind: param or transform 2 (the value across the catalogue's range as
 //     0..65535), effect colour 4 (sRGB RGBA bytes), player colour 3 (sRGB RGB bytes); slot is the code effect's index in the skin
 //     (0 for a player colour), name the catalogue index of the parameter, colour or transform entry, or the player colour's index.
 // A whole value over MaxBytes, a version this plugin does not know, a count or length past the end, or bytes left over is malformed:
@@ -20,12 +20,9 @@ public enum LookChange : byte { Param = 0, EffectColor = 1, Transform = 2, Playe
 
 public enum LookFit { Fits, Missing, Mismatch, BadValue }
 
-public readonly record struct LookTweak(byte Id, uint Value)
+public readonly record struct LookTweak(LookChange Kind, ushort Slot, ushort Name, uint Value)
 {
-    public LookChange Kind => (LookChange)(Id >> 3 & 3);
-    public int Slot => Id >> 5;
-    public int Name => Id & 7;
-    public static LookTweak Of(int slot, LookChange kind, int name, uint value) => new((byte)(slot << 5 | (int)kind << 3 | name), value);
+    public static LookTweak Of(int slot, LookChange kind, int name, uint value) => new(kind, (ushort)slot, (ushort)name, value);
     public static int Size(LookChange kind) => kind switch { LookChange.EffectColor => 4, LookChange.PlayerColor => 3, _ => 2 };
 }
 
@@ -46,7 +43,9 @@ public sealed class LookGear : LookSkin
 public sealed class Look
 {
     public const byte Version = 1;
-    public const int MaxBytes = 6 * 1024, MaxGear = 8, MaxPackName = 64;
+    // MaxBytes is the largest message ForgeCore Net's lobby value carries (NetChannel.DefaultMaxBytes); a code effect and a player
+    // colour travel by a 16-bit index, so a skin's first 65536 of each can be changed by its wearer.
+    public const int MaxBytes = 64 * 1024, MaxGear = 8, MaxPackName = 64, MaxIndex = ushort.MaxValue + 1;
 
     public LookSkin? Character;
     public readonly List<LookGear> Gear = new();
@@ -69,11 +68,11 @@ public sealed class Look
         }
         void Tweaks(LookSkin s)
         {
-            if (s.Tweaks.Count > byte.MaxValue) throw new InvalidOperationException($"{s.Tweaks.Count} changes");
-            b.Add((byte)s.Tweaks.Count);
+            if (s.Tweaks.Count > ushort.MaxValue) throw new InvalidOperationException($"{s.Tweaks.Count} changes");
+            b.Add((byte)s.Tweaks.Count); b.Add((byte)(s.Tweaks.Count >> 8));
             foreach (var t in s.Tweaks)
             {
-                b.Add(t.Id);
+                b.Add((byte)t.Kind); b.Add((byte)t.Slot); b.Add((byte)(t.Slot >> 8)); b.Add((byte)t.Name); b.Add((byte)(t.Name >> 8));
                 for (int i = 0; i < LookTweak.Size(t.Kind); i++) b.Add((byte)(t.Value >> (8 * i)));
             }
         }
@@ -116,16 +115,17 @@ public sealed class Look
         }
         bool Tweaks(LookSkin s)
         {
-            if (!Take(1)) return false;
-            for (int count = data[at - 1]; count > 0; count--)
+            if (!Take(2)) return false;
+            for (int count = data[at - 2] | data[at - 1] << 8; count > 0; count--)
             {
-                if (!Take(1)) return false;
-                byte id = data[at - 1];
-                int size = LookTweak.Size((LookChange)(id >> 3 & 3));
+                if (!Take(5) || data[at - 5] > (byte)LookChange.PlayerColor) return false;
+                var kind = (LookChange)data[at - 5];
+                ushort slot = (ushort)(data[at - 4] | data[at - 3] << 8), name = (ushort)(data[at - 2] | data[at - 1] << 8);
+                int size = LookTweak.Size(kind);
                 if (!Take(size)) return false;
                 uint v = 0;
                 for (int i = 0; i < size; i++) v |= (uint)data[at - size + i] << (8 * i);
-                s.Tweaks.Add(new LookTweak(id, v));
+                s.Tweaks.Add(new LookTweak(kind, slot, name, v));
             }
             return true;
         }
@@ -177,11 +177,11 @@ public sealed class Look
         into.Clear();
         if (picks == null || picks.Count == 0) return;
         var colours = doc.PlayerColors ?? new();
-        for (int i = 0; i < colours.Count && i < SkinPack.MaxPlayerColors; i++)
+        for (int i = 0; i < colours.Count && i < MaxIndex; i++)
             if (picks.TryGetValue(colours[i].Id, out var rgb) && rgb.Length == 3 && Rgb(rgb) != Rgb(colours[i].Default))
                 into.Add(LookTweak.Of(0, LookChange.PlayerColor, i, Rgb(rgb)));
         var effects = doc.CodeEffects ?? new();
-        for (int e = 0; e < effects.Count && e < CodeEffects.MaxPerSkin; e++)
+        for (int e = 0; e < effects.Count && e < MaxIndex; e++)
         {
             var fx = effects[e];
             if (fx.PlayerTweaks is not { } allowed || CodeEffects.Catalog.Find(fx.Program) is not { } program) continue;

@@ -79,7 +79,7 @@ export async function clipPlayer(id: string): Promise<ClipPlayer | null> {
       modelRoot: model,
       hostBones,
       hostRoot: body,
-      reach: reach.filter((r) => r.every((j) => index.has(j))).map((r) => r.map((j) => index.get(j)!) as [number, number, number, number]),
+      reach: reach.filter((r) => r.every((j) => index.has(j))).map((r) => r.map((j) => index.get(j)!) as [number, number, number]),
     });
     if (!pose) throw new Error('the hips stand too low');
     const mixer = new AnimationMixer(body);

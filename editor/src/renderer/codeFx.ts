@@ -5,9 +5,6 @@ import type { CodeEffect, SkinDocument } from './protocol';
 import { ensureMaterial, uid, useStore } from './store';
 import { t } from './i18n';
 
-/** At most this many code effects in one skin (Core CodeEffects.MaxPerSkin). */
-export const MAX_CODE_EFFECTS = 8;
-
 export function syncCodeEffects(d: SkinDocument) {
   if (!d.codeEffects?.length) return;
   const keep = d.codeEffects.filter((e) => !!e && (e.material ? true : !!d.attachments?.find((a) => a?.id === e.attachment)?.mesh));
@@ -17,8 +14,7 @@ export function syncCodeEffects(d: SkinDocument) {
 
 /** A new effect (the flow-lines program at its defaults) on a material of `part` or on an attachment's model; it opens. */
 export function addCodeEffect(target: { material: string; part: string } | { attachment: string }) {
-  const { doc, edit, select, toast } = useStore.getState();
-  if ((doc.codeEffects?.length ?? 0) >= MAX_CODE_EFFECTS) return toast('error', t('codeFx.tooMany', { v0: MAX_CODE_EFFECTS }));
+  const { edit, select } = useStore.getState();
   const id = uid();
   edit((d) => {
     const e: CodeEffect = { id, name: t('codeFx.newName', { v0: (d.codeEffects?.length ?? 0) + 1 }), program: 'flowLines', params: {}, colors: {} };

@@ -72,12 +72,6 @@ const MESSAGES: Record<string, string> = {
   get 'no-plugin'() {
     return t('errors.noPlugin');
   },
-  get 'forge-core-old'() {
-    return t('errors.forgeCoreOld');
-  },
-  get 'forge-skin-old'() {
-    return t('errors.forgeSkinOld');
-  },
   get 'nothing-to-apply'() {
     return t('errors.nothingToApply');
   },

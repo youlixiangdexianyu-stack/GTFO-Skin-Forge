@@ -22,7 +22,7 @@ import {
   type Texture,
 } from 'three';
 import { holdTextures, loadTexture, releaseTextures, textureKey } from './textures';
-import { CHARM_DEFAULTS, MAX_BOXES, type CharmSettings } from './charm';
+import { CHARM_DEFAULTS, type CharmSettings } from './charm';
 import { motionMatrix, MOTION_SECONDS, PREVIEW_FPS, SETTLE_SECONDS } from './motion';
 import { baseTexturePath, borderCanvas, glyphCanvas, GLYPHS, isAmmo, isBounded, isPercent, screenDigits, screenTextCanvas } from '../frames';
 import { loadFont } from '../fonts';
@@ -411,7 +411,7 @@ function playEffects(g: Group, a: Attachment) {
 // backend, whose frames are drawn back in the still one, so the gun stays put on screen while the charm swings as it does in a
 // first-person view. A motion is followed by SETTLE_SECONDS held still, so the charm comes to rest on screen.
 /** The gear's body as the rope takes it: per part, the box (in the gear root's frame) around its models' geometry, leaving
- * out other parts' nodes, attachments and models the game does not show; at most MAX_BOXES, largest first. */
+ * out other parts' nodes, attachments and models the game does not show. */
 function bodyBoxes(): { min: number[]; max: number[] }[] {
   const root = viewRefs.root;
   if (!root) return [];
@@ -420,8 +420,7 @@ function bodyBoxes(): { min: number[]; max: number[] }[] {
     const box = partBox(part, root);
     if (!box.isEmpty()) out.push({ min: box.min.toArray(), max: box.max.toArray() });
   }
-  const volume = (b: { min: number[]; max: number[] }) => (b.max[0] - b.min[0]) * (b.max[1] - b.min[1]) * (b.max[2] - b.min[2]);
-  return out.sort((a, b) => volume(b) - volume(a)).slice(0, MAX_BOXES);
+  return out;
 }
 
 /** The pendant's centre below its origin, as the plugin takes it from the model's bounds (a screen hangs by its middle). */

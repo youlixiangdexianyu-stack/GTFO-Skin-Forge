@@ -28,6 +28,5 @@ export const CHARM_DEFAULTS = {
   collide: true,
 };
 
-export const MAX_SEGMENTS = 12,
-  MAX_PER_GEAR = 4,
-  MAX_BOXES = 12;
+/** No rope piece is shorter than this (ChainState.MinPiece): the most segments a rope of `length` metres bends in. */
+export const maxSegments = (length: number) => Math.max(1, Math.floor(length / 0.005));

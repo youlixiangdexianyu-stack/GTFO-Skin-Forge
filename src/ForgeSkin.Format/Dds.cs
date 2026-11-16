@@ -11,7 +11,7 @@ namespace ForgeSkin.Format;
 public sealed class Dds
 {
     public const int HeaderSize = 148;
-    public const int MaxSide = 8192;
+    public const int MaxSide = ForgeVisual.ImportedModelDescriptor.MaxTextureSide; // the side Unity's Direct3D 11 takes
     const uint Magic = 0x20534444; // "DDS "
     const uint FourCcDx10 = 0x30315844; // "DX10"
     const int Bc1 = 71, Bc1Srgb = 72, Bc3 = 77, Bc3Srgb = 78; // DXGI_FORMAT

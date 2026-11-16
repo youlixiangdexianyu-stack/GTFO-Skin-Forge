@@ -24,7 +24,7 @@ import { fileUrl } from '../protocol';
 import { useStore } from '../store';
 import { Field, Slider } from '../ui/fields';
 import { Empty, Info, InspHead, Section } from '../ui/Features';
-import { BODY_JOINTS, chooseModel, exportCharacterMod, exportCharacterPack, guessKind, MAX_BONES, MAX_VERTICES, pickBone, rematch, stageIcon, strandsFrom, useSpringPresets } from './model';
+import { BODY_JOINTS, chooseModel, exportCharacterMod, exportCharacterPack, guessKind, pickBone, rematch, stageIcon, strandsFrom, useSpringPresets } from './model';
 import { COLLIDER_JOINTS, matchOf, matchReady, SPRING_KINDS, STEPS, updateSpring, useCharacter, type ColliderJoint, type SpringKind, type Step } from './state';
 
 const STEP: Record<Step, { icon: Icon; color: string }> = {
@@ -626,14 +626,12 @@ function CheckRow({ ok, text }: { ok: boolean; text: string }) {
   );
 }
 
-/** What export checks: every joint matched, the pose, and the game's bone and vertex limits. */
+/** What export checks: every joint matched and the pose. */
 function useChecks() {
   const s = useCharacter();
   return [
     { ok: !!s.check && !s.check.missing.length, text: t('character.checkJoints') },
     { ok: !!s.check && !s.check.issues.length, text: t('character.checkPose') },
-    { ok: s.bones.length <= MAX_BONES, text: t('character.checkBones', { v0: s.bones.length, v1: MAX_BONES }) },
-    { ok: s.vertices <= MAX_VERTICES, text: t('character.checkVertices', { v0: s.vertices.toLocaleString(), v1: MAX_VERTICES.toLocaleString() }) },
   ];
 }
 

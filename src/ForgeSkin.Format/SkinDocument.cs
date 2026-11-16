@@ -472,7 +472,7 @@ public enum CharmStyle { Cord, Chain, Beads }
 public sealed class Charm
 {
     public float Length { get; set; } = 0.05f; // metres from the hanging point to the pendant, 0.005 to 0.3
-    public int Segments { get; set; } = 6; // how many pieces the rope bends in, 1 to CharmRope.MaxSegments, none shorter than CharmRope.MinPiece
+    public int Segments { get; set; } = 6; // how many pieces the rope bends in, 1 or more, none shorter than ChainState.MinPiece
     public float Weight { get; set; } = 1; // the charm's mass, 0.1 to 3: heavier swings longer, lighter settles sooner
     public float Damping { get; set; } = 0.3f; // 0: swings long; 1: settles at once
     public float Stiffness { get; set; } = 0.25f; // 0: limp rope; 1: stiff wire that keeps the attachment's -Y

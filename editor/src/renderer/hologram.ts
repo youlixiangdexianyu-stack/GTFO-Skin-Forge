@@ -6,7 +6,6 @@
 import { CanvasTexture, SRGBColorSpace } from 'three';
 import { dirName, type Attachment, type CodeEffect, type SkinDocument } from './protocol';
 import { writePng } from './frames';
-import { MAX_CODE_EFFECTS } from './codeFx';
 
 type Hologram = NonNullable<Attachment['hologram']>;
 
@@ -48,9 +47,6 @@ export function hologramEffects(doc: SkinDocument): CodeEffect[] {
   }
   return out;
 }
-
-/** True when the skin's own code effects and its holograms' together are more than the game draws. */
-export const tooManyEffects = (doc: SkinDocument) => (doc.codeEffects?.length ?? 0) + hologramEffects(doc).length > MAX_CODE_EFFECTS;
 
 /** The ramp from the attachment's colour (bottom, v = 0 in the model's UVs) to `color2` (top), 4 x 256. */
 export function rampCanvas(bottom: number[], top: number[]): HTMLCanvasElement {

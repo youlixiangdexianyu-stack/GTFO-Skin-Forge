@@ -17,7 +17,7 @@ public static class CharmPreview
         if (frames.Any(f => f.M is not { Length: 16 } || f.Body is not { Length: 3 })) throw new BackendException("bad-request", "frames: m has 16 numbers, body 3");
         var rope = new CharmRope(charm, Math.Clamp(arm, 0.004, 0.1));
         if (charm.Collide && gear is { Length: 16 } && boxes != null)
-            foreach (var b in boxes.Take(CharmRope.MaxBoxes)) rope.AddBox(frames[0].M, gear, b.Min, b.Max);
+            foreach (var b in boxes) rope.AddBox(frames[0].M, gear, b.Min, b.Max);
         int count = rope.VertexCount * 3;
         var v = new float[count];
         var n = new float[count];

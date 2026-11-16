@@ -13,7 +13,6 @@ namespace ForgeSkin.Format;
 // Matrices are 16 numbers, column-major (element [col * 4 + row]); a pose is position xyz and quaternion xyzw.
 public sealed class CharmRope
 {
-    public const int MaxSegments = 12, MaxPerGear = 4, MaxBoxes = ChainState.MaxBoxes, MaxLinks = 48;
     public const double PendantMass = 4, PendantBend = 0.5; // against one rope node
     // Look: a cord is a tube through the nodes (CordSub points per segment, CordSides around), a chain alternating oval links
     // (Thickness wide), beads balls Thickness across; links and beads are spread evenly along the rope.
@@ -47,7 +46,7 @@ public sealed class CharmRope
     {
         // In double from here on, as the editor computes.
         double length = c.Length, thickness = c.Thickness;
-        _s = Math.Clamp(Math.Min(c.Segments, (int)Math.Floor(length / ChainState.MinPiece)), 1, MaxSegments);
+        _s = Math.Max(Math.Min(c.Segments, (int)Math.Floor(length / ChainState.MinPiece)), 1);
         var shape = new ChainShape();
         int node = shape.AddRoot(0, 0, 0);
         for (int i = 0; i < _s; i++) node = shape.Add(node, length / _s, 0, -1, 0);
@@ -62,7 +61,7 @@ public sealed class CharmRope
         _arc = new double[_curvePoints];
         _frame = new double[_curvePoints * 6];
         double pitch = thickness * (c.Style == CharmStyle.Chain ? LinkPitch : BeadPitch);
-        _elements = c.Style == CharmStyle.Cord ? 0 : Math.Clamp((int)Math.Round(length / pitch), 1, MaxLinks);
+        _elements = c.Style == CharmStyle.Cord ? 0 : Math.Max((int)Math.Round(length / pitch), 1);
         _template = c.Style == CharmStyle.Chain ? LinkRing * LinkTube : c.Style == CharmStyle.Beads ? (BeadLat + 1) * BeadLon : 0;
         _tplPos = new double[_template * 3];
         _tplNrm = new double[_template * 3];

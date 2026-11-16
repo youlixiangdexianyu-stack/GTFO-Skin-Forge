@@ -12,8 +12,8 @@ namespace ForgeSkin.Plugin;
 // The toon setting's three choices, in the picker's order.
 enum ToonMode { Forward, Deferred, Off }
 
-[BepInPlugin(Guid, "ForgeSkin", "1.1.1")] // package-version: NAinfini-ForgeSkin
-[BepInDependency("NAinfini.ForgeCore", ">=1.0.2")]
+[BepInPlugin(Guid, "ForgeSkin", "1.0.0")] // package-version: NAinfini-ForgeSkin
+[BepInDependency("NAinfini.ForgeCore", ">=1.0.1")]
 [BepInProcess("GTFO.exe")]
 public sealed class ForgeSkinPlugin : BasePlugin
 {

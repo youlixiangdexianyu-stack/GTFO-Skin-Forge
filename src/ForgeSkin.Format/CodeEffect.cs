@@ -60,9 +60,6 @@ public sealed class CodeEffectValues
 
 public static class CodeEffects
 {
-    // At most this many code effects in one skin (each paints every frame while its gear is in hand).
-    public const int MaxPerSkin = 8;
-
     const string CatalogResource = "ForgeVisual.Data.fx-programs.json";
     static ProceduralCatalog? _catalog;
 
@@ -115,7 +112,6 @@ public static class CodeEffects
     {
         var list = doc.CodeEffects;
         if (list == null) return;
-        if (list.Count > MaxPerSkin) throw new SkinFormatException("too-many-fx", $"{list.Count} code effects; at most {MaxPerSkin} in one skin");
         var ids = new HashSet<string>();
         foreach (var e in list)
         {

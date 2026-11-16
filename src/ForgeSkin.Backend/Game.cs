@@ -9,8 +9,8 @@ namespace ForgeSkin.Backend;
 
 public sealed record GameInfo(string? GameDir, string? DataDir, bool Found, bool Running);
 // Reason: why HasBepInEx is false. Modified: last time the profile changed or the game ran from it (BepInEx log).
-// PluginCurrent: Install.PluginCurrent (the shipped plugin DLL, nothing retired beside it, ForgeCore at least the shipped one).
-// PluginShipped: the plugin version the editor ships, which PluginCurrent holds the profile's to.
+// PluginCurrent: Install.PluginCurrent (the shipped plugin and ForgeCore files, nothing retired beside them).
+// PluginShipped: the plugin version the editor ships.
 public sealed record ProfileInfo(string Name, string Path, bool HasBepInEx, string? PluginVersion, bool PluginCurrent, string? Reason, bool Custom, DateTime Modified, string? PluginShipped, int Packs = 0);
 
 // Finds the GTFO install (saved choice, then Steam registry + libraryfolders.vdf + common dirs) and BepInEx profiles.

@@ -30,7 +30,7 @@ static class Looks
     {
         public Look? Look; // null: none yet, or malformed
         public readonly Dictionary<string, Worn> ByKey = new(); // gear key -> what it wears
-        public readonly List<(string Gear, string Pack, string? Skin)> Unshown = new(); // what the picker lists: gear key, Thunderstore mod, skin name if installed
+        public readonly List<(string Gear, string Pack, string? Skin, uint Number)> Unshown = new(); // what the picker lists: gear key, Thunderstore mod, skin name if installed; and the skin's number
     }
 
     static readonly Dictionary<ulong, Mate> Players = new();
@@ -57,6 +57,13 @@ static class Looks
     // What `owner`'s gear of `key` wears now (null: its original look).
     public static Worn? WornBy(ulong owner, string key) => Players.TryGetValue(owner, out var p) ? p.ByKey.GetValueOrDefault(key) : null;
 
+    // Adds what every teammate's look has their `key` wear here.
+    public static void Wearing(string key, HashSet<Skin> used)
+    {
+        foreach (var p in Players.Values)
+            if (p.ByKey.TryGetValue(key, out var worn)) used.Add(worn.Skin);
+    }
+
     // The skins a teammate's gear wears: their own skin for it, never this player's global skins.
     public static List<Skin> Wanted(ulong owner, string key) => WornBy(owner, key) is { } worn ? new List<Skin> { worn.Skin } : new List<Skin>();
 
@@ -65,7 +72,7 @@ static class Looks
     public static IEnumerable<(string Player, string Gear, string Pack, string? Skin)> Unshown()
     {
         foreach (var (lookup, p) in Players)
-            foreach (var (gear, pack, skin) in p.Unshown) yield return (NameOf(lookup), gear, pack, skin);
+            foreach (var (gear, pack, skin, _) in p.Unshown) yield return (NameOf(lookup), gear, pack, skin);
     }
 
     static string NameOf(ulong lookup) => PlayerOf(lookup)?.NickName ?? lookup.ToString();
@@ -114,17 +121,51 @@ static class Looks
         }
     }
 
+    static readonly Dictionary<string, Worn> Before = new();
+
+    // An entry that names what it named before (same skin, wear stage and changes) stays the same object: the gear and character
+    // wearing it are left as they are, only what changed is put on again.
     static void Resolve(ulong lookup, Mate player)
     {
+        Before.Clear();
+        foreach (var (key, worn) in player.ByKey) Before[key] = worn;
         player.ByKey.Clear();
         player.Unshown.Clear();
         if (player.Look != null) Resolve(player.Look, $"player {lookup}", player.ByKey, player.Unshown);
+        foreach (var (key, worn) in player.ByKey.ToList())
+            if (Before.TryGetValue(key, out var was) && was.Skin == worn.Skin && was.Wear == worn.Wear && SamePicks(was.Picks, worn.Picks)) player.ByKey[key] = was;
+        Before.Clear();
+        TellMissing(lookup, player);
+    }
+
+    // What a teammate wears that is not installed here is said once in the chat (only on this machine), per teammate and per pack
+    // (the Thunderstore mod it came in, else the skin): the picker lists the details. Said once the teammate's name is known.
+    static readonly HashSet<(ulong Player, string Pack)> Told = new();
+
+    static void TellMissing(ulong lookup, Mate player)
+    {
+        foreach (var (_, pack, skin, number) in player.Unshown)
+        {
+            var told = (lookup, pack.Length > 0 ? pack : number.ToString("x8"));
+            if (skin != null || Told.Contains(told) || PlayerOf(lookup) is not { } who) continue;
+            Told.Add(told);
+            var ui = ForgeUI.UIKit.Mod(ForgeSkinPlugin.Guid);
+            ForgeUI.UIKit.PostChatNotice(ui.Text("chat.teammateMissing", who.NickName, pack.Length > 0 ? ui.Text("picker.teammateInstall", pack) : ""));
+        }
+    }
+
+    static bool SamePicks(Dictionary<string, float[]> a, Dictionary<string, float[]> b)
+    {
+        if (a.Count != b.Count) return false;
+        foreach (var (key, value) in a)
+            if (!b.TryGetValue(key, out var other) || !value.AsSpan().SequenceEqual(other)) return false;
+        return true;
     }
 
     // What `look` wears here, by gear key (the character model under "character"): the skins installed in the same pack, with the
     // changes it names; the rest is listed in `unshown` and logged under `who`. A skin whose content hash is not known yet is left out
     // (ResolveAll runs again when it arrives).
-    public static void Resolve(Look look, string who, Dictionary<string, Worn> byKey, List<(string Gear, string Pack, string? Skin)> unshown)
+    public static void Resolve(Look look, string who, Dictionary<string, Worn> byKey, List<(string Gear, string Pack, string? Skin, uint Number)> unshown)
     {
         if (!Skins.Enabled) return;
         var entries = look.Gear.Select(g => (Key: SkinTarget.GearKey(g.GearId), Entry: (LookSkin)g, Wear: g.Wear));
@@ -145,7 +186,7 @@ static class Looks
                 byKey[key] = new Worn { Skin = skin!, Picks = picks!, Wear = wear, Version = ++_versions };
                 continue;
             }
-            unshown.Add((key, g.Pack, skin == null ? null : skin.Doc.Name.Length > 0 ? skin.Doc.Name : skin.Doc.Id));
+            unshown.Add((key, g.Pack, skin == null ? null : skin.Doc.Name.Length > 0 ? skin.Doc.Name : skin.Doc.Id, g.Skin));
             var pack = g.Pack.Length > 0 ? $" (Thunderstore {g.Pack})" : "";
             switch (fit)
             {

@@ -257,15 +257,15 @@ public static class Install
         catch (BackendException) { return null; }
     }
 
-    // The plugin the app ships, next to the backend: plugin/ForgeSkin/ForgeSkin.Plugin.dll and plugin/ForgeCore/, the unpacked
-    // NAinfini-ForgeCore package it depends on. In a checkout the same layout that Mods/ForgeSkin/tools/build-editor-release.ps1
+    // The plugin the app ships, next to the backend: plugin/ForgeSkin/ForgeSkin.Plugin.dll and plugin/ForgeCore/, the plugins/ForgeCore/
+    // folder of the NAinfini-ForgeCore release zip it depends on. In a checkout the same layout that Mods/ForgeSkin/tools/build-editor-release.ps1
     // stages under artifacts/forge-skin-release/publish/plugin.
     static string PluginSource()
     {
         for (var dir = new DirectoryInfo(AppContext.BaseDirectory); dir != null; dir = dir.Parent)
             foreach (var plugin in new[] { Path.Combine(dir.FullName, "plugin"), Path.Combine(dir.FullName, "artifacts", "forge-skin-release", "publish", "plugin") })
                 if (File.Exists(Path.Combine(plugin, "ForgeSkin", PluginDll)) && File.Exists(Path.Combine(plugin, "ForgeCore", CoreDll))) return plugin;
-        throw new BackendException("no-plugin", "Plugin build not found: neither plugin/ next to the backend nor artifacts/forge-skin-release/publish/plugin in the checkout (run Mods/ForgeSkin/tools/build-editor-release.ps1 -PluginOnly)");
+        throw new BackendException("no-plugin", "Plugin build not found: neither plugin/ next to the backend nor artifacts/forge-skin-release/publish/plugin in the checkout (run Mods/ForgeSkin/tools/build-editor-release.ps1 -PluginOnly -ForgeCore <NAinfini-ForgeCore zip>)");
     }
 
     static Version DllVersion(string dll)
@@ -274,13 +274,33 @@ public static class Install
         return new Version(v.FileMajorPart, v.FileMinorPart, v.FileBuildPart);
     }
 
-    // The newest ForgeCore.dll anywhere under BepInEx/plugins (a mod manager puts it in NAinfini-ForgeCore/), or null.
-    static Version? InstalledCore(string profile)
+    // Every folder under BepInEx/plugins holding a ForgeCore.dll (a mod manager puts it in NAinfini-ForgeCore/).
+    static List<string> CoreFolders(string profile)
     {
         var plugins = Path.Combine(profile, "BepInEx", "plugins");
-        if (!Directory.Exists(plugins)) return null;
-        return Directory.EnumerateFiles(plugins, CoreDll, new EnumerationOptions { RecurseSubdirectories = true, IgnoreInaccessible = true })
-            .Select(DllVersion).Max();
+        if (!Directory.Exists(plugins)) return [];
+        return [.. Directory.EnumerateFiles(plugins, CoreDll, new EnumerationOptions { RecurseSubdirectories = true, IgnoreInaccessible = true }).Select(f => Path.GetDirectoryName(f)!)];
+    }
+
+    // Whether every file of the shipped folder `source` is in `target` with the same content (`cached`: for a status report).
+    static bool Same(string source, string target, bool cached = false) =>
+        Directory.GetFiles(source, "*", SearchOption.AllDirectories).All(file =>
+        {
+            var to = Path.Combine(target, Path.GetRelativePath(source, file));
+            return File.Exists(to) && FileHash.Sha256(to, cached) == FileHash.Sha256(file, cached);
+        });
+
+    // Copies the shipped folder `source` over `target`; refuses while GTFO holds one of the files.
+    static void CopyOver(string source, string target)
+    {
+        var files = Directory.GetFiles(source, "*", SearchOption.AllDirectories);
+        foreach (var file in files) RequireUnlocked(Path.Combine(target, Path.GetRelativePath(source, file)));
+        foreach (var file in files)
+        {
+            var to = Path.Combine(target, Path.GetRelativePath(source, file));
+            Directory.CreateDirectory(Path.GetDirectoryName(to)!);
+            File.Copy(file, to, true);
+        }
     }
 
     // The newest ForgeSkin.Plugin.dll a mod manager installed (anywhere under BepInEx/plugins but the editor's own
@@ -301,21 +321,20 @@ public static class Install
         return ManagedPlugin(profile) ?? (File.Exists(own) ? own : null);
     }
 
-    // Current: one plugin DLL (a mod manager's at least the shipped version, or the editor's own copy of the shipped build),
-    // nothing an older version left beside it, and ForgeCore at least the shipped one.
+    // Current: one plugin, its files (DLL and lang/) the shipped build's, wherever it is (the mod manager's copy, else the editor's
+    // own), nothing an older version left beside it, and every ForgeCore in the profile the shipped one. Content decides, not the
+    // version number: ForgeCore and ForgeSkin follow this editor, and their numbers are not ordered across releases.
     public static bool PluginCurrent(string profile)
     {
         string source;
         try { source = PluginSource(); } catch (BackendException) { return false; }
         var dir = Game.PluginDir(profile);
-        var own = Path.Combine(dir, PluginDll);
-        var shipped = Path.Combine(source, "ForgeSkin", PluginDll);
         var plugin = ManagedPlugin(profile) is { } managed
-            ? DllVersion(managed) >= DllVersion(shipped) && !File.Exists(own)
-            : File.Exists(own) && FileHash.Sha256(own) == FileHash.Sha256(shipped)
-              && Texts(Path.Combine(source, "ForgeSkin")).All(f => File.Exists(Path.Combine(dir, f)) && FileHash.Sha256(Path.Combine(dir, f)) == FileHash.Sha256(Path.Combine(source, "ForgeSkin", f)));
+            ? Same(Path.Combine(source, "ForgeSkin"), Path.GetDirectoryName(managed)!, true) && !File.Exists(Path.Combine(dir, PluginDll))
+            : Same(Path.Combine(source, "ForgeSkin"), dir, true);
+        var cores = CoreFolders(profile);
         return plugin && !RetiredFiles.Any(f => File.Exists(Path.Combine(dir, f)))
-            && InstalledCore(profile) is { } core && core >= DllVersion(Path.Combine(source, "ForgeCore", CoreDll));
+            && cores.Count > 0 && cores.All(core => Same(Path.Combine(source, "ForgeCore"), core, true));
     }
 
     // The plugin's in-game texts (lang/*.forge, beside its DLL) under `folder`, as paths relative to it.
@@ -330,45 +349,30 @@ public static class Install
         catch (IOException) { throw new BackendException("game-running", "Close GTFO first: it has the plugin loaded"); }
     }
 
-    // ForgeCore belongs to the mod manager: one already in the profile is never replaced, and one older than the shipped
-    // copy is refused (forge-core-old) so the player updates it there. Only a profile without ForgeCore gets the shipped
-    // package, in BepInEx/plugins/NAinfini-ForgeCore/ where the mod manager would put it. The same holds for a ForgeSkin
-    // plugin the mod manager installed: it is the one the game loads (forge-skin-old when older than the shipped one), and
-    // the editor's own copy in plugins/ForgeSkin/ is deleted so the profile never holds the same plugin twice.
+    // ForgeCore and ForgeSkin follow this editor: each copy in the profile whose files differ from the shipped build is
+    // overwritten in place with it, whatever its version number (a mod manager's copy too, where the mod manager put it); a
+    // profile without ForgeCore gets it in BepInEx/plugins/NAinfini-ForgeCore/ForgeCore/ where the mod manager would put it. A ForgeSkin
+    // the mod manager installed is the one the game loads, so the editor's own copy in plugins/ForgeSkin/ is deleted and the
+    // profile never holds the same plugin twice.
     public static object Plugin(string profile)
     {
         RequireProfile(profile);
         var source = PluginSource();
-        var core = InstalledCore(profile);
-        var shipped = DllVersion(Path.Combine(source, "ForgeCore", CoreDll));
-        if (core != null && core < shipped)
-            throw new BackendException("forge-core-old", $"ForgeCore {core} in this profile is older than {shipped}, which ForgeSkin needs; update ForgeCore in the mod manager");
+        var coreSource = Path.Combine(source, "ForgeCore");
+        var cores = CoreFolders(profile);
+        if (cores.Count == 0) cores.Add(Path.Combine(profile, "BepInEx", "plugins", CoreFolder, "ForgeCore"));
         var managed = ManagedPlugin(profile);
-        var plugin = DllVersion(Path.Combine(source, "ForgeSkin", PluginDll));
-        if (managed != null && DllVersion(managed) < plugin)
-            throw new BackendException("forge-skin-old", $"ForgeSkin {DllVersion(managed)} at {managed} is older than {plugin}, which this editor needs; update ForgeSkin in the mod manager");
         MovePreRenameInstall(profile);
         var dir = Game.PluginDir(profile);
+        var target = managed == null ? dir : Path.GetDirectoryName(managed)!;
         Directory.CreateDirectory(Skins(profile));
         foreach (var f in RetiredFiles.Append(PluginDll)) RequireUnlocked(Path.Combine(dir, f));
-        if (core == null)
-        {
-            var coreSource = Path.Combine(source, "ForgeCore");
-            foreach (var file in Directory.GetFiles(coreSource, "*", SearchOption.AllDirectories))
-            {
-                var to = Path.Combine(profile, "BepInEx", "plugins", CoreFolder, Path.GetRelativePath(coreSource, file));
-                Directory.CreateDirectory(Path.GetDirectoryName(to)!);
-                File.Copy(file, to, true);
-            }
-        }
-        if (managed == null)
-        {
-            Directory.CreateDirectory(Path.Combine(dir, "lang"));
-            foreach (var f in Texts(Path.Combine(source, "ForgeSkin")).Append(PluginDll)) File.Copy(Path.Combine(source, "ForgeSkin", f), Path.Combine(dir, f), true);
-        }
+        var replaced = cores.Where(core => !Same(coreSource, core)).ToList();
+        foreach (var core in replaced) CopyOver(coreSource, core);
+        if (!Same(Path.Combine(source, "ForgeSkin"), target)) CopyOver(Path.Combine(source, "ForgeSkin"), target);
         string[] stale = managed == null ? RetiredFiles : [.. RetiredFiles, PluginDll, .. Texts(dir)];
         foreach (var f in stale.Select(f => Path.Combine(dir, f)).Where(File.Exists)) File.Delete(f);
-        return new { installed = managed == null ? dir : Path.GetDirectoryName(managed)!, forgeCoreInstalled = core == null, managedPlugin = managed != null, version = Game.Profiles().FirstOrDefault(p => Path.GetFullPath(p.Path) == Path.GetFullPath(profile))?.PluginVersion };
+        return new { installed = target, forgeCore = replaced, managedPlugin = managed != null, version = Game.Profiles().FirstOrDefault(p => Path.GetFullPath(p.Path) == Path.GetFullPath(profile))?.PluginVersion };
     }
 
     // Moves a pre-rename install (GTFO Skin Forge -> ForgeSkin) to the new names: skins/ of plugins/SkinForge (packs get the

@@ -15,7 +15,7 @@ namespace ForgeSkin.Backend;
 public static class ModExport
 {
     // Thunderstore ids of the libraries the skin mods depend on; the base library is this release of the ForgeSkin plugin.
-    const string BaseVersion = "1.1.1"; // package-version: NAinfini-ForgeSkin
+    const string BaseVersion = "1.0.0"; // package-version: NAinfini-ForgeSkin
     const string BaseLibrary = "NAinfini-ForgeSkin-" + BaseVersion, SkinsLibrary = "food-Skins-0.12.0";
 
     public static object Export(string[] packs, string output, string name, string version, string description, string icon,

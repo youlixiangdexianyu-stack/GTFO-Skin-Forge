@@ -126,7 +126,7 @@ public class FormatTests
         var look = new Look { Character = null };
         look.Gear.Add(gear);
         var bytes = look.Encode();
-        Assert.Equal(2 + 4 + 1 + 4 + 4 + 8 + 1 + gear.Pack.Length + 1 + 1 + (1 + 3) + (1 + 2) + (1 + 4), bytes.Length);
+        Assert.Equal(2 + 4 + 1 + 4 + 4 + 8 + 1 + gear.Pack.Length + 1 + 2 + (5 + 3) + (5 + 2) + (5 + 4), bytes.Length);
         var back = Look.Decode(bytes)!;
         Assert.Equal(bytes, back.Encode());
         Assert.Equal(LookFit.Fits, Look.Fit(back.Gear[0], doc, gear.Hash, out var shown, out _));
@@ -159,7 +159,6 @@ public class FormatTests
         { "bad-trigger", (d, _) => d.Sounds[2].EnemyId = 29 }, // an enemy on a sound that is not a kill
         { "bad-player-color", (d, _) => d.PlayerColors![0].Slots[1].Target = "gone" },
         { "bad-color-scheme", (d, _) => d.ColorSchemes![0].Colors["gone"] = [0, 0, 1] },
-        { "too-many-player-colors", (d, _) => d.PlayerColors!.AddRange(Enumerable.Range(1, SkinPack.MaxPlayerColors).Select(i => new PlayerColor { Id = "c" + i, Slots = d.PlayerColors[0].Slots })) },
         // Code effects, checked against ForgeCore's program catalogue: a program it lacks, a value outside the catalogue's range, an
         // attachment without a model to draw on.
         { "bad-fx-program", (d, _) => d.CodeEffects![0].Program = "lava" },

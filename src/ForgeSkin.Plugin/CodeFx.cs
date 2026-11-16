@@ -272,7 +272,7 @@ sealed partial class SkinnedGear
         // Drawn through the gear's own projection (its part material, which the game switched): a gear in the hands goes through the
         // first-person item camera, and a shell in the world's projection stands off the gun as a small copy. Later switches reach it
         // through TakeBack (_swaps).
-        bool firstPerson = template.IsKeywordEnabled(FpsKeyword);
+        bool firstPerson = LitMaterial.IsFirstPerson(template);
         var material = Procedural.CreateMaterial(e.Blend == CodeEffectBlend.Additive ? FxBlend.Additive : FxBlend.Alpha, firstPerson, "ForgeSkin code effect " + e.Id)
             ?? throw new InvalidOperationException("ForgeCore's shaders are not loaded");
         var shell = Child(model.transform.parent.gameObject, "code effect " + e.Id, mesh, Own(material), 0f);

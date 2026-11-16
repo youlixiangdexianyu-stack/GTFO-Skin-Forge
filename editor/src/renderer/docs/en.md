@@ -142,7 +142,7 @@ Palette: white-grey `#949699`, grey `#5C6166`, black `#0D0E0F`, orange `#FF6B14`
 ![The reticle ring: flicker only (left) and with fade, scanlines and edge glow (right)](shot:hologram-before-after)
 
 > [!NOTE]
-> Scanlines and edge glow use two of the skin's 8 code-effect slots. This skin has no other code effects, so there is room.
+> Scanlines and edge glow are two code effects on the hologram.
 
 ## 7. A small hologram charm
 
@@ -200,7 +200,6 @@ The first time, the [worked example](#char-example) is the quickest way through.
 ## What model works
 
 - A skinned `.glb` or `.vrm` with a humanoid skeleton. Exports from Mixamo, VRoid and Blender all work.
-- Up to 256 bones and 1 million vertices.
 - PNG or JPEG textures, at most 4 bones per vertex, exported as one uncompressed file.
 - A `.vrm` is the easiest: the bones, swinging hair and skirt, colliders and any credit its author asks for are filled in on import.
 
@@ -221,7 +220,7 @@ Done right: your model stands in the 3D view and **Import model** on the left ha
 | --- | --- |
 | Skin name | The name of this character skin; the mod name on export starts from it. |
 | Credit | Only there when the model's licence asks for credit. Export writes it into the pack's CREDITS.txt and the mod description. |
-| Bones, Vertices, Materials | How many the model has; export checks them against the limits. |
+| Bones, Vertices, Materials | How many the model has. |
 | Use another model | Swap in another file. |
 
 ## When an import fails
@@ -232,7 +231,6 @@ The bottom right says why. The usual ones:
 | --- | --- |
 | The model is not skinned | Rig it in Blender and export the `.glb` again. |
 | The model has bones with the same name | Give every bone its own name and export again. |
-| Too many vertices, faces or materials | Reduce the mesh or merge materials and export again. |
 | The model is compressed | Export without compression. |
 | A vertex has more than 4 bones | Limit it to 4 bones per vertex on export. |
 | A texture is not PNG or JPEG | Save it as PNG or JPEG and export again. |
@@ -397,7 +395,7 @@ On the character side, click **Export** → **Export as Thunderstore skin mod…
 
 ![Export: the checks and the mod details](shot:character-export)
 
-1. All four checks at the top need a tick: **Every required joint has a bone**, **Rest pose check**, **Bones** (up to 256), **Vertices** (up to 1 million).
+1. Both checks at the top need a tick: **Every required joint has a bone** and **Rest pose check**.
 2. A model with a credit gets a line saying the pack carries it.
 3. Fill in **Mod name** (English letters, digits and underscores only; it starts from the skin name), **Version** (like 1.0.0) and **Description** (up to 250 characters). The **Icon** starts as a picture of the 3D view; **Choose image…** uses one of your own.
 4. Click **Export Thunderstore mod…** and pick where to save: you get a zip ready for Thunderstore. For the skin pack alone, click **Export skin pack only…** and you get a `.forgeskin`.
@@ -460,7 +458,7 @@ The **Publish** menu has **Export OBJ model (by part)…**, **Export OBJ model (
 
 - Image types: png, jpg, jpeg, tga, tif, tiff, bmp, webp. They are converted when packed.
 - Each part's **Texture resolution** (under the texture slots on the **Textures** tab, and under the finish on the **Livery** tab: one setting) sets how large the part's textures are in game: **Auto**, 256, 512, 1024, 2048, 4096 (longest side, aspect always kept). The editor preview, the pack and the game all use this size. **Auto** gives a painted part at least 2048 (so text and panel lines stay sharp even on small parts such as a magazine, whose game texture is 256) and keeps the image's own size on a part without paint. Beside it is about how much video memory the part's textures take in game. Only a part with its own textures or paint has the setting.
-- **The game cannot read an image over 8192 pixels on a side**, and rejects the whole pack. Prefer power-of-two sizes (1024, 2048 and so on).
+- **The game cannot read an image over 16384 pixels on a side**, and rejects the whole pack. Prefer power-of-two sizes (1024, 2048 and so on).
 - Bigger textures use more video memory. **Overview** shows the skin's estimate after a build: up to 256 MB is light, over 512 MB can make the game stutter.
 
 # Livery: finish and paint layers {#livery}
@@ -803,7 +801,7 @@ Text layers have **Font**, **Font size px** (at least 8, default 64), **Colour**
 
 # Code effects {#codefx}
 
-Code effects are moving patterns the game draws live with ForgeCore's drawing programs: flow lines, scanlines, pulse, noise, rim light and polar pattern. A skin can have **at most 8**. They need no picture in the pack, and players can be allowed to change their values in game.
+Code effects are moving patterns the game draws live with ForgeCore's drawing programs: flow lines, scanlines, pulse, noise, rim light and polar pattern. A skin can have any number. They need no picture in the pack, and players can be allowed to change their values in game.
 
 ![A new code effect on the front](shot:code-effect)
 
@@ -840,7 +838,7 @@ The 3D view uses the same pattern code as the game.
 | Polar pattern | Petals 1–32 (6); Rings 0–32 (4); Twist −8–8 turns (0); Sharpness 0.1–16 (2); Radius 0.05–1 (0.5); Ring drift −4–4 (0.25) | Petals (yellow), Rings (orange), Base (transparent) |
 
 > [!NOTE]
-> Hologram scanlines and edge glow are code effects too, and count toward the 8 (see [Shapes and holograms](#holo)). The Skins export formats cannot carry code effects; the export report lists them.
+> Hologram scanlines and edge glow are code effects too (see [Shapes and holograms](#holo)). The Skins export formats cannot carry code effects; the export report lists them.
 
 #! Attachments
 
@@ -849,7 +847,7 @@ The 3D view uses the same pattern code as the game.
 Attachments are extra things mounted on the gun: ammo screens, your own models, built-in shapes and charms. Select a part, then [Attach](editor:attach), **Add attachment**:
 
 - **Ammo screen**: a live number or bar; see [Ammo screen](#screen).
-- **Import model (.glb / .gltf)**: any .glb or .gltf model. Its own pictures (base colour, and its emissive, normal and metallic-roughness ones if it has them) come along and show in the editor and in game, scaled down to 2048 if larger; **Colour** tints them, and as a hologram the base-colour picture is what glows.
+- **Import model (.glb / .gltf)**: any .glb or .gltf model. Its own pictures (base colour, and its emissive, normal and metallic-roughness ones if it has them) come along at their own size and show in the editor and in game (only a picture over 16384 is scaled down); **Colour** tints them, and as a hologram the base-colour picture is what glows.
 - **Picture hologram…**: pick a picture (png, jpg, webp) and get a hologram screen showing it; see [Picture hologram](#holo-image).
 - **Shapes**: built-in hologram shapes; see [Shapes and holograms](#holo).
 - **Hologram sets**: several matching holograms at once, placed on the gun's parts; see [Hologram sets](#holo-sets).
@@ -902,7 +900,7 @@ Shapes are built-in models made from a few numbers: lines, rings, reticles, grid
 
 ## Picture hologram {#holo-image}
 
-**Add attachment** → **Picture hologram…**, then a png, jpg or webp picture. The editor copies the picture next to the skin (scaled down to 2048 if larger) and makes a hologram screen 30 mm wide with the picture's proportions, named after the file. The picture is what glows: black is see-through, a white **Colour** keeps the picture's own colours and any other colour tints it. Change **Width** and **Height** under **Picture** in **Look**; use **Snap to surface** to lay it on the gun.
+**Add attachment** → **Picture hologram…**, then a png, jpg or webp picture. The editor copies the picture next to the skin at its own size (scaled down only over 16384) and makes a hologram screen 30 mm wide with the picture's proportions, named after the file. The picture is what glows: black is see-through, a white **Colour** keeps the picture's own colours and any other colour tints it. Change **Width** and **Height** under **Picture** in **Look**; use **Snap to surface** to lay it on the gun.
 
 ## Hologram sets {#holo-sets}
 
@@ -914,7 +912,7 @@ Shapes are built-in models made from a few numbers: lines, rings, reticles, grid
 | Barrel tick rings | 3 reticle rings, smaller towards the muzzle | Around the front of the barrel |
 | Info strip | A wire panel with two data bars | The receiver's left side (the side a player sees), facing out |
 
-Afterwards each one is an ordinary shape attachment named "set · shape": move it, change its numbers or delete it on its own. Edge glow takes one code-effect slot per hologram (8 per skin): when too few are left, the set comes without edge glow and the editor says so; free some slots, then turn it on in **Look**.
+Afterwards each one is an ordinary shape attachment named "set · shape": move it, change its numbers or delete it on its own. Each hologram comes with edge glow; turn it off in **Look**.
 
 ## The shapes
 
@@ -956,7 +954,7 @@ Any attachment can be a hologram (the **Hologram** switch in **Look**); the last
 The game draws holograms with its own hologram shader, which has no colour ramp, scanlines or outline of its own. So:
 
 - The **two-colour fade** is baked into a small picture on the model when the skin is packed; in game it looks as in the editor.
-- **Scanlines** and **edge glow** become two code effects on the attachment (ForgeCore's scanlines and rim light patterns). **Each takes one of the skin's 8 code-effect slots.** If your code effects plus these come to more than 8, the editor refuses the build and says so; turn some off.
+- **Scanlines** and **edge glow** become two code effects on the attachment (ForgeCore's scanlines and rim light patterns).
 - Flicker and brightness are the shader's own and can look a little different in game lighting. Check in game once.
 
 # Charms {#charms}
@@ -984,7 +982,7 @@ A charm hangs an attachment on a cord, chain or beads from a point on the gun. I
 | Bends | 1 to 12 | 6 | Joints in the rope. |
 | Stays out of the gun | on / off | on | The rope and model do not pass through the gun. |
 
-**Shake** jolts the gun sideways, **Run** runs forward for two seconds and stops, **Turn** turns around and back. A gun can have **at most 4 charms**; the switch is off once it has 4.
+**Shake** jolts the gun sideways, **Run** runs forward for two seconds and stops, **Turn** turns around and back.
 
 # Ammo screen {#screen}
 
@@ -1107,10 +1105,9 @@ A game update or a Steam file check puts the original files back.
 A pack the game cannot read does nothing; the right side of the SKINS picker lists it in red with the reason. Common reasons:
 
 - A file is missing: an image, sound or model the pack names is not there. Apply or export again.
-- A bad or oversized image: only PNG and JPEG, at most 8192 pixels on a side.
+- A bad or oversized image: only PNG and JPEG, at most 16384 pixels on a side.
 - A bad sound: it must convert to Ogg, at most 10 seconds.
 - A bad path: paths in a pack cannot be absolute or contain `..`. Usually the pack was edited by hand; export it again.
-- Too many code effects: own code effects plus hologram scanlines and edge glow over 8.
 - An old plugin: when the editor says ForgeSkin or ForgeCore is too old, update them in r2modman.
 
 ## I clicked Apply and nothing changed
@@ -1137,7 +1134,7 @@ The editor carries the plugin it installs into your profile. This message means 
 | --- | --- |
 | Installed (Setup.exe) | Run the latest Setup.exe again. The plugin sits in the install folder under `app-<version>\resources\publish\plugin`; your data folder (`Documents\ForgeSkin`) is not touched. |
 | Portable zip | Unzip the whole zip again over the same folder. `resources\publish\plugin\ForgeSkin\ForgeSkin.Plugin.dll` and `resources\publish\plugin\ForgeCore\ForgeCore.dll` must be there; `GTFO_UserData` next to the program is kept. |
-| From the source code | In the repository root run `pwsh Mods/ForgeSkin/tools/build-editor-release.ps1 -PluginOnly`, then restart the editor. A development editor runs it by itself when the plugin build is missing; if that failed, the log has a line "plugin staging failed" with the reason (usually the BepInEx profile path: pass `-BepInEx <profile>/BepInEx` or set `GTFO_BEPINEX_PATH`). |
+| From the source code | In the repository root run `pwsh Mods/ForgeSkin/tools/build-editor-release.ps1 -PluginOnly -ForgeCore <NAinfini-ForgeCore zip>` (the ForgeCore zip of the release set), then restart the editor. If it fails, the reason is usually the BepInEx profile path: pass `-BepInEx <profile>/BepInEx` or set `GTFO_BEPINEX_PATH`. |
 
 ## The log
 

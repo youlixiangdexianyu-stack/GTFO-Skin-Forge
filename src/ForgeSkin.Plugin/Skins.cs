@@ -185,7 +185,7 @@ sealed class Skin
                 Action<Texture2D?, string> done = (texture, failure) => Decoded(load, p, ch, comp, texture, failure);
                 _jobs.Add(packed != null
                     ? ForgeCore.Images.QueueRaw(packed.Data, Dds.HeaderSize, packed.Width, packed.Height, packed.Alpha ? TextureFormat.DXT5 : TextureFormat.DXT1, true, !packed.Srgb, done)
-                    : ForgeCore.Images.Queue(bytes!, done, Linear(channel), mipChain: compress, normalMap: channel == TextureChannel.Normal && compress, compress: compress));
+                    : ForgeCore.Images.Queue(bytes!, done, Linear(channel), mipChain: compress, normalMap: channel == TextureChannel.Normal && compress, compress: compress, maxSide: Dds.MaxSide));
             }
         }
         if (_failure is { } failed) { _failure = null; return Abort(failed, out finished); }
@@ -198,7 +198,7 @@ sealed class Skin
         _jobs.Clear();
         State = SkinState.Ready;
         finished = true;
-        ForgeSkinPlugin.Info($"loaded skin {Doc.Id}: {_textures.Count} textures, {_meshes.Count} meshes, {_cues.Count} sounds in {_watch.ElapsedMilliseconds} ms");
+        ForgeSkinPlugin.Info($"loaded skin {Doc.Id}: {(Doc.Character != null ? "its character model, " : "")}{_textures.Count} gear textures, {_meshes.Count} gear meshes, {_cues.Count} sounds in {_watch.ElapsedMilliseconds} ms");
         return null;
     }
 

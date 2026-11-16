@@ -229,8 +229,8 @@ export async function addShape(kind: ShapeKind, charm = false, over: { params?: 
   }
 }
 
-/** Longest side of a picture made into a hologram, as an imported model's pictures (Backend MeshImport.MaxPicture). */
-const MAX_PICTURE = 2048;
+/** Longest side of a picture made into a hologram: the side the game can make a texture of (Core Dds.MaxSide). */
+const MAX_PICTURE = 16384;
 export const PICTURE_TYPES = ['png', 'jpg', 'jpeg', 'webp'];
 
 /**

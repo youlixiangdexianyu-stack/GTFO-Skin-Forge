@@ -38,8 +38,10 @@ public static class Matching
         ["ammo"] = ["ammo", "cartridge", "casing", "bullet", "shell", "子弹", "弹壳", "弹药"],
     };
 
+    /// <summary>The images in a texture folder; a single file here is not a folder of textures (unsupported-file), a missing path is not-found.</summary>
     public static List<string> ListImages(string folder)
     {
+        if (File.Exists(folder)) throw new BackendException("unsupported-file", $"{folder} is a file, not a folder of textures");
         if (!Directory.Exists(folder)) throw new BackendException("not-found", $"Folder {folder} not found");
         return Directory.EnumerateFiles(folder, "*", SearchOption.AllDirectories)
             .Where(f => Extensions.Contains(Path.GetExtension(f).ToLowerInvariant()))

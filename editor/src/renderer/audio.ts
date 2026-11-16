@@ -49,8 +49,7 @@ export class AudioError extends Error {
   }
 }
 
-const isOggVorbis = (b: Uint8Array) =>
-  b.length > 36 && String.fromCharCode(...b.subarray(0, 4)) === 'OggS' && String.fromCharCode(...b.subarray(29, 35)) === 'vorbis';
+const isOggVorbis = (b: Uint8Array) => b.length > 36 && String.fromCharCode(...b.subarray(0, 4)) === 'OggS' && String.fromCharCode(...b.subarray(29, 35)) === 'vorbis';
 
 export async function transcodeToOgg(source: ArrayBuffer): Promise<Uint8Array> {
   const original = new Uint8Array(source);
@@ -61,8 +60,7 @@ export async function transcodeToOgg(source: ArrayBuffer): Promise<Uint8Array> {
     throw new AudioError('bad-audio', t('audio.k1'));
   }
   if (!decoded.length) throw new AudioError('bad-audio', t('audio.k2'));
-  if (decoded.duration > MAX_SECONDS)
-    throw new AudioError('audio-too-long', t('audio.k3', { v0: MAX_SECONDS, v1: Math.round(decoded.duration) }));
+  if (decoded.duration > MAX_SECONDS) throw new AudioError('audio-too-long', t('audio.k3', { v0: MAX_SECONDS, v1: Math.round(decoded.duration) }));
   if (isOggVorbis(original) && decoded.numberOfChannels <= 2) return original;
   const channels = decoded.numberOfChannels >= 2 ? 2 : 1;
   const encoder = await createOggEncoder();

@@ -4,7 +4,7 @@ import { Menu } from '@mantine/core';
 import { IconBox, IconBrush, IconDeviceDesktop, IconLetterT, IconMovie, IconPhoto, IconReplace, IconStack2 } from '@tabler/icons-react';
 import type { ReactElement } from 'react';
 import { importMesh } from '../actions';
-import type { CatalogPart, LayerKind } from '../protocol';
+import { attachmentMaterial, type CatalogPart, type LayerKind } from '../protocol';
 import { useStore } from '../store';
 import { addLayer } from './DynamicInspector';
 import { FEATURE } from './Features';
@@ -21,6 +21,41 @@ const LAYERS: { kind: LayerKind; label: () => string; icon: typeof IconPhoto }[]
   { kind: 'text', label: () => t('dynamicInspector.k4'), icon: IconLetterT },
 ];
 
+/** Paint layers and animated layers for one material (a part's or an attachment's model), as two sub-menus. */
+function PaintMenuItems({ material, part, before }: { material: string; part: string; before: () => void }) {
+  return (
+    <>
+      <SubMenu icon={<IconBrush size={14} color={FEATURE.livery.color} />} label={t('livery.title')}>
+        {LIVERY_KINDS.map((k) => (
+          <Menu.Item key={k.id} leftSection={<k.icon size={14} color={FEATURE.livery.color} />} onClick={() => (before(), addLiveryLayer(material, part, k.id))}>
+            {k.label()}
+          </Menu.Item>
+        ))}
+      </SubMenu>
+      <SubMenu icon={<IconMovie size={14} color={FEATURE.layer.color} />} label={t('dynamicInspector.k33')}>
+        {LAYERS.map((l) => (
+          <Menu.Item key={l.kind} leftSection={<l.icon size={14} color={FEATURE.layer.color} />} onClick={() => (before(), void addLayer(material, part, l.kind))}>
+            {l.label()}
+          </Menu.Item>
+        ))}
+      </SubMenu>
+    </>
+  );
+}
+
+/** What can be added to an attachment's model: the same paint and animated layers as on a part. */
+export function AttachmentAddMenu({ id, children }: { id: string; children: ReactElement }) {
+  const material = attachmentMaterial(id);
+  return (
+    <Menu position="bottom-end" withinPortal>
+      <Menu.Target>{children}</Menu.Target>
+      <Menu.Dropdown onClick={(e) => e.stopPropagation()}>
+        <PaintMenuItems material={material} part={material} before={() => useStore.getState().select({ kind: 'attachment', id })} />
+      </Menu.Dropdown>
+    </Menu>
+  );
+}
+
 export function PartAddMenu({ part, path, children }: { part: CatalogPart; path?: string | null; children: ReactElement }) {
   const { select, addAttachment } = useStore.getState();
   const here = () => select({ kind: 'part', id: part.id, sub: path ?? null });
@@ -34,20 +69,7 @@ export function PartAddMenu({ part, path, children }: { part: CatalogPart; path?
         </Menu.Item>
         {material && (
           <>
-            <SubMenu icon={<IconBrush size={14} color={FEATURE.livery.color} />} label={t('livery.title')}>
-              {LIVERY_KINDS.map((k) => (
-                <Menu.Item key={k.id} leftSection={<k.icon size={14} color={FEATURE.livery.color} />} onClick={() => (here(), addLiveryLayer(material, part.id, k.id))}>
-                  {k.label()}
-                </Menu.Item>
-              ))}
-            </SubMenu>
-            <SubMenu icon={<IconMovie size={14} color={FEATURE.layer.color} />} label={t('dynamicInspector.k33')}>
-              {LAYERS.map((l) => (
-                <Menu.Item key={l.kind} leftSection={<l.icon size={14} color={FEATURE.layer.color} />} onClick={() => (here(), void addLayer(material, part.id, l.kind))}>
-                  {l.label()}
-                </Menu.Item>
-              ))}
-            </SubMenu>
+            <PaintMenuItems material={material} part={part.id} before={here} />
             <Menu.Label>{t('codeFx.title')}</Menu.Label>
             <Menu.Item leftSection={<FEATURE.fx.icon size={14} color={FEATURE.fx.color} />} onClick={() => (here(), addCodeEffect({ material, part: part.id }))}>
               {t('codeFx.addOnPart')}

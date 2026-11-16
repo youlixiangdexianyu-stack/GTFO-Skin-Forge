@@ -1,34 +1,96 @@
-import { ActionIcon, Button, Group, Select, SimpleGrid, Switch, Text, Textarea, TextInput, UnstyledButton } from '@mantine/core';
+import { ActionIcon, Group, Select, Text, Textarea, Tooltip, UnstyledButton } from '@mantine/core';
 import { useElementSize } from '@mantine/hooks';
-import { IconEye, IconEyeOff, IconLetterT, IconMovie, IconPhoto, IconStack2, IconTrash } from '@tabler/icons-react';
+import { IconArrowsMove, IconEye, IconEyeOff, IconLetterT, IconMovie, IconPhoto, IconPlayerPlay, IconStack2, IconTrash, type Icon } from '@tabler/icons-react';
 import type Konva from 'konva';
-import { useEffect, useRef, useState, type ComponentType } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Image as KImage, Layer, Stage, Transformer } from 'react-konva';
-import { baseTexturePath, isGif, LayerSource, loadImage, naturalSort, sourceSize } from '../frames';
+import { baseTexturePath, isGif, LayerSource, layerName, loadImage, naturalSort, sourceSize } from '../frames';
 import { baseName, CHANNELS, triggersFor, type CatalogPart, type DynamicLayer, type LayerKind, type PlayMode, type TextureChannel, type Trigger } from '../protocol';
-import { materialOf, useItem, useStore } from '../store';
+import { materialOf, ownerOf, useItem, useStore } from '../store';
 import { Color, Field, Num, Slider, Vec } from './fields';
-import { FeatureHead } from './Features';
+import { Empty, FEATURE, InspHead, KindGrid, Section } from './Features';
+import { FontPicker } from './FontPicker';
 import { CHANNEL_LABEL } from './SkinInspector';
 import { t } from '../i18n';
 
-const KINDS: { id: LayerKind; label: string; icon: ComponentType<{ size?: number }> }[] = [
-  { id: 'image', get label() { return t('dynamicInspector.k1'); }, icon: IconPhoto },
-  { id: 'sequence', get label() { return t('dynamicInspector.k2'); }, icon: IconStack2 },
-  { id: 'video', get label() { return t('dynamicInspector.k3'); }, icon: IconMovie },
-  { id: 'text', get label() { return t('dynamicInspector.k4'); }, icon: IconLetterT },
+const KINDS: { id: LayerKind; label: string; icon: Icon }[] = [
+  {
+    id: 'image',
+    get label() {
+      return t('dynamicInspector.k1');
+    },
+    icon: IconPhoto,
+  },
+  {
+    id: 'sequence',
+    get label() {
+      return t('dynamicInspector.k2');
+    },
+    icon: IconStack2,
+  },
+  {
+    id: 'video',
+    get label() {
+      return t('dynamicInspector.k3');
+    },
+    icon: IconMovie,
+  },
+  {
+    id: 'text',
+    get label() {
+      return t('dynamicInspector.k4');
+    },
+    icon: IconLetterT,
+  },
 ];
 const PLAY_MODES: { value: PlayMode; label: string }[] = [
-  { value: 'loop', get label() { return t('dynamicInspector.k5'); } },
-  { value: 'once', get label() { return t('dynamicInspector.k6'); } },
-  { value: 'loopFor', get label() { return t('dynamicInspector.k7'); } },
+  {
+    value: 'loop',
+    get label() {
+      return t('dynamicInspector.k5');
+    },
+  },
+  {
+    value: 'once',
+    get label() {
+      return t('dynamicInspector.k6');
+    },
+  },
+  {
+    value: 'loopFor',
+    get label() {
+      return t('dynamicInspector.k7');
+    },
+  },
 ];
-const IMAGES = [{ get name() { return t('dynamicInspector.k1'); }, extensions: ['png', 'jpg', 'jpeg', 'webp', 'gif', 'bmp'] }];
-const VIDEOS = [{ get name() { return t('dynamicInspector.k3'); }, extensions: ['mp4', 'webm', 'mov', 'm4v'] }];
+const IMAGES = [
+  {
+    get name() {
+      return t('dynamicInspector.k1');
+    },
+    extensions: ['png', 'jpg', 'jpeg', 'webp', 'gif', 'bmp'],
+  },
+];
+const VIDEOS = [
+  {
+    get name() {
+      return t('dynamicInspector.k3');
+    },
+    extensions: ['mp4', 'webm', 'mov', 'm4v'],
+  },
+];
 
 export async function addLayer(material: string, part: string, kind: LayerKind) {
   const { addLayer } = useStore.getState();
-  if (kind === 'text') return addLayer(material, part, { kind, get name() { return t('dynamicInspector.k4'); }, text: { content: 'GTFO', sizePx: 96, color: [1, 1, 1, 1] }, uvSize: [0.3, 0.12] });
+  if (kind === 'text')
+    return addLayer(material, part, {
+      kind,
+      get name() {
+        return t('dynamicInspector.k4');
+      },
+      text: { content: 'GTFO', sizePx: 96, color: [1, 1, 1, 1] },
+      uvSize: [0.3, 0.12],
+    });
   const files = await window.forge.openDialog('files', kind === 'video' ? VIDEOS : IMAGES);
   if (files.length) layerFromFiles(material, part, kind === 'sequence' ? files : files.slice(0, 1));
 }
@@ -106,11 +168,16 @@ function UvCanvas({ material, layer }: { material: string; layer: DynamicLayer }
     const nw = n.width() * n.scaleX();
     const nh = n.height() * n.scaleY();
     n.scale({ x: 1, y: 1 });
-    updateLayer(material, layer.id!, (l) => {
-      l.uvCenter = [n.x() / S, 1 - n.y() / S];
-      l.uvSize = [Math.max(nw, 1) / S, Math.max(nh, 1) / S];
-      l.rotation = -n.rotation();
-    }, gesture.current);
+    updateLayer(
+      material,
+      layer.id!,
+      (l) => {
+        l.uvCenter = [n.x() / S, 1 - n.y() / S];
+        l.uvSize = [Math.max(nw, 1) / S, Math.max(nh, 1) / S];
+        l.rotation = -n.rotation();
+      },
+      gesture.current,
+    );
   };
 
   return (
@@ -136,7 +203,17 @@ function UvCanvas({ material, layer }: { material: string; layer: DynamicLayer }
               onTransformStart={begin}
               onTransform={commit}
             />
-            <Transformer ref={tr} rotateEnabled keepRatio={false} boundBoxFunc={(old, box) => (Math.abs(box.width) < 2 || Math.abs(box.height) < 2 ? old : box)} borderStroke="#ff7a2f" anchorStroke="#ff7a2f" anchorFill="#1a1d21" anchorSize={8} rotateAnchorOffset={18} />
+            <Transformer
+              ref={tr}
+              rotateEnabled
+              keepRatio={false}
+              boundBoxFunc={(old, box) => (Math.abs(box.width) < 2 || Math.abs(box.height) < 2 ? old : box)}
+              borderStroke="#ff7a2f"
+              anchorStroke="#ff7a2f"
+              anchorFill="#1a1d21"
+              anchorSize={8}
+              rotateAnchorOffset={18}
+            />
           </Layer>
         </Stage>
       )}
@@ -157,7 +234,9 @@ export function Playback({ x, fps, up }: { x: Timing; fps: number | null; up: (f
       <Field label={t('dynamicInspector.k19')}>
         <Group gap="xs" wrap="nowrap">
           <Select style={{ flex: 1 }} value={x.play ?? 'loop'} onChange={(v) => v && up((l) => void ((l.play = v as PlayMode), (l.playSeconds ||= 3)))} data={PLAY_MODES} allowDeselect={false} />
-          {x.play === 'loopFor' && <Num w={86} value={x.playSeconds || 3} step={0.5} decimalScale={1} min={0.1} rightSection={t('dynamicInspector.k20')} onChange={(v) => up((l) => void (l.playSeconds = v), 'ps')} />}
+          {x.play === 'loopFor' && (
+            <Num w={86} value={x.playSeconds || 3} step={0.5} decimalScale={1} min={0.1} rightSection={t('dynamicInspector.k20')} onChange={(v) => up((l) => void (l.playSeconds = v), 'ps')} />
+          )}
         </Group>
       </Field>
       {x.trigger === 'lowAmmo' && (
@@ -178,25 +257,33 @@ function LayerPanel({ material, layer }: { material: string; layer: DynamicLayer
   const { updateLayer, removeLayer, select } = useStore.getState();
   const up = (fn: (l: DynamicLayer) => void, key?: string) => updateLayer(material, layer.id!, fn, key && `${layer.id}-${key}`);
   const kind = KINDS.find((k) => k.id === layer.kind);
+  const hidden = layer.visible === false;
   return (
     <>
-      <div className="insp-head">
-        <UnstyledButton className="kind" onClick={() => select({ kind: 'part', id: materialOf(useStore.getState().doc, material)?.part ?? '' })}>
-          {t('dynamicInspector.k8')} {kind?.label}
-        </UnstyledButton>
-        <TextInput mt={4} size="sm" value={layer.name ?? ''} onChange={(e) => {
-          const n = e.currentTarget.value;
-          up((l) => void (l.name = n), 'name');
-        }} />
-      </div>
-      <div className="section">
+      <InspHead
+        kind={`${t('dynamicInspector.k8')} ${kind?.label ?? ''}`}
+        icon={kind?.icon ?? IconMovie}
+        color={FEATURE.layer.color}
+        onBack={() => select(ownerOf(useStore.getState().doc, material))}
+        name={{ value: layer.name ?? '', placeholder: layerName(layer), onChange: (n) => up((l) => void (l.name = n), 'name') }}
+        actions={
+          <>
+            <Tooltip label={t('dynamicInspector.k31')}>
+              <ActionIcon variant="subtle" color={hidden ? 'dark.2' : 'violet'} aria-label={t('dynamicInspector.k31')} aria-pressed={!hidden} onClick={() => up((l) => void (l.visible = hidden))}>
+                {hidden ? <IconEyeOff size={16} /> : <IconEye size={16} />}
+              </ActionIcon>
+            </Tooltip>
+            <Tooltip label={t('dynamicInspector.k32')}>
+              <ActionIcon variant="subtle" color="red" aria-label={t('dynamicInspector.k32')} onClick={() => removeLayer(material, layer.id!)}>
+                <IconTrash size={16} />
+              </ActionIcon>
+            </Tooltip>
+          </>
+        }
+      />
+      <Section id="dyn-place" title={t('dynamicInspector.k10')} icon={IconArrowsMove} color="var(--scan)" info={t('dynamicInspector.k9')}>
         <UvCanvas material={material} layer={layer} />
-        <p className="hint" style={{ marginTop: 6 }}>
-          {t('dynamicInspector.k9')}
-        </p>
-      </div>
-      <div className="section">
-        <h3>{t('dynamicInspector.k10')}</h3>
+        <div style={{ height: 12 }} />
         <Field label={t('dynamicInspector.k11')}>
           <Select value={layer.channel ?? 'albedo'} onChange={(c) => c && up((l) => void (l.channel = c as TextureChannel))} data={CHANNELS.map((c) => ({ value: c, label: CHANNEL_LABEL[c] }))} />
         </Field>
@@ -207,124 +294,114 @@ function LayerPanel({ material, layer }: { material: string; layer: DynamicLayer
           <Vec value={layer.uvSize ?? [0.25, 0.25]} labels={['U', 'V']} step={0.01} decimalScale={3} min={0.001} onChange={(v) => up((l) => void (l.uvSize = v), 'uvs')} />
         </Field>
         <Field label={t('dynamicInspector.k14')}>
-          <Num value={layer.rotation ?? 0} step={1} decimalScale={1} onChange={(v) => up((l) => void (l.rotation = v), 'rot')} />
+          <Num value={layer.rotation ?? 0} step={1} decimalScale={1} suffix="°" onChange={(v) => up((l) => void (l.rotation = v), 'rot')} />
         </Field>
         <Field label={t('dynamicInspector.k15')}>
           <Slider value={layer.opacity ?? 1} onChange={(v) => up((l) => void (l.opacity = v), 'op')} />
         </Field>
         <Field label={t('dynamicInspector.k16')}>
-          <Vec value={layer.crop ?? [0, 0, 1, 1]} labels={['X', 'Y', 'W', 'H']} step={0.01} min={0} max={1} hideControls onChange={(v) => up((l) => void (l.crop = v), 'crop')} />
+          <Vec value={layer.crop ?? [0, 0, 1, 1]} labels={['X', 'Y', 'W', 'H']} step={0.01} min={0} max={1} onChange={(v) => up((l) => void (l.crop = v), 'crop')} />
         </Field>
-      </div>
-      <div className="section">
-        <h3>{t('dynamicInspector.k17')}</h3>
-        <Playback x={layer} fps={layer.kind !== 'image' && layer.kind !== 'text' ? (layer.fps ?? 12) : null} up={up} />
-        <p className="hint" style={{ marginTop: 8 }}>
-          {layer.trigger && layer.trigger !== 'always'
+      </Section>
+      <Section
+        id="dyn-play"
+        title={t('dynamicInspector.k17')}
+        icon={IconPlayerPlay}
+        color={FEATURE.layer.color}
+        info={
+          layer.trigger && layer.trigger !== 'always'
             ? t('dynamicInspector.k23')
             : layer.kind === 'video'
               ? t('dynamicInspector.k24')
               : layer.kind === 'sequence'
                 ? t('dynamicInspector.k25', { v0: layer.sources?.length ?? 0 })
-                : t('dynamicInspector.k26')}
-        </p>
-      </div>
+                : t('dynamicInspector.k26')
+        }
+      >
+        <Playback x={layer} fps={layer.kind !== 'image' && layer.kind !== 'text' ? (layer.fps ?? 12) : null} up={up} />
+      </Section>
       {layer.kind === 'text' && (
-        <div className="section">
-          <h3>{t('dynamicInspector.k4')}</h3>
-          <Textarea autosize minRows={2} value={layer.text?.content ?? ''} onChange={(e) => {
-            const t = e.currentTarget.value;
-            up((l) => void (l.text = { ...l.text, content: t }), 'tx');
-          }} />
+        <Section id="dyn-text" title={t('dynamicInspector.k4')} icon={IconLetterT} color={FEATURE.layer.color}>
+          <Textarea
+            autosize
+            minRows={2}
+            value={layer.text?.content ?? ''}
+            onChange={(e) => {
+              const t = e.currentTarget.value;
+              up((l) => void (l.text = { ...l.text, content: t }), 'tx');
+            }}
+          />
           <div style={{ height: 8 }} />
           <Field label={t('dynamicInspector.k27')}>
-            <Num value={layer.text?.sizePx ?? 64} step={2} decimalScale={0} min={8} onChange={(v) => up((l) => void (l.text = { ...l.text, sizePx: v }), 'tsz')} />
+            <Num value={layer.text?.sizePx ?? 64} step={2} decimalScale={0} min={8} suffix=" px" onChange={(v) => up((l) => void (l.text = { ...l.text, sizePx: v }), 'tsz')} />
           </Field>
           <Field label={t('dynamicInspector.k28')}>
             <Color alpha value={layer.text?.color ?? [1, 1, 1, 1]} onChange={(c) => up((l) => void (l.text = { ...l.text, color: c }), 'tcol')} />
           </Field>
           <Field label={t('dynamicInspector.k29')}>
-            <TextInput value={layer.text?.font ?? ''} placeholder={t('dynamicInspector.k30')} onChange={(e) => {
-              const f = e.currentTarget.value;
-              up((l) => void (l.text = { ...l.text, font: f || null }), 'tf');
-            }} />
+            <FontPicker value={layer.text?.font ?? null} onChange={(f) => up((l) => void (l.text = { ...l.text, font: f }), 'tf')} />
           </Field>
-        </div>
+          <Field label={t('text.tracking')}>
+            <Slider value={layer.text?.tracking ?? 0} min={-0.1} max={0.6} step={0.01} onChange={(v) => up((l) => void (l.text = { ...l.text, tracking: v }), 'ttr')} />
+          </Field>
+        </Section>
       )}
-      <div className="section">
-        <Group justify="space-between">
-          <Switch label={t('dynamicInspector.k31')} checked={layer.visible !== false} onChange={(e) => {
-            const on = e.currentTarget.checked;
-            up((l) => void (l.visible = on));
-          }} />
-          <Button variant="default" color="red" leftSection={<IconTrash size={14} />} onClick={() => removeLayer(material, layer.id!)}>
-            {t('dynamicInspector.k32')}
-          </Button>
-        </Group>
-      </div>
     </>
   );
 }
 
 /** A part's dynamic layers, per material, with adding right there. */
-export function PartLayers({ part }: { part: CatalogPart }) {
+export function PartLayers({ part }: { part: Pick<CatalogPart, 'id' | 'materials'> }) {
   const doc = useStore((s) => s.doc);
   const selection = useStore((s) => s.selection);
   const { select, updateLayer } = useStore.getState();
-  return (
-    <div className="section">
-      <FeatureHead feature="layer" title={t('dynamicInspector.k33')} info={`${t('dynamicInspector.k34')} ${t('dynamicInspector.k38')}`} />
-      {part.materials.map((mat) => {
-        const layers = (materialOf(doc, mat)?.layers ?? []).filter(Boolean) as DynamicLayer[];
-        return (
-          <div key={mat} style={{ marginBottom: 8 }}>
-            {part.materials.length > 1 && (
-              <Text size="xs" c="dimmed" mb={4}>
-                {mat}
-              </Text>
-            )}
-            <SimpleGrid cols={2} spacing={4} mb={6}>
-              {KINDS.map((k) => (
-                <Button key={k.id} size="xs" variant="light" color="violet" px={4} leftSection={<k.icon size={13} />} onClick={() => void addLayer(mat, part.id, k.id)}>
-                  {k.label}
-                </Button>
-              ))}
-            </SimpleGrid>
-            <div className="list">
-              {layers.map((l) => {
-                const K = KINDS.find((k) => k.id === l.kind);
-                return (
-                  <UnstyledButton
-                    key={l.id}
-                    className="item"
-                    aria-selected={selection?.kind === 'layer' && selection.id === l.id}
-                    onClick={() => select({ kind: 'layer', material: mat, id: l.id! })}
-                  >
-                    <ActionIcon
-                      variant="subtle"
-                      size="sm"
-                      color={l.visible === false ? 'dark.3' : 'violet'}
-                      onClick={(e) => (e.stopPropagation(), updateLayer(mat, l.id!, (x) => void (x.visible = x.visible === false)))}
-                    >
-                      {l.visible === false ? <IconEyeOff size={14} /> : <IconEye size={14} />}
-                    </ActionIcon>
-                    <div style={{ minWidth: 0 }}>
-                      <div>{l.name}</div>
-                      <Text size="xs" c="dimmed">
-                        {K?.label} · {CHANNEL_LABEL[l.channel ?? 'albedo']}
-                      </Text>
-                    </div>
-                    {K && <K.icon size={14} />}
-                  </UnstyledButton>
-                );
-              })}
-              {!layers.length && <p className="hint">{t('dynamicInspector.k35')}</p>}
-            </div>
-          </div>
-        );
-      })}
-    </div>
-  );
+  return part.materials.map((mat) => {
+    const layers = (materialOf(doc, mat)?.layers ?? []).filter(Boolean) as DynamicLayer[];
+    return (
+      <Section
+        key={mat}
+        feature="layer"
+        title={part.materials.length > 1 ? `${t('dynamicInspector.k33')} · ${mat}` : t('dynamicInspector.k33')}
+        info={`${t('dynamicInspector.k34')} ${t('dynamicInspector.k38')}`}
+      >
+        <KindGrid kinds={KINDS} color={FEATURE.layer.color} onPick={(k) => void addLayer(mat, part.id, k)} />
+        <div className="list" style={{ marginTop: 10 }}>
+          {layers.map((l) => {
+            const K = KINDS.find((k) => k.id === l.kind);
+            return (
+              <UnstyledButton
+                key={l.id}
+                className={`item livery-item ${l.visible === false ? 'off' : ''}`}
+                aria-selected={selection?.kind === 'layer' && selection.id === l.id}
+                onClick={() => select({ kind: 'layer', material: mat, id: l.id! })}
+              >
+                <ActionIcon
+                  variant="subtle"
+                  size="sm"
+                  color={l.visible === false ? 'dark.3' : 'violet'}
+                  aria-label={t('dynamicInspector.k31')}
+                  onClick={(e) => (e.stopPropagation(), updateLayer(mat, l.id!, (x) => void (x.visible = x.visible === false)))}
+                >
+                  {l.visible === false ? <IconEyeOff size={14} /> : <IconEye size={14} />}
+                </ActionIcon>
+                {K ? <K.icon size={16} color={FEATURE.layer.color} /> : <span />}
+                <div style={{ minWidth: 0 }}>
+                  <Text size="sm" truncate>
+                    {layerName(l)}
+                  </Text>
+                  <Text size="xs" c="dimmed" truncate>
+                    {K?.label} · {CHANNEL_LABEL[l.channel ?? 'albedo']}
+                  </Text>
+                </div>
+                <span />
+              </UnstyledButton>
+            );
+          })}
+          {!layers.length && <Empty>{t('dynamicInspector.k35')}</Empty>}
+        </div>
+      </Section>
+    );
+  });
 }
 
 /** The selected dynamic layer. */

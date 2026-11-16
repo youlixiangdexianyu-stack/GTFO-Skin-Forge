@@ -66,7 +66,7 @@ export function ExportModDialog() {
       ? items.flatMap(({ item, list }) => list.filter((k) => k.id === pack[item.id]).map((k) => ({ weapon: item.id, id: k.id, path: k.path })))
       : items.flatMap(({ item, list }) => list.filter((k) => skins.includes(k.id)).map((k) => ({ weapon: item.id, id: k.id, path: k.path })));
   const pickIcon = async () => {
-    const [p] = await window.forge.openDialog('files', [{ name: t('exportMod.images'), extensions: ['png', 'jpg', 'jpeg', 'webp', 'bmp'] }]);
+    const [p] = await window.forge.openDialog('file', [{ name: t('exportMod.images'), extensions: ['png', 'jpg', 'jpeg', 'webp', 'bmp'] }]);
     if (p) setIcon(p);
   };
   const go = async () => {
@@ -97,14 +97,7 @@ export function ExportModDialog() {
           </Text>
         </div>
         <TextInput label={t('exportMod.name')} description={t('exportMod.nameHint')} value={name} onChange={(e) => setName(e.currentTarget.value)} error={name && !NAME.test(name)} />
-        <TextInput
-          label={t('exportMod.version')}
-          description={t('exportMod.versionHint')}
-          value={version}
-          onChange={(e) => setVersion(e.currentTarget.value)}
-          error={!VERSION.test(version)}
-          w={160}
-        />
+        <TextInput label={t('exportMod.version')} description={t('exportMod.versionHint')} value={version} onChange={(e) => setVersion(e.currentTarget.value)} error={!VERSION.test(version)} w={160} />
         <Textarea label={t('exportMod.description')} value={description} onChange={(e) => setDescription(e.currentTarget.value)} maxLength={250} autosize minRows={2} />
         <div>
           <Text size="sm" fw={500}>
@@ -114,7 +107,13 @@ export function ExportModDialog() {
             {t('exportMod.iconHint')}
           </Text>
           <Group align="center">
-            {icon ? <Image src={fileUrl(icon)} w={96} h={96} radius="sm" fit="contain" bg="dark.8" /> : <Text size="sm" c="dimmed">{t('exportMod.noIcon')}</Text>}
+            {icon ? (
+              <Image src={fileUrl(icon)} w={96} h={96} radius="sm" fit="contain" bg="dark.8" />
+            ) : (
+              <Text size="sm" c="dimmed">
+                {t('exportMod.noIcon')}
+              </Text>
+            )}
             <Button variant="default" size="xs" onClick={() => void pickIcon()}>
               {t('exportMod.pickIcon')}
             </Button>

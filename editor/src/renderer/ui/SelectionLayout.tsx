@@ -38,11 +38,15 @@ function AttachmentLayout({ id }: { id: string }) {
       title={t('selectionLayout.k2')}
       pose={pose}
       onChange={(p, key) =>
-        updateAttachment(id, (x) => {
-          x.position = p.position;
-          x.rotation = p.rotation;
-          x.scale = p.scale;
-        }, key)
+        updateAttachment(
+          id,
+          (x) => {
+            x.position = p.position;
+            x.rotation = p.rotation;
+            x.scale = p.scale;
+          },
+          key,
+        )
       }
       onReset={(row) =>
         updateAttachment(id, (x) => {

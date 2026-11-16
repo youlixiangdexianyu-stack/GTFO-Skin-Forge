@@ -2,11 +2,14 @@
 // reads this list. A target is found by CSS plus, optionally, its accessible name (aria-label or its own text) in the UI
 // language; the first visible target of a step wins, so a step lists the control it wants last and what opens it after.
 import { profileProblem } from '../actions';
+import { matchReady, useCharacter } from '../character/state';
 import { writePng } from '../frames';
 import type zh from '../locales/zh.json';
 import { currentItem, useStore } from '../store';
 
 export type Key = keyof typeof zh;
+/** A step that has its two texts. */
+type StepId = { [K in Key]: K extends `tour.${infer I}Info` ? (`tour.${I}` extends Key ? I : never) : never }[Key];
 export type EditorState = ReturnType<typeof useStore.getState>;
 
 export interface Target {
@@ -25,7 +28,7 @@ export interface Start {
 
 export interface TourStep {
   /** Texts are `tour.<id>` and `tour.<id>Info`. */
-  id: 'intro' | 'profile' | 'weapon' | 'newSkin' | 'part' | 'texture' | 'preview' | 'save' | 'apply' | 'finish';
+  id: StepId;
   targets: Target[];
   /** Next is allowed (else only once `done`); a step with neither always allows it. */
   ready?: (s: EditorState) => boolean;
@@ -52,33 +55,74 @@ export const snapshot = (s: EditorState): Start => ({
   projectPath: s.projectPath,
 });
 
-export const STEPS: TourStep[] = [
+/** The left panel's works tab: what opens the profile row, the new button and the work cards when another tab shows. */
+const WORKS: Target = { css: '.rail-tab', name: 'works.tab' };
+
+/** The left panel's other tab: a gun's parts, a character's steps. */
+const PARTS: Target = { css: '[data-tour=tab-parts]' };
+/** The card that 应用 sits on: the open work's. */
+const CURRENT: Target = { css: '.work[aria-current="true"]' };
+const character = () => useCharacter.getState();
+const characterInUse = (s: EditorState) => s.installed.some((p) => p.id === character().skinId && p.inUse);
+
+const OTHERS = {
+  character: [
+    { id: 'charIntro', targets: [] },
+    { id: 'charMode', targets: [{ css: '[data-tour=mode]' }, WORKS], done: () => character().mode === 'character' },
+    { id: 'charNew', targets: [{ css: '[data-tour=new]' }, WORKS], done: () => !!character().model },
+    { id: 'charBones', targets: [{ css: '.insp-head' }, { css: '.rail' }], ready: () => matchReady(character().check) },
+    { id: 'charSprings', targets: [{ css: '.rail' }, PARTS] },
+    { id: 'charApply', targets: [{ css: '[data-tour=apply]' }, CURRENT, WORKS], ready: (s) => characterInUse(s) || !!profileWarn(s), done: characterInUse, warn: profileWarn },
+    { id: 'charFinish', targets: [] },
+  ],
+  profiles: [
+    { id: 'profIntro', targets: [] },
+    { id: 'profPick', targets: [{ css: '.mantine-Menu-dropdown' }, { css: '[data-tour=profile]' }, WORKS], warn: profileWarn },
+    { id: 'profStates', targets: [{ css: '.lib-list' }, WORKS] },
+    { id: 'profMore', targets: [CURRENT, { css: '.lib-list' }, WORKS] },
+    { id: 'profOthers', targets: [{ css: '[data-tour=others]' }, { css: '[data-tour=new-more]' }, WORKS] },
+    { id: 'profFinish', targets: [] },
+  ],
+  hotReload: [
+    { id: 'hotIntro', targets: [] },
+    { id: 'hotStatus', targets: [{ css: '[data-tour=hot-reload]' }] },
+    { id: 'hotApply', targets: [{ css: '[data-tour=apply]' }, CURRENT, WORKS] },
+    { id: 'hotAuto', targets: [{ css: '.mantine-Menu-dropdown' }, { css: '[data-tour=settings]' }] },
+    { id: 'hotFinish', targets: [] },
+  ],
+  schemes: [
+    { id: 'schemeIntro', targets: [] },
+    { id: 'schemeWhole', targets: [{ css: '[data-tour=whole]' }, PARTS], done: (s) => loaded(s) && !s.selection },
+    { id: 'schemePlayer', targets: [{ css: '[data-section=player-colours]' }, { css: '[data-tour=tab-look]' }] },
+    { id: 'schemeCards', targets: [{ css: '[data-section=color-schemes]' }, { css: '[data-tour=tab-look]' }] },
+    { id: 'schemeFinish', targets: [] },
+  ],
+} satisfies Record<string, TourStep[]>;
+
+const BASICS: TourStep[] = [
   { id: 'intro', targets: [] },
   {
     id: 'profile',
-    targets: [{ css: '.mantine-Menu-dropdown' }, { css: '.topbar .target' }],
+    targets: [{ css: '.mantine-Menu-dropdown' }, { css: '[data-tour=profile]' }, WORKS],
     ready: (s) => !profileWarn(s),
     done: (s, start) => !profileWarn(s) && s.prefs.profilePath !== start.profilePath,
     warn: profileWarn,
   },
   {
     id: 'weapon',
-    targets: [{ css: '.gallery' }, { css: 'button', name: 'gallery.open' }],
+    targets: [{ css: '.gallery' }, { css: '[data-tour=new]' }, WORKS],
     ready: loaded,
     done: (s, start) => loaded(s) && s.weaponId !== start.weaponId,
   },
   {
     id: 'newSkin',
-    targets: [
-      { css: '[role=menuitem]', name: 'skins.new' },
-      { css: 'button', name: 'skins.add' },
-      { css: '.rail-tab', name: 'skins.title' },
-    ],
+    targets: [{ css: '.gallery' }, { css: '[data-tour=new]' }, WORKS],
     done: fresh,
   },
   {
     id: 'part',
-    targets: [{ css: '.rail' }, { css: '.rail-tab', name: 'leftRail.parts' }],
+    // A click on the gun in the 3D view picks a part whichever list the left column shows.
+    targets: [{ css: '.stage' }],
     done: (s) => s.selection?.kind === 'part',
   },
   {
@@ -90,24 +134,26 @@ export const STEPS: TourStep[] = [
   { id: 'preview', targets: [{ css: '.stage' }] },
   {
     id: 'save',
-    targets: [
-      { css: '[role=menuitem]', name: 'skins.saveFile' },
-      { css: '.skin-card[aria-current="true"] button', name: 'skins.more' },
-      { css: '.rail-tab', name: 'skins.title' },
-    ],
+    targets: [{ css: '[role=menuitem]', name: 'skins.saveFile' }, { css: '.work[aria-current="true"] button', name: 'skins.more' }, WORKS],
     // Autosaved is enough to go on; saving a file of one's own (a system dialog) finishes the step by itself.
     ready: (s) => !s.autosaveError && s.skins.some((k) => k.id === s.doc.id),
     done: (s, start) => !!s.projectPath && s.projectPath !== start.projectPath,
   },
   {
     id: 'apply',
-    targets: [{ css: 'button', name: 'topBar.k45' }],
+    // 应用 on the open work's card; the works tab first when another tab shows.
+    targets: [{ css: '[data-tour=apply]' }, WORKS],
     ready: (s) => installed(s) || !!profileWarn(s),
     done: installed,
     warn: profileWarn,
   },
   { id: 'finish', targets: [] },
 ];
+
+/** The tutorials, each opened on its own from the help menu (`tour.chapter.<id>`); `basics` also from the empty window. */
+export const CHAPTERS = { basics: BASICS, ...OTHERS };
+export type Chapter = keyof typeof CHAPTERS;
+export const isChapter = (x: string | null): x is Chapter => !!x && x in CHAPTERS;
 
 /** A loud striped albedo that reads well on any gun, drawn here so a new player needs no image of their own. */
 function sampleCanvas(): HTMLCanvasElement {

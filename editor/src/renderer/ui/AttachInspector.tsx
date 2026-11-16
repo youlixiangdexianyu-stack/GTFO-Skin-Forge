@@ -1,33 +1,107 @@
 import { ActionIcon, Button, Checkbox, Group, SegmentedControl, Select, Switch, TextInput, Tooltip } from '@mantine/core';
-import { useState } from 'react';
-import { cssFont, DEFAULT_FONT, FONT_GROUPS, isFontFile, loadFont, systemFonts } from '../fonts';
-import { IconArrowsMove, IconDeviceDesktop, IconPalette, IconPlus, IconRotate, IconRun, IconSparkles, IconTrash, IconWind, IconX } from '@tabler/icons-react';
+import {
+  IconAnchor,
+  IconArrowsMove,
+  IconBox,
+  IconDeviceDesktop,
+  IconPalette,
+  IconPaperclip,
+  IconPlus,
+  IconRotate,
+  IconRun,
+  IconSparkles,
+  IconSphere,
+  IconTrash,
+  IconWind,
+  IconX,
+} from '@tabler/icons-react';
 import { CHARM_DEFAULTS, MAX_PER_GEAR, MAX_SEGMENTS, type CharmSettings } from '../viewport/charm';
 import { InspectorTabs } from './InspectorTabs';
-import { baseName, triggersFor, type Attachment, type CatalogItem, type Screen, type ScreenSource, type Trigger, type TriggerEffect } from '../protocol';
+import { newHologram } from '../hologram';
+import { FontPicker } from './FontPicker';
+import { attachmentMaterial, triggersFor, type Attachment, type CatalogItem, type Screen, type ScreenSource, type Trigger, type TriggerEffect } from '../protocol';
 import { isBounded, isPercent, screenDigits } from '../frames';
-import { newCharm, useItem, useStore } from '../store';
+import { attachmentName, materialOf, newCharm, useItem, useStore } from '../store';
+import { layersOf } from '../livery';
+import { PartLivery } from './LiveryPanel';
+import { PartLayers } from './DynamicInspector';
 import { removeEffect } from '../playerColors';
 import { previewEvents, type CharmMotion } from '../viewport/refs';
 import { Color, Field, Num, Slider, Vec } from './fields';
 import { SelectionLayout } from './SelectionLayout';
 import { useSoundsTab } from './SkinInspector';
-import { Info } from './Features';
+import { Empty, FEATURE, Info, InspHead, KindGrid, Section } from './Features';
 import { ShapeSection } from './ShapePanel';
 import { partLabel, t } from '../i18n';
+import { pieceLabel } from '../pieces';
 
 const SOURCES: { value: ScreenSource; label: string }[] = [
-  { value: 'ammoClip', get label() { return t('attachInspector.k1'); } },
-  { value: 'ammoReserve', get label() { return t('attachInspector.k2'); } },
-  { value: 'ammoTotal', get label() { return t('attachInspector.k3'); } },
-  { value: 'kills', get label() { return t('attachInspector.k4'); } },
-  { value: 'damageDealt', get label() { return t('attachInspector.damageDealt'); } },
-  { value: 'damageDealtAll', get label() { return t('attachInspector.damageDealtAll'); } },
-  { value: 'damageTaken', get label() { return t('attachInspector.damageTaken'); } },
-  { value: 'accuracy', get label() { return t('attachInspector.accuracy'); } },
-  { value: 'health', get label() { return t('attachInspector.health'); } },
-  { value: 'infection', get label() { return t('attachInspector.infection'); } },
-  { value: 'static', get label() { return t('attachInspector.k5'); } },
+  {
+    value: 'ammoClip',
+    get label() {
+      return t('attachInspector.k1');
+    },
+  },
+  {
+    value: 'ammoReserve',
+    get label() {
+      return t('attachInspector.k2');
+    },
+  },
+  {
+    value: 'ammoTotal',
+    get label() {
+      return t('attachInspector.k3');
+    },
+  },
+  {
+    value: 'kills',
+    get label() {
+      return t('attachInspector.k4');
+    },
+  },
+  {
+    value: 'damageDealt',
+    get label() {
+      return t('attachInspector.damageDealt');
+    },
+  },
+  {
+    value: 'damageDealtAll',
+    get label() {
+      return t('attachInspector.damageDealtAll');
+    },
+  },
+  {
+    value: 'damageTaken',
+    get label() {
+      return t('attachInspector.damageTaken');
+    },
+  },
+  {
+    value: 'accuracy',
+    get label() {
+      return t('attachInspector.accuracy');
+    },
+  },
+  {
+    value: 'health',
+    get label() {
+      return t('attachInspector.health');
+    },
+  },
+  {
+    value: 'infection',
+    get label() {
+      return t('attachInspector.infection');
+    },
+  },
+  {
+    value: 'static',
+    get label() {
+      return t('attachInspector.k5');
+    },
+  },
 ];
 
 /** What 自动 picks for this weapon, or that the weapon's ammo is unknown here. */
@@ -42,54 +116,47 @@ function autoDigits(s: Screen, item: CatalogItem | undefined): string {
 type BorderStyle = NonNullable<Screen['borderStyle']>;
 const BORDER_STYLES: BorderStyle[] = ['solid', 'corners', 'double', 'notched', 'ticks'];
 
-const PICK_FILE = '~file';
-const DIGITS = '0123456789';
-
-/** Screen font: bundled fonts by group, installed fonts, or a font file; each option shows the digits in its own font. */
-function FontPicker({ value, onChange }: { value: string | null; onChange: (font: string | null) => void }) {
-  const [system, setSystem] = useState<string[] | null>(null);
-  const current = value ?? DEFAULT_FONT;
-  const files = isFontFile(current) ? [{ value: current, label: baseName(current) }] : [];
-  const bundled = new Set(FONT_GROUPS.flatMap((g) => g.fonts.map((f) => f.family)));
-  const sys = (system ?? []).filter((f) => !bundled.has(f));
-  if (!isFontFile(current) && !bundled.has(current) && !sys.includes(current)) sys.unshift(current);
-  const data = [
-    ...FONT_GROUPS.map((g) => ({ group: g.group, items: g.fonts.map((f) => f.family) })),
-    { get group() { return t('attachInspector.k6'); }, items: system ? sys : [...sys, { value: '~loading', get label() { return t('attachInspector.k7'); }, disabled: true }] },
-    { get group() { return t('attachInspector.k8'); }, items: [...files, { value: PICK_FILE, get label() { return t('attachInspector.k9'); } }] },
-  ];
-  // Options use their own font once it has loaded; system and file fonts load when shown.
-  const style = (font: string) => {
-    void loadFont(font).catch(() => undefined);
-    return { font: cssFont(font, 15) };
-  };
+/** A hologram's look: flicker, how much light it gives, a second colour up the model, scanlines and a lit outline. */
+function HologramFields({ a, up }: { a: Attachment; up: (fn: (a: Attachment) => void, key?: string) => void }) {
+  const h = a.hologram!;
+  const set = (fn: (h: NonNullable<Attachment['hologram']>) => void, key?: string) => up((x) => void (x.hologram && fn(x.hologram)), key);
+  const fx = !!a.mesh;
   return (
-    <Select
-      searchable
-      value={current}
-      data={data}
-      maxDropdownHeight={360}
-      comboboxProps={{ width: 340, position: 'bottom-end' }}
-      onDropdownOpen={() => void (system ?? systemFonts().then(setSystem))}
-      onChange={async (v) => {
-        if (v === PICK_FILE) {
-          const [f] = await window.forge.openDialog('files', [{ get name() { return t('attachInspector.k10'); }, extensions: ['ttf', 'otf', 'woff', 'woff2'] }]);
-          if (f) onChange(f);
-          return;
-        }
-        if (v) onChange(v === DEFAULT_FONT ? null : v);
-      }}
-      renderOption={({ option }) =>
-        option.value.startsWith('~') ? (
-          option.label
-        ) : (
-          <Group gap={10} wrap="nowrap" justify="space-between" w="100%">
-            <span>{option.label}</span>
-            <span style={style(option.value)}>{DIGITS}</span>
-          </Group>
-        )
-      }
-    />
+    <>
+      <Field label={t('hologram.flicker')}>
+        <Slider value={h.flicker ?? 0.3} min={0} max={1} onChange={(v) => set((x) => void (x.flicker = v), 'flicker')} />
+      </Field>
+      <Field label={t('hologram.opacity')}>
+        <Slider value={h.opacity ?? 1} min={0} max={1} onChange={(v) => set((x) => void (x.opacity = v), 'opacity')} />
+      </Field>
+      {fx && (
+        <>
+          <div className="switch-row" style={{ marginTop: 8 }}>
+            <Switch
+              color="cyan"
+              label={t('hologram.ramp')}
+              checked={!!h.color2}
+              onChange={(e) => {
+                const on = e.currentTarget.checked;
+                set((x) => void (x.color2 = on ? [1, 0.35, 0.85] : null));
+              }}
+            />
+            <Info label={t('hologram.rampInfo')} />
+          </div>
+          {h.color2 && (
+            <Field label={t('hologram.topColor')}>
+              <Color value={h.color2.map((x) => x ?? 1)} onChange={(c) => set((x) => void (x.color2 = c.slice(0, 3)), 'color2')} />
+            </Field>
+          )}
+          <Field label={t('hologram.scanlines')}>
+            <Slider value={h.scanlines ?? 0} min={0} max={1} onChange={(v) => set((x) => void (x.scanlines = v), 'scan')} />
+          </Field>
+          <Field label={t('hologram.edgeGlow')}>
+            <Slider value={h.edgeGlow ?? 0} min={0} max={1} onChange={(v) => set((x) => void (x.edgeGlow = v), 'edge')} />
+          </Field>
+        </>
+      )}
+    </>
   );
 }
 
@@ -98,44 +165,92 @@ function Effects({ a }: { a: Attachment }) {
   const triggers = triggersFor(useItem()).filter((x) => x.value !== 'always');
   const { updateAttachment } = useStore.getState();
   const effects = (a.effects ?? []).filter((e): e is TriggerEffect => !!e);
-  const up = (i: number, fn: (e: TriggerEffect) => void, key?: string) =>
-    updateAttachment(a.id!, (x) => void fn(x.effects![i]!), key && `${a.id}-fx${i}-${key}`);
+  const up = (i: number, fn: (e: TriggerEffect) => void, key?: string) => updateAttachment(a.id!, (x) => void fn(x.effects![i]!), key && `${a.id}-fx${i}-${key}`);
   return (
-    <div className="section">
-      <h3>
-        <span>{t('attachInspector.k11')}</span>
-        <Info label={t('attachInspector.k13')} />
-        <span className="grow" />
+    <Section
+      feature="fx"
+      title={t('attachInspector.k11')}
+      info={t('attachInspector.k13')}
+      actions={
         <Button
           size="compact-xs"
-          variant="subtle"
+          variant="light"
+          color="violet"
           leftSection={<IconPlus size={12} />}
           onClick={() => updateAttachment(a.id!, (x) => void (x.effects = [...(x.effects ?? []), { trigger: 'kill', action: 'flash', color: [1, 0.3, 0.2], intensity: 4, seconds: 0.4 }]))}
         >
           {t('attachInspector.k12')}
         </Button>
-      </h3>
+      }
+    >
+      {!effects.length && <Empty>{t('attachInspector.k13')}</Empty>}
       {effects.map((e, i) => (
         <div key={i} className="effect">
-          <Group gap="xs" wrap="nowrap">
-            <Select size="xs" w={96} value={e.trigger ?? 'kill'} data={triggers} allowDeselect={false} onChange={(v) => v && up(i, (x) => void (x.trigger = v as Trigger))} />
-            <SegmentedControl size="xs" value={e.action ?? 'flash'} data={[{ value: 'flash', get label() { return t('attachInspector.k14'); } }, { value: 'show', get label() { return t('attachInspector.k15'); } }]} onChange={(v) => up(i, (x) => void (x.action = v as 'flash' | 'show'))} />
-            <Num w={78} value={e.seconds ?? 0.3} step={0.1} decimalScale={2} min={0.05} rightSection={t('attachInspector.k16')} onChange={(v) => up(i, (x) => void (x.seconds = v), 's')} />
-            <ActionIcon variant="subtle" color="gray" size="sm" ml="auto" aria-label={t('attachInspector.k17')} onClick={() => useStore.getState().edit((d) => removeEffect(d, a.id!, i))}>
+          <Group gap={6} wrap="nowrap">
+            <Select style={{ flex: 1 }} value={e.trigger ?? 'kill'} data={triggers} allowDeselect={false} onChange={(v) => v && up(i, (x) => void (x.trigger = v as Trigger))} />
+            <ActionIcon variant="subtle" color="gray" size="sm" aria-label={t('attachInspector.k17')} onClick={() => useStore.getState().edit((d) => removeEffect(d, a.id!, i))}>
               <IconX size={13} />
             </ActionIcon>
           </Group>
+          <Group gap={6} mt={6} wrap="nowrap">
+            <SegmentedControl
+              style={{ flex: 1 }}
+              size="xs"
+              value={e.action ?? 'flash'}
+              data={[
+                {
+                  value: 'flash',
+                  get label() {
+                    return t('attachInspector.k14');
+                  },
+                },
+                {
+                  value: 'show',
+                  get label() {
+                    return t('attachInspector.k15');
+                  },
+                },
+              ]}
+              onChange={(v) => up(i, (x) => void (x.action = v as 'flash' | 'show'))}
+            />
+            <Num
+              w={76}
+              hideControls
+              value={e.seconds ?? 0.3}
+              step={0.1}
+              decimalScale={2}
+              min={0.05}
+              suffix={` ${t('attachInspector.k16')}`}
+              onChange={(v) => up(i, (x) => void (x.seconds = v), 's')}
+            />
+          </Group>
           {e.action !== 'show' && (
-            <Group gap="xs" mt={6} wrap="nowrap">
-              <div style={{ flex: 1 }}>
-                <Color slot={{ kind: 'effectColor', target: a.id, effect: i }} value={[...(e.color ?? [1, 1, 1]).slice(0, 3), 1]} onChange={(c) => up(i, (x) => void (x.color = [c[0], c[1], c[2]]), 'c')} />
+            <Group gap={6} mt={6} wrap="nowrap">
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <Color
+                  slot={{ kind: 'effectColor', target: a.id, effect: i }}
+                  value={[...(e.color ?? [1, 1, 1]).slice(0, 3), 1]}
+                  onChange={(c) => up(i, (x) => void (x.color = [c[0], c[1], c[2]]), 'c')}
+                />
               </div>
-              <Num w={92} value={e.intensity ?? 1} step={0.5} decimalScale={1} min={0} leftSection={t('attachInspector.k18')} leftSectionWidth={38} onChange={(v) => up(i, (x) => void (x.intensity = v), 'k')} />
+              <Tooltip label={t('attachInspector.k18')}>
+                <Num
+                  w={76}
+                  hideControls
+                  value={e.intensity ?? 1}
+                  step={0.5}
+                  decimalScale={1}
+                  min={0}
+                  leftSection={<IconSparkles size={13} />}
+                  aria-label={t('attachInspector.k18')}
+                  onChange={(v) => up(i, (x) => void (x.intensity = v), 'k')}
+                />
+              </Tooltip>
             </Group>
           )}
         </div>
       ))}
-    </div>
+    </Section>
   );
 }
 
@@ -148,7 +263,7 @@ const MOTIONS: { motion: CharmMotion; icon: typeof IconWind }[] = [
   { motion: 'turn', icon: IconRotate },
 ];
 
-/** Charm: a rope or chain from the attachment's origin with the model hanging on its end; the game's rope (charm.ts). */
+/** Charm: a rope or chain from the attachment's origin with the model hanging on its end; the game's rope (the backend's charm.simulate). */
 function CharmSection({ a }: { a: Attachment }) {
   const { updateAttachment } = useStore.getState();
   const charms = useStore((s) => (s.doc.attachments ?? []).filter((x) => x?.charm).length);
@@ -157,11 +272,12 @@ function CharmSection({ a }: { a: Attachment }) {
     updateAttachment(a.id!, (x) => void (x.charm && (x.charm[k] = v as never)), key ? `${a.id}-charm-${k}` : undefined);
   const full = !c && charms >= MAX_PER_GEAR;
   return (
-    <div className="section">
-      <h3>
-        <span>{t('charm.title')}</span>
-        <Info label={full ? t('charm.full', { v0: MAX_PER_GEAR }) : t('charm.info')} />
-        <span className="grow" />
+    <Section
+      title={t('charm.title')}
+      icon={IconPaperclip}
+      color="var(--warn)"
+      info={full ? t('charm.full', { v0: MAX_PER_GEAR }) : c ? `${t('charm.info')} ${t('charm.pointHint')}` : t('charm.info')}
+      actions={
         <Switch
           aria-label={t('charm.title')}
           checked={!!c}
@@ -171,13 +287,12 @@ function CharmSection({ a }: { a: Attachment }) {
             updateAttachment(a.id!, (x) => void (x.charm = on ? newCharm() : null));
           }}
         />
-      </h3>
+      }
+    >
       {c && (
         <>
-          <p className="hint" style={{ marginTop: 0 }}>
-            {t('charm.pointHint')}
-          </p>
           <SegmentedControl
+            mb={10}
             fullWidth
             size="xs"
             value={c.style ?? CHARM_DEFAULTS.style}
@@ -185,10 +300,10 @@ function CharmSection({ a }: { a: Attachment }) {
             onChange={(v) => set('style', v as CharmSettings['style'], false)}
           />
           <Field label={t('charm.length')}>
-            <Slider value={(c.length ?? CHARM_DEFAULTS.length) * CM} min={0.5} max={30} step={0.1} label={(v) => `${v.toFixed(1)} cm`} onChange={(v) => set('length', v / CM)} />
+            <Slider value={(c.length ?? CHARM_DEFAULTS.length) * CM} min={0.5} max={30} step={0.1} unit=" cm" onChange={(v) => set('length', v / CM)} />
           </Field>
           <Field label={t('charm.thickness')}>
-            <Slider value={(c.thickness ?? CHARM_DEFAULTS.thickness) * MM} min={0.3} max={10} step={0.1} label={(v) => `${v.toFixed(1)} mm`} onChange={(v) => set('thickness', v / MM)} />
+            <Slider value={(c.thickness ?? CHARM_DEFAULTS.thickness) * MM} min={0.3} max={10} step={0.1} unit=" mm" onChange={(v) => set('thickness', v / MM)} />
           </Field>
           <Field label={t('charm.color')}>
             <Color value={c.color ?? CHARM_DEFAULTS.color} onChange={(v) => set('color', v.slice(0, 3))} />
@@ -203,26 +318,27 @@ function CharmSection({ a }: { a: Attachment }) {
             <Slider value={c.stiffness ?? CHARM_DEFAULTS.stiffness} onChange={(v) => set('stiffness', v)} />
           </Field>
           <Field label={t('charm.segments')}>
-            <Slider value={c.segments ?? CHARM_DEFAULTS.segments} min={1} max={MAX_SEGMENTS} step={1} label={(v) => String(v)} onChange={(v) => set('segments', Math.round(v))} />
+            <Slider value={c.segments ?? CHARM_DEFAULTS.segments} min={1} max={MAX_SEGMENTS} step={1} onChange={(v) => set('segments', Math.round(v))} />
           </Field>
-          <Switch mt="xs" label={t('charm.collide')} checked={c.collide ?? CHARM_DEFAULTS.collide} onChange={(e) => set('collide', e.currentTarget.checked, false)} />
-          <Group gap={6} mt="sm" grow>
-            {MOTIONS.map(({ motion, icon: Icon }) => (
-              <Tooltip key={motion} label={t(`charm.${motion}Info`)}>
-                <Button size="compact-sm" variant="light" leftSection={<Icon size={14} />} onClick={() => void (previewEvents.charm = { motion, at: performance.now() })}>
-                  {t(`charm.${motion}`)}
-                </Button>
-              </Tooltip>
-            ))}
-          </Group>
+          <div className="switch-row" style={{ marginTop: 10 }}>
+            <Switch label={t('charm.collide')} checked={c.collide ?? CHARM_DEFAULTS.collide} onChange={(e) => set('collide', e.currentTarget.checked, false)} />
+          </div>
+          <div style={{ height: 12 }} />
+          <KindGrid
+            kinds={MOTIONS.map(({ motion, icon }) => ({ id: motion, label: t(`charm.${motion}`), icon, tip: t(`charm.${motion}Info`) }))}
+            color="var(--warn)"
+            onPick={(motion) => void (previewEvents.charm = { motion, at: performance.now() })}
+          />
         </>
       )}
-    </div>
+    </Section>
   );
 }
 
 function AttachmentPanel({ a }: { a: Attachment }) {
   const item = useItem();
+  const subParts = useStore((s) => s.subParts);
+  const paint = useStore((s) => materialOf(s.doc, attachmentMaterial(a.id ?? '')));
   const { updateAttachment, removeAttachment } = useStore.getState();
   const up = (fn: (a: Attachment) => void, key?: string) => updateAttachment(a.id!, fn, key && `${a.id}-${key}`);
   const upScreen = (fn: (s: Screen) => void, key?: string) => up((x) => void (x.screen && fn(x.screen)), key);
@@ -232,43 +348,54 @@ function AttachmentPanel({ a }: { a: Attachment }) {
   const place = (
     <>
       <CharmSection a={a} />
-      <div className="section">
-        <h3>{t('attachInspector.k21')}</h3>
+      <Section title={t('attachInspector.k21')} icon={IconAnchor} color="var(--scan)">
         <Field label={t('attachInspector.k22')}>
-          <Select value={a.part ?? ''} onChange={(v) => v && up((x) => void (x.part = v))} data={item?.parts.map((p) => ({ value: p.id, label: partLabel(p) })) ?? []} />
+          {/* A part, or one of its original pieces (the attachment then follows that piece as it moves). */}
+          <Select
+            searchable
+            value={`${a.part ?? ''}|${a.transform ?? ''}`}
+            onChange={(v) => {
+              if (!v) return;
+              const [part, path] = v.split('|');
+              up((x) => void Object.assign(x, { part, transform: path || null }));
+            }}
+            data={
+              item?.parts.map((p) => ({
+                group: partLabel(p),
+                items: [{ value: `${p.id}|`, label: partLabel(p) }, ...(subParts[p.id] ?? []).map((sp) => ({ value: `${p.id}|${sp.path}`, label: `${partLabel(p)} · ${pieceLabel(sp.path)}` }))],
+              })) ?? []
+            }
+          />
         </Field>
-        <Switch mt="sm" label={t('attachInspector.k23')} checked={!!a.faceCamera} onChange={(e) => up((x) => void (x.faceCamera = e.currentTarget.checked))} />
-      </div>
+        <div className="switch-row" style={{ marginTop: 10 }}>
+          <Switch label={t('attachInspector.k23')} checked={!!a.faceCamera} onChange={(e) => up((x) => void (x.faceCamera = e.currentTarget.checked))} />
+        </div>
+      </Section>
       <SelectionLayout />
-      <div className="section">
-        <Button variant="default" color="red" leftSection={<IconTrash size={14} />} onClick={() => removeAttachment(a.id!)}>
-          {t('attachInspector.k43')}
-        </Button>
-      </div>
     </>
   );
   const look = (
     <>
       <ShapeSection id={a.id!} />
-      <div className="section">
-        <h3>
-          <span>{t('hologram.title')}</span>
-          <Info label={t('hologram.info')} />
-          <span className="grow" />
-          <Switch checked={!!a.hologram} onChange={(e) => {
-            const on = e.currentTarget.checked;
-            up((x) => void (x.hologram = on ? { flicker: 0.3 } : null));
-          }} />
-        </h3>
-        {a.hologram && (
-          <Field label={t('hologram.flicker')}>
-            <Slider value={a.hologram.flicker ?? 0.3} min={0} max={1} onChange={(v) => up((x) => void (x.hologram && (x.hologram.flicker = v)), 'flicker')} />
-          </Field>
-        )}
-      </div>
+      <Section
+        title={t('hologram.title')}
+        feature="hologram"
+        info={a.hologram && a.mesh ? `${t('hologram.info')} ${t('hologram.fxHint')}` : t('hologram.info')}
+        actions={
+          <Switch
+            aria-label={t('hologram.title')}
+            checked={!!a.hologram}
+            onChange={(e) => {
+              const on = e.currentTarget.checked;
+              up((x) => void (x.hologram = on ? newHologram() : null));
+            }}
+          />
+        }
+      >
+        {a.hologram && <HologramFields a={a} up={up} />}
+      </Section>
       {s && (
-        <div className="section">
-          <h3>{t('attachInspector.k34')}</h3>
+        <Section id="screen-colours" title={t('attachInspector.k34')} icon={IconPalette} color="var(--scan)" info={t('attachInspector.k40')}>
           <Field label={t('attachInspector.k24')}>
             <Color slot={{ kind: 'screenText', target: a.id }} value={s.textColor ?? [1, 1, 1, 1]} onChange={(c) => upScreen((x) => void (x.textColor = [c[0], c[1], c[2], 1]), 'tc')} />
           </Field>
@@ -287,14 +414,17 @@ function AttachmentPanel({ a }: { a: Attachment }) {
             />
           </Field>
           <Field label={t('attachInspector.k37')}>
-            <Num value={s.borderWidth ?? 0.0008} scale={MM} step={0.1} min={0} onChange={(v) => upScreen((x) => void (x.borderWidth = v), 'bw')} />
+            <Num value={s.borderWidth ?? 0.0008} scale={MM} step={0.1} min={0} suffix=" mm" onChange={(v) => upScreen((x) => void (x.borderWidth = v), 'bw')} />
           </Field>
           <Field label={t('attachInspector.k38')}>
             <Group gap="sm" wrap="nowrap">
-              <Switch checked={!!s.lowAmmoColor} onChange={(e) => {
-                const on = e.currentTarget.checked;
-                upScreen((x) => void (x.lowAmmoColor = on ? [1, 0.35, 0.25, 1] : null));
-              }} />
+              <Switch
+                checked={!!s.lowAmmoColor}
+                onChange={(e) => {
+                  const on = e.currentTarget.checked;
+                  upScreen((x) => void (x.lowAmmoColor = on ? [1, 0.35, 0.25, 1] : null));
+                }}
+              />
               {s.lowAmmoColor && (
                 <div style={{ flex: 1 }}>
                   <Color slot={{ kind: 'screenLowAmmo', target: a.id }} value={s.lowAmmoColor} onChange={(c) => upScreen((x) => void (x.lowAmmoColor = [c[0], c[1], c[2], 1]), 'lc')} />
@@ -308,7 +438,9 @@ function AttachmentPanel({ a }: { a: Attachment }) {
             </Field>
           )}
           {s.lowAmmoColor && (
-            <Switch mt="xs" label={t('attachInspector.lowGradient')} checked={!!s.lowAmmoGradient} onChange={(e) => upScreen((x) => void (x.lowAmmoGradient = e.currentTarget.checked))} />
+            <div className="switch-row" style={{ marginTop: 8 }}>
+              <Switch label={t('attachInspector.lowGradient')} checked={!!s.lowAmmoGradient} onChange={(e) => upScreen((x) => void (x.lowAmmoGradient = e.currentTarget.checked))} />
+            </div>
           )}
           {s.lowAmmoColor && s.lowAmmoGradient && (
             <Field label={t('attachInspector.gradientStart')}>
@@ -317,35 +449,40 @@ function AttachmentPanel({ a }: { a: Attachment }) {
                 min={Math.round((s.lowAmmoFraction ?? 0.2) * 100) + 1}
                 max={100}
                 step={1}
-                label={(v) => `${v.toFixed(0)}%`}
+                unit="%"
                 onChange={(v) => upScreen((x) => void (x.lowAmmoGradientStart = v / 100), 'gs')}
               />
             </Field>
           )}
-          <p className="hint" style={{ marginTop: 8 }}>
-            {t('attachInspector.k40')}
-          </p>
-        </div>
+        </Section>
       )}
       {a.material && (
-        <div className="section">
-          <h3>{t('attachInspector.k41')}</h3>
+        <Section id="model-look" title={t('attachInspector.k41')} icon={IconBox} color="var(--scan)">
           <Field label={t('attachInspector.k34')}>
-            <Color slot={a.mesh ? { kind: 'attachmentColor', target: a.id } : undefined} value={a.material.color ?? [1, 1, 1, 1]} onChange={(c) => up((x) => void (x.material && (x.material.color = [c[0], c[1], c[2], 1])), 'mc')} />
+            <Color
+              slot={a.mesh ? { kind: 'attachmentColor', target: a.id } : undefined}
+              value={a.material.color ?? [1, 1, 1, 1]}
+              onChange={(c) => up((x) => void (x.material && (x.material.color = [c[0], c[1], c[2], 1])), 'mc')}
+            />
           </Field>
-          <Switch mt="xs" label={t('attachInspector.k42')} checked={!!a.material.unlit} onChange={(e) => {
-            const on = e.currentTarget.checked;
-            up((x) => void (x.material && (x.material.unlit = on)));
-          }} />
-        </div>
+          <div className="switch-row" style={{ marginTop: 8 }}>
+            <Switch
+              label={t('attachInspector.k42')}
+              checked={!!a.material.unlit}
+              onChange={(e) => {
+                const on = e.currentTarget.checked;
+                up((x) => void (x.material && (x.material.unlit = on)));
+              }}
+            />
+          </div>
+        </Section>
       )}
     </>
   );
   const screen = (
     <>
       {s && (
-        <div className="section">
-          <h3>{t('attachInspector.k19')}</h3>
+        <Section title={t('attachInspector.k19')} icon={IconDeviceDesktop} color="var(--scan)">
           <Field label={t('attachInspector.k15')}>
             <Select
               value={s.source ?? 'ammoClip'}
@@ -363,8 +500,22 @@ function AttachmentPanel({ a }: { a: Attachment }) {
             <Field label={t('attachInspector.style')}>
               <SegmentedControl
                 size="xs"
+                fullWidth
                 value={s.style ?? 'digits'}
-                data={[{ value: 'digits', get label() { return t('attachInspector.styleDigits'); } }, { value: 'bar', get label() { return t('attachInspector.styleBar'); } }]}
+                data={[
+                  {
+                    value: 'digits',
+                    get label() {
+                      return t('attachInspector.styleDigits');
+                    },
+                  },
+                  {
+                    value: 'bar',
+                    get label() {
+                      return t('attachInspector.styleBar');
+                    },
+                  },
+                ]}
                 onChange={(v) => upScreen((x) => void (x.style = v as 'digits' | 'bar'))}
               />
             </Field>
@@ -381,9 +532,9 @@ function AttachmentPanel({ a }: { a: Attachment }) {
             </Field>
           ) : (
             <Field label={t('attachInspector.k26')}>
-              <Group gap="sm" wrap="nowrap">
+              <Group gap="sm" wrap="wrap">
                 <Select
-                  w={110}
+                  w={96}
                   value={String(s.digits ?? 0)}
                   data={[{ value: '0', label: t('attachInspector.k25') }, ...['1', '2', '3', '4', '5', '6'].map((d) => ({ value: d, label: d }))]}
                   onChange={(v) => v && upScreen((x) => void (x.digits = Number(v)))}
@@ -394,10 +545,18 @@ function AttachmentPanel({ a }: { a: Attachment }) {
             </Field>
           )}
           <Field label={t('attachInspector.k28')}>
-            <Vec value={s.size ?? [0.03, 0.015]} labels={[t('attachInspector.k29'), t('attachInspector.k30')]} scale={MM} step={0.5} decimalScale={1} min={0.5} onChange={(v) => upScreen((x) => void (x.size = v), 'size')} />
+            <Vec
+              value={s.size ?? [0.03, 0.015]}
+              labels={[t('attachInspector.k29'), t('attachInspector.k30')]}
+              scale={MM}
+              step={0.5}
+              decimalScale={1}
+              min={0.5}
+              onChange={(v) => upScreen((x) => void (x.size = v), 'size')}
+            />
           </Field>
           <Field label={t('attachInspector.k31')}>
-            <Num value={s.surfaceGap ?? 0.0005} scale={MM} step={0.1} min={0} onChange={(v) => upScreen((x) => void (x.surfaceGap = v), 'gap')} />
+            <Num value={s.surfaceGap ?? 0.0005} scale={MM} step={0.1} min={0} suffix=" mm" onChange={(v) => upScreen((x) => void (x.surfaceGap = v), 'gap')} />
           </Field>
           <Field label={t('attachInspector.k32')}>
             <Slider value={s.textScale ?? 0.8} min={0.2} max={1} onChange={(v) => upScreen((x) => void (x.textScale = v), 'ts')} />
@@ -405,26 +564,55 @@ function AttachmentPanel({ a }: { a: Attachment }) {
           <Field label={t('attachInspector.k33')}>
             <Slider value={s.glow ?? 1.5} min={0} max={5} step={0.05} onChange={(v) => upScreen((x) => void (x.glow = v), 'glow')} />
           </Field>
-          <Switch mt="xs" label={t('attachInspector.glowInGame')} checked={s.glowInGame !== false} onChange={(e) => upScreen((x) => void (x.glowInGame = e.currentTarget.checked))} />
+          <div className="switch-row" style={{ marginTop: 8 }}>
+            <Switch label={t('attachInspector.glowInGame')} checked={s.glowInGame !== false} onChange={(e) => upScreen((x) => void (x.glowInGame = e.currentTarget.checked))} />
+          </div>
           <Field label={t('attachInspector.k10')}>
             <FontPicker value={s.font ?? null} onChange={(f) => upScreen((x) => void (x.font = f))} />
           </Field>
-        </div>
+        </Section>
       )}
     </>
   );
+  const material = attachmentMaterial(a.id ?? '');
+  const model = { id: material, materials: [material] };
   return (
     <>
-      <div className="insp-head">
-        <div className="kind">{s ? t('attachInspector.k19') : t('attachInspector.k20')}</div>
-        <TextInput mt={4} size="sm" fw={650} value={a.name ?? ''} onChange={(e) => up((x) => void (x.name = e.currentTarget.value), 'name')} />
-      </div>
+      <InspHead
+        kind={s ? t('attachInspector.k19') : t('attachInspector.k20')}
+        icon={s ? IconDeviceDesktop : a.hologram ? IconSphere : a.charm ? IconPaperclip : IconBox}
+        color={a.hologram ? FEATURE.hologram.color : FEATURE.attachment.color}
+        name={{ value: a.name ?? '', placeholder: attachmentName(useStore.getState().doc, a), onChange: (n) => up((x) => void (x.name = n), 'name') }}
+        actions={
+          <>
+            <Tooltip label={t('attachInspector.k43')}>
+              <ActionIcon variant="subtle" color="red" aria-label={t('attachInspector.k43')} onClick={() => removeAttachment(a.id!)}>
+                <IconTrash size={16} />
+              </ActionIcon>
+            </Tooltip>
+          </>
+        }
+      />
       <InspectorTabs
         id="attachment"
         tabs={[
           { id: 'place', label: t('tabs.place'), icon: IconArrowsMove, content: place },
           { id: 'look', label: t('tabs.look'), icon: IconPalette, color: a.hologram ? 'var(--holo)' : undefined, content: look },
           ...(s ? [{ id: 'screen', label: t('tabs.screen'), icon: IconDeviceDesktop, color: 'var(--scan)', content: screen }] : []),
+          // A model takes paint and animated layers as a part does.
+          ...(a.mesh
+            ? [
+                { id: 'livery', label: t('tabs.livery'), icon: FEATURE.livery.icon, color: FEATURE.livery.color, count: layersOf(paint).length, content: <PartLivery part={model} /> },
+                {
+                  id: 'layers',
+                  label: t('tabs.layers'),
+                  icon: FEATURE.layer.icon,
+                  color: FEATURE.layer.color,
+                  count: (paint?.layers ?? []).filter(Boolean).length,
+                  content: <PartLayers part={model} />,
+                },
+              ]
+            : []),
           { id: 'effects', label: t('tabs.effects'), icon: IconSparkles, count: (a.effects ?? []).filter(Boolean).length, content: <Effects a={a} /> },
           sounds,
         ]}

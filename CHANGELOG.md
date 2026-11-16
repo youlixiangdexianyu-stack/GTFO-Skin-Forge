@@ -1,5 +1,26 @@
 # Changelog
 
+## 1.1.1
+
+- The skins folder and `forgeskin.log` moved to `BepInEx/ForgeSkin/` (next to the wear counts and readback), out of the plugins
+  folder. The editor moves skins it installed before into the new folder the next time it opens; until then the game does not
+  load them and its log says so once per launch. Skins put by hand into `BepInEx/plugins/ForgeSkin/skins` are moved the same way.
+- Editor livery: panel lines and borders (cut-corner, double, notched, ticks, brackets, chevrons, hazard stripes, seams, panel grid) with presets, sharing the drawing with the ammo screen's borders; text layers with font, letter height and spacing; gradient layers (linear or from the centre, 2–4 colours) and a fade mask on any layer; tiled images. Any layer can glow (it is drawn into the material's emission too).
+- Editor placement: decals, text and panel lines take typed position, rotation, size and depth, and can be mirrored onto the other side of the gun.
+- Editor: duplicate a layer, apply a layer to other parts in one step, import your own stickers and tile images into a library, and save and apply colour palettes (with swatches under each colour field).
+- Holograms: brightness, a two-colour fade, scanlines and edge glow, shown the same in the editor and the game; new hex shield, reticle ring and tick arc shapes; a new hologram shape starts in the skin's own colour. A hologram picture now goes on the game's hologram shader where it reads it.
+- The picker's skin pictures come from the pack: the editor draws a gear skin's picture (`picture.png`) when it packs the skin, as it already did a character's, and the game shows it without loading the skin or photographing anything (no more black pictures). The picture is the author's: picked colours show on your gear in the lobby. A pack exported by an older editor has no picture until it is exported again.
+- A skinned gear's icon in the lobby's weapon list and the picker is framed as without the skin: a charm, screen or other attachment no longer shrinks the gun in it.
+- An imported model keeps its own textures (base colour, normal, metallic and smoothness, glow), in the editor's 3D view and in the game.
+- Texture size is set per material (`textureSize`, longest side 256–4096): the livery is baked, previewed, packed and shown in the game at that size, and the editor shows about how much video memory the material takes. The output size in the "Apply to game" menu is gone.
+- Editor: the data folder can be moved in the settings (the files are copied and checked before the old folder is removed); the installed editor keeps it in `Documents\ForgeSkin` by default and moves it there on first start. New portable zip, which keeps its data next to the program and does not update itself.
+- Editor: drop a picture on a part's texture slot to replace that one channel.
+- Editor: a `settings.json` that cannot be read is reported and left untouched, instead of being treated as empty settings and written over.
+- Player colours and adjust-page changes made just before the game closes are saved instead of lost.
+- The picker says in plain words why a skin pack cannot be read (made for another version, file in use, file damaged); the error code goes to the log.
+- Teammates see your skins: a teammate who has the same skin pack sees the skin, colours and adjustments you picked on your gear in your hands and on your sentry, and you see theirs; two players with the same gun each show their own. Their skin's shot, wield and down/revive sounds play at their gun. Gear whose skin you do not have (or have in another version) shows its original look, and the picker's details say whose it is and which Thunderstore mod to install. Bots keep the original look.
+- A skin can have at most 8 player colours; a pack with more is refused (`too-many-player-colors`), and the editor stops at 8.
+
 ## 1.1.0
 
 - A gun in your hands no longer turns magenta when a skin is applied again from the editor after a drop: the game's own first-person materials are kept while the skin covers them.
@@ -36,4 +57,4 @@
 
 ## 1.0.3
 
-- Released on Thunderstore before the mod moved into the Forge repository.
+- Released on GitHub before the mod moved into the Forge repository.

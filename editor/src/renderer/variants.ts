@@ -10,14 +10,16 @@ export type ColorVariant = NonNullable<NonNullable<SkinDocument['variants']>[num
 /** The variant the editor shows, if one is selected. */
 export function activeVariant(doc: SkinDocument): ColorVariant | undefined {
   const id = (doc.editor as { variant?: string } | null | undefined)?.variant;
-  return id ? doc.variants?.find((v) => v?.id === id) ?? undefined : undefined;
+  return id ? (doc.variants?.find((v) => v?.id === id) ?? undefined) : undefined;
 }
 
-/** A layer's colours as a variant stores them: a pattern's list, else its one colour. */
-export const colorsOf = (l: LiveryLayer): number[][] => (l.kind === 'pattern' ? (l.colors ?? []).map((c) => [...(c ?? [])]) : [[...(l.color ?? [1, 1, 1, 1])]]);
+/** A layer's colours as a variant stores them: a pattern's list, a gradient's stops, else its one colour. */
+export const colorsOf = (l: LiveryLayer): number[][] =>
+  l.kind === 'pattern' ? (l.colors ?? []).map((c) => [...(c ?? [])]) : l.kind === 'gradient' ? (l.gradient?.stops ?? []).map((x) => [...(x?.color ?? [1, 1, 1, 1])]) : [[...(l.color ?? [1, 1, 1, 1])]];
 
-function setColors(l: LiveryLayer, colors: number[][]) {
+export function setColors(l: LiveryLayer, colors: number[][]) {
   if (l.kind === 'pattern') l.colors = colors;
+  else if (l.kind === 'gradient') l.gradient?.stops?.forEach((x, i) => x && colors[i] && (x.color = colors[i]));
   else if (colors[0]) l.color = colors[0];
 }
 
@@ -25,8 +27,11 @@ function setColors(l: LiveryLayer, colors: number[][]) {
 export function layerIn(l: LiveryLayer, v: ColorVariant | undefined): LiveryLayer {
   const colors = v?.colors?.[l.id ?? ''];
   if (!colors) return l;
-  const out = { ...l };
-  setColors(out, colors.map((c) => [...(c ?? [])]));
+  const out = { ...l, gradient: l.gradient && structuredClone(l.gradient) }; // the document's own stops stay as they are
+  setColors(
+    out,
+    colors.map((c) => [...(c ?? [])]),
+  );
   return out;
 }
 
@@ -42,7 +47,10 @@ export function editColors(d: SkinDocument, l: LiveryLayer, fn: (l: LiveryLayer)
   if (!v) return fn(l);
   const own = colorsOf(l);
   // `fn` edits a copy: `own` is put back afterwards.
-  setColors(l, ((v.colors?.[l.id ?? ''] as number[][] | undefined) ?? own).map((c) => [...(c ?? [])]));
+  setColors(
+    l,
+    ((v.colors?.[l.id ?? ''] as number[][] | undefined) ?? own).map((c) => [...(c ?? [])]),
+  );
   fn(l);
   const now = colorsOf(l);
   setColors(l, own);

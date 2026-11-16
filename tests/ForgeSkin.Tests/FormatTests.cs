@@ -15,6 +15,7 @@ public class FormatTests
         Id = "skin-test",
         Name = "Test",
         Target = new SkinTarget { Weapon = "auto_pistol", GearId = 45 },
+        Picture = "picture.png",
         Materials =
         {
             new MaterialOverride
@@ -30,6 +31,12 @@ public class FormatTests
                         Atlas = new LayerAtlas { Path = "layers/l1.png", FrameCount = 4, Columns = 2, FrameWidth = 64, FrameHeight = 32, TargetRect = [10, 20, 64, 32] },
                     },
                 },
+            },
+            // An attachment's model as a layer target: layers only, its pictures stay the attachment material's.
+            new MaterialOverride
+            {
+                Material = MaterialOverride.ForAttachment("m1"),
+                Layers = { new DynamicLayer { Id = "l2", Name = "Sticker", Kind = LayerKind.Sequence, Atlas = new LayerAtlas { Path = "layers/l1.png", FrameCount = 2, Columns = 2, FrameWidth = 16, FrameHeight = 16, TargetRect = [0, 0, 16, 16] } } },
             },
         },
         Attachments =
@@ -49,10 +56,11 @@ public class FormatTests
         [
             new PlayerColor
             {
-                Id = "body", Name = "Body", Default = [1, 1, 1], Palette = [[1, 0, 0]],
+                Id = "body", Name = "Body", Default = [1, 1, 1],
                 Slots = { new ColorSlot { Kind = ColorSlotKind.Tint, Target = "Front_UZI_2" }, new ColorSlot { Kind = ColorSlotKind.ScreenText, Target = "s1" } },
             },
         ],
+        ColorSchemes = [new ColorScheme { Id = "red", Name = "Red", Colors = { ["body"] = [1, 0, 0] } }],
         // A code effect painted into a material's emission with player changes, and one on an attachment's model at an event.
         CodeEffects =
         [
@@ -75,6 +83,7 @@ public class FormatTests
         ["glyphs/s1.forgeskinmesh"] = Mesh(),
         ["meshes/m1.forgeskinmesh"] = Mesh(),
         ["sounds/k1.ogg"] = "OggS"u8.ToArray(),
+        ["picture.png"] = Png,
     };
 
     static string Write(SkinDocument doc, Dictionary<string, byte[]> files, bool manifest = true)
@@ -101,6 +110,33 @@ public class FormatTests
         Assert.Equal(SkinJson.Write(doc), SkinJson.Write(pack.Manifest));
         Assert.Equal(Mesh(), pack.ReadBytes("meshes/m1.forgeskinmesh"));
         Assert.Equal(3, ForgeSkinMesh.Read(pack.ReadBytes("meshes/m1.forgeskinmesh")).Positions.Length / 3);
+
+        // The pack as a teammate's look (Core Look): the player's colour and code-effect changes travel and come back as the same picks
+        // (to the byte the wire keeps); a value over the size limit is dropped whole, and a pack whose content differs shows the original.
+        var picks = new Dictionary<string, float[]>
+        {
+            ["body"] = [1, 0, 0],
+            [CodeEffects.TweakKey("fx1", TweakKind.Param, "speed")] = [2.5f],
+            [CodeEffects.TweakKey("fx1", TweakKind.Color, "line")] = [0, 1, 0, 1],
+            [CodeEffects.TweakKey("fx1", TweakKind.Transform, "scale")] = [1], // the author's own value: not sent
+        };
+        var gear = new LookGear { GearId = 45, Skin = Look.SkinNumber(doc.Id), Hash = 0x1234_5678_9abc_def0, Pack = "author-skins", Wear = 1 };
+        Look.Tweaks(doc, picks, gear.Tweaks);
+        Assert.Equal(3, gear.Tweaks.Count);
+        var look = new Look { Character = null };
+        look.Gear.Add(gear);
+        var bytes = look.Encode();
+        Assert.Equal(2 + 4 + 1 + 4 + 4 + 8 + 1 + gear.Pack.Length + 1 + 1 + (1 + 3) + (1 + 2) + (1 + 4), bytes.Length);
+        var back = Look.Decode(bytes)!;
+        Assert.Equal(bytes, back.Encode());
+        Assert.Equal(LookFit.Fits, Look.Fit(back.Gear[0], doc, gear.Hash, out var shown, out _));
+        Assert.Equal(new[] { 1f, 0, 0 }, shown!["body"]);
+        Assert.Equal(2.5f, shown[CodeEffects.TweakKey("fx1", TweakKind.Param, "speed")][0], 3);
+        Assert.Null(Look.Decode([.. bytes, .. new byte[Look.MaxBytes]]));
+        Assert.Null(Look.Decode(bytes[..^1]));
+        Assert.Equal(LookFit.Mismatch, Look.Fit(back.Gear[0], doc, gear.Hash + 1, out _, out _));
+        back.Gear[0].Tweaks.Add(LookTweak.Of(0, LookChange.PlayerColor, 5, 0)); // a player colour the skin does not have
+        Assert.Equal(LookFit.BadValue, Look.Fit(back.Gear[0], doc, gear.Hash, out _, out _));
     }
 
     // A deliberately broken pack per error-code family (document, path, resource, mesh content, screen, audio, sound event, player
@@ -122,11 +158,15 @@ public class FormatTests
         { "bad-audio", (_, f) => f["sounds/k1.ogg"] = [.. "OggS"u8, 0, 2, .. new byte[20], 1, 30, .. "OpusHead"u8, .. new byte[22]] },
         { "bad-trigger", (d, _) => d.Sounds[2].EnemyId = 29 }, // an enemy on a sound that is not a kill
         { "bad-player-color", (d, _) => d.PlayerColors![0].Slots[1].Target = "gone" },
+        { "bad-color-scheme", (d, _) => d.ColorSchemes![0].Colors["gone"] = [0, 0, 1] },
+        { "too-many-player-colors", (d, _) => d.PlayerColors!.AddRange(Enumerable.Range(1, SkinPack.MaxPlayerColors).Select(i => new PlayerColor { Id = "c" + i, Slots = d.PlayerColors[0].Slots })) },
         // Code effects, checked against ForgeCore's program catalogue: a program it lacks, a value outside the catalogue's range, an
         // attachment without a model to draw on.
         { "bad-fx-program", (d, _) => d.CodeEffects![0].Program = "lava" },
         { "bad-fx-value", (d, _) => d.CodeEffects![0].Params["speed"] = 99 },
         { "bad-fx-target", (d, _) => d.CodeEffects![1].Attachment = "s1" },
+        // A layer target on an attachment without a model (a screen).
+        { "bad-material-target", (d, _) => d.Materials[1].Material = MaterialOverride.ForAttachment("s1") },
     };
     [Theory]
     [MemberData(nameof(Broken))]
@@ -142,140 +182,6 @@ public class FormatTests
             ForgeSkin.Backend.PackBuilder.CheckSounds(pack); // what pack.build and pack.install add
         });
         Assert.Equal(code, e.Code);
-    }
-
-    // Core CharmRope (the game) and the editor's charm.ts (the 3D view) are one algorithm written twice: the same input
-    // (each style and an extreme short, stiff, light rope; body boxes one of which holds the hanging point; a moving and
-    // turning hanging point and a player's body on part of its path at uneven frame times with a stall that puts the rope at
-    // rest, then held still) must give the same nodes every frame, pendant pose, mesh and triangles. The rope stays stable:
-    // no node moves faster than the speed cap allows relative to the hanging point, and a damped rope held still for two
-    // seconds hangs straight again. Carried at a steady speed (walking), the rope hangs straight: drag is the rope's own.
-    [Fact]
-    public async Task CharmMatchesEditor()
-    {
-        var charms = new[]
-        {
-            new Charm { Style = CharmStyle.Cord, Segments = 5, Length = 0.08f, Stiffness = 0.6f, Damping = 0.1f, Thickness = 0.003f },
-            new Charm(),
-            new Charm { Style = CharmStyle.Beads, Segments = 12, Weight = 2.5f, Damping = 0.9f, Stiffness = 0, Collide = false },
-            new Charm { Style = CharmStyle.Cord, Segments = 12, Length = 0.005f, Stiffness = 1, Weight = 0.1f, Collide = false },
-        };
-        const double arm = 0.012;
-        double[] gear = [0, 0, -1, 0, 0, 1, 0, 0, 1, 0, 0, 0, 0.3, 1.1, -0.2, 1]; // turned a quarter about Y
-        var boxes = new[] { (Min: new[] { -0.15, -0.02, -0.02 }, Max: new[] { 0.15, 0.03, 0.02 }), (Min: new[] { 0.02, -0.12, -0.015 }, Max: new[] { 0.06, -0.03, 0.015 }) };
-        var frames = new List<(double Time, double[] M, double[] Body)>();
-        double time = 0;
-        double[] dts = [1 / 60.0, 1 / 144.0, 1 / 30.0, 0.011];
-        for (int i = 0; i < 240; i++)
-        {
-            time += i == 120 ? 0.3 : dts[i % dts.Length];
-            double yaw = Math.Sin(time * 3.1) * 1.4, pitch = Math.Sin(time * 1.7) * 0.5, s = 1.2;
-            double cy = Math.Cos(yaw), sy = Math.Sin(yaw), cp = Math.Cos(pitch), sp = Math.Sin(pitch);
-            // Rotation Y(yaw) * X(pitch), column-major, scaled; the gear's own move as a Lissajous path.
-            frames.Add((time, [cy * s, 0, -sy * s, 0, sy * sp * s, cp * s, cy * sp * s, 0, sy * cp * s, -sp * s, cy * cp * s, 0,
-                0.3 + Math.Sin(time * 2.3) * 0.25, 1.1 + Math.Sin(time * 4.1) * 0.08, -0.2 + Math.Cos(time * 1.9) * 0.3, 1],
-                [0.3 + Math.Sin(time * 2.3) * 0.25, 1.6, -0.5 + Math.Cos(time * 1.9) * 0.2]));
-        }
-        int moving = frames.Count;
-        // Then held still and upright (its -Y straight down), 2.1 s.
-        var m = frames[moving - 1].M;
-        double[] still = [1.2, 0, 0, 0, 0, 1.2, 0, 0, 0, 0, 1.2, 0, m[12], m[13], m[14], 1];
-        for (int i = 0; i < 120; i++) frames.Add((time += dts[i % dts.Length] * 1.2, still, frames[moving - 1].Body));
-        var anchor0 = frames[0].M;
-
-        var mine = charms.Select(c =>
-        {
-            var rope = new CharmRope(c, arm);
-            if (c.Collide) foreach (var (min, max) in boxes) rope.AddBox(anchor0, gear, min, max);
-            var nodes = frames.Select(f => { rope.Update(f.Time, f.M, f.Body); return rope.Nodes.ToArray(); }).ToList();
-            var pose = new double[7];
-            rope.Pendant(pose);
-            float[] v = new float[rope.VertexCount * 3], n = new float[rope.VertexCount * 3];
-            rope.Mesh(frames[^1].M, v, n);
-            return (Nodes: nodes, Pose: pose, Vertices: v, Normals: n, Triangles: rope.Triangles(), rope.Boxes);
-        }).ToList();
-
-        var input = JsonSerializer.Serialize(new
-        {
-            charms = charms.Select(c => new
-            {
-                length = (double)c.Length,
-                segments = c.Segments,
-                weight = (double)c.Weight,
-                damping = (double)c.Damping,
-                stiffness = (double)c.Stiffness,
-                style = c.Style.ToString().ToLowerInvariant(),
-                thickness = (double)c.Thickness,
-                collide = c.Collide,
-            }),
-            arm,
-            gear,
-            anchor0,
-            boxes = boxes.Select(b => new { min = b.Min, max = b.Max }),
-            frames = frames.Select(f => new { time = f.Time, m = f.M, body = f.Body }),
-        });
-        var script = Path.Combine(Repo(), "Mods/ForgeSkin/Editor/src/renderer/viewport/charm.ts");
-        const string driver = """
-            import { readFileSync } from 'node:fs';
-            const { CharmRope } = await import(process.argv[1]);
-            const input = JSON.parse(readFileSync(0, 'utf8'));
-            const out = input.charms.map((c) => {
-              const rope = new CharmRope(c, input.arm);
-              if (c.collide) for (const b of input.boxes) rope.addBox(input.anchor0, input.gear, b.min, b.max);
-              const nodes = input.frames.map((f) => { rope.update(f.time, f.m, f.body); return Array.from(rope.nodes); });
-              const pose = new Array(7);
-              rope.pendant(pose);
-              const v = new Float32Array(rope.vertexCount * 3), n = new Float32Array(rope.vertexCount * 3);
-              rope.mesh(input.frames[input.frames.length - 1].m, v, n);
-              return { nodes, pose, vertices: Array.from(v), normals: Array.from(n), triangles: rope.triangles(), boxes: rope.boxCount };
-            });
-            process.stdout.write(JSON.stringify(out));
-            """;
-        var editor = (await Node(script, driver, input)).AsArray();
-
-        for (int c = 0; c < charms.Length; c++)
-        {
-            var e = editor[c]!;
-            Assert.Equal(mine[c].Boxes, (int)e["boxes"]!);
-            Assert.Equal(mine[c].Triangles, e["triangles"]!.AsArray().Select(x => (int)x!).ToArray());
-            for (int f = 0; f < frames.Count; f++)
-                Near(mine[c].Nodes[f], e["nodes"]![f]!, 1e-6, $"charm {c} frame {f} nodes");
-            Near(mine[c].Pose, e["pose"]!, 1e-6, $"charm {c} pendant");
-            Near(mine[c].Vertices.Select(x => (double)x).ToArray(), e["vertices"]!, 1e-5, $"charm {c} vertices");
-            Near(mine[c].Normals.Select(x => (double)x).ToArray(), e["normals"]!, 1e-4, $"charm {c} normals");
-        }
-        // The rope moved (not a pair of agreeing rests): while moving, the pendant swings off the straight hang.
-        Assert.True(mine[1].Nodes.Take(moving).Max(x => Math.Abs(x[^3] - x[0])) > 1e-2);
-        for (int c = 0; c < charms.Length; c++)
-        {
-            var nodes = mine[c].Nodes;
-            for (int f = 1; f < frames.Count; f++)
-            {
-                double dt = frames[f].Time - frames[f - 1].Time;
-                for (int i = 3; i < nodes[f].Length; i += 3)
-                {
-                    // Each node's move relative to the hanging point's, per second (a rest frame starts over).
-                    double s = Math.Sqrt(Enumerable.Range(0, 3).Sum(j => Math.Pow(nodes[f][i + j] - nodes[f][j] - nodes[f - 1][i + j] + nodes[f - 1][j], 2))) / dt;
-                    Assert.True(dt > CharmRope.Gap || s <= 3 * CharmRope.MaxSpeed, $"charm {c} frame {f} node {i / 3}: {s:F2} m/s");
-                }
-            }
-            if (charms[c].Damping < 0.3 || charms[c].Collide) continue;
-            // Held still with damping and nothing in the way: back to hanging straight down, within a millimetre.
-            var last = nodes[^1];
-            double drop = charms[c].Length + arm;
-            Assert.True(Math.Abs(last[^3] - last[0]) < 1e-3 && Math.Abs(last[^1] - last[2]) < 1e-3 && Math.Abs(last[0 + 1] - last[^2] - drop) < 1e-3,
-                $"charm {c} does not settle: pendant at {last[^3] - last[0]:F4}, {last[^2] - last[1]:F4}, {last[^1] - last[2]:F4}");
-        }
-        // Walking (3.5 m/s reached over a second, then two seconds at it), gun and body together: no drag from the air, so the
-        // default rope hangs straight again.
-        var walker = new CharmRope(new Charm { Collide = false }, arm);
-        for (int i = 0; i <= 180; i++)
-        {
-            double t = i / 60.0, z = t < 1 ? 3.5 * (t * t * t - t * t * t * t / 2) : 3.5 * (t - 0.5);
-            walker.Update(t, [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 1.1, z, 1], [0, 1.6, z - 0.4]);
-        }
-        var w = walker.Nodes;
-        Assert.True(Math.Abs(w[^1] - w[2]) < 2e-3 && Math.Abs(w[^3] - w[0]) < 2e-3, $"walking drags the charm: pendant {w[^1] - w[2]:F4} m behind");
     }
 
     // Core CodeEffects.Resolve (the game) and the editor's codeFxValues.ts (the 3D view) turn a code effect into the same
@@ -438,4 +344,181 @@ public class FormatTests
     [Fact]
     public void PackWithoutManifestIsRejected() =>
         Assert.Equal("no-manifest", Assert.Throws<SkinFormatException>(() => SkinPack.Open(Write(Doc(), Files(), manifest: false))).Code);
+
+    // A standing humanoid skeleton (game axes: +X is the body's right), canonical joint -> (bone, position).
+    static readonly (string Joint, string Bone, float X, float Y)[] Skeleton =
+    {
+        ("hip", "Hips", 0, 1), ("spine0", "Spine", 0, 1.1f), ("spine1", "Chest", 0, 1.25f), ("neck", "Neck", 0, 1.5f), ("head", "Head", 0, 1.6f),
+        ("leftShoulder", "L_Shoulder", -0.05f, 1.45f), ("leftUpperArm", "L_Arm", -0.2f, 1.45f), ("leftLowerArm", "L_Forearm", -0.45f, 1.45f), ("leftHand", "L_Hand", -0.7f, 1.45f),
+        ("rightShoulder", "R_Shoulder", 0.05f, 1.45f), ("rightUpperArm", "R_Arm", 0.2f, 1.45f), ("rightLowerArm", "R_Forearm", 0.45f, 1.45f), ("rightHand", "R_Hand", 0.7f, 1.45f),
+        ("leftUpperLeg", "L_Thigh", -0.1f, 1), ("leftLowerLeg", "L_Shin", -0.1f, 0.55f), ("leftFoot", "L_Foot", -0.1f, 0.1f),
+        ("rightUpperLeg", "R_Thigh", 0.1f, 1), ("rightLowerLeg", "R_Shin", 0.1f, 0.55f), ("rightFoot", "R_Foot", 0.1f, 0.1f),
+    };
+
+    static string Sha(byte[] b) => Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(b)).ToLowerInvariant();
+
+    // A character pack: the descriptor (ImportedModels format 2) with a hair strand under the head, its mesh and texture.
+    // A PNG header of 4x4 (what ForgeCore's file check reads; decoding is the game's).
+    static readonly byte[] Png4 = [0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 0, 0, 0, 13, (byte)'I', (byte)'H', (byte)'D', (byte)'R', 0, 0, 0, 4, 0, 0, 0, 4, 8, 6, 0, 0, 0];
+
+    // A format-2 mesh of one triangle (normals up, every vertex on bone 0) whose indices are `indices`.
+    static byte[] CharacterMesh(params uint[] indices)
+    {
+        var mesh = new byte[16 + 3 * 32 + 3 * 4 + 3 * 24];
+        BitConverter.GetBytes(0x48534D46u).CopyTo(mesh, 0); // FMSH
+        BitConverter.GetBytes(2u).CopyTo(mesh, 4);
+        BitConverter.GetBytes(3u).CopyTo(mesh, 8);
+        BitConverter.GetBytes(3u).CopyTo(mesh, 12);
+        for (int v = 0; v < 3; v++) BitConverter.GetBytes(1f).CopyTo(mesh, 16 + v * 32 + 16);
+        for (int i = 0; i < 3; i++) BitConverter.GetBytes(indices[i]).CopyTo(mesh, 16 + 3 * 32 + i * 4);
+        for (int v = 0; v < 3; v++) BitConverter.GetBytes(1f).CopyTo(mesh, 16 + 3 * 32 + 3 * 4 + v * 24 + 8);
+        return mesh;
+    }
+
+    static (SkinDocument, Dictionary<string, byte[]>) Character(byte[]? mesh = null)
+    {
+        mesh ??= CharacterMesh(0, 1, 2);
+        var bones = Skeleton.Select(s => (s.Bone, s.X, s.Y)).Concat(new[] { ("Hair1", 0f, 1.65f), ("Hair2", 0f, 1.5f) })
+            .Select((b, i) => new { name = b.Item1, parent = i == 0 ? -1 : 0, rest = new float[] { 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, b.Item2, b.Item3, 0, 1 } });
+        var descriptor = JsonSerializer.Serialize(new
+        {
+            format = 2,
+            mesh = new { sha256 = Sha(mesh), vertices = 3, indices = 3 },
+            submeshes = new[] { new { start = 0, count = 3, material = 0 } },
+            materials = new[] { new { name = "Body", baseColor = new[] { 1f, 1, 1, 1 }, texture = 0 } },
+            textures = new[] { new { sha256 = Sha(Png4), width = 4, height = 4 } },
+            skin = new { bones },
+        });
+        var doc = new SkinDocument
+        {
+            Id = "person-test",
+            Target = new SkinTarget { Weapon = CharacterSkin.Target },
+            Character = new CharacterSkin
+            {
+                Model = new CharacterModelFiles { Descriptor = "character/model.json", Mesh = "character/model.forgemesh", Textures = { "character/t0.png" } },
+                Bones = Skeleton.ToDictionary(s => s.Joint, s => s.Bone),
+                Springs = new CharacterSprings
+                {
+                    Chains = { new SpringChain { Id = "hair", Kind = SpringKind.LongHair, Anchor = "Head", Strands = { new() { "Hair1", "Hair2" } }, Damping = 0.5f } },
+                    Capsules = { new SpringCapsule { Joint = "head", Radius = 0.1f } },
+                },
+                Materials = { new CharacterMaterial { Name = "Body", Shader = CharacterMaterial.Toon } },
+            },
+            PlayerColors = [new PlayerColor { Id = "suit", Default = [1, 1, 1], Slots = { new ColorSlot { Kind = ColorSlotKind.Tint, Target = "Body" } } }],
+        };
+        return (doc, new Dictionary<string, byte[]> { ["character/model.json"] = System.Text.Encoding.UTF8.GetBytes(descriptor), ["character/model.forgemesh"] = mesh, ["character/t0.png"] = Png4 });
+    }
+
+    // The character format (Core/Character.cs) through the pack, the descriptor and its files, the bone map against the skeleton and the
+    // pose links ForgeCore copies with, and the character slot of a teammate's look; a deliberately broken one per check is caught.
+    [Fact]
+    public void CharacterPack()
+    {
+        var (doc, files) = Character();
+        using (var pack = SkinPack.Open(Write(doc, files)))
+        {
+            var person = pack.Manifest.Character!;
+            Assert.Equal(CharacterSkin.Target, pack.Manifest.Target.Key());
+            var model = ForgeVisual.ImportedModelDescriptor.Parse(System.Text.Encoding.UTF8.GetString(pack.ReadBytes(person.Model.Descriptor)), out var failure)!;
+            Assert.True(model != null, failure.ToString());
+            Assert.Null(CharacterRig.Matches(model, pack.ReadBytes(person.Model.Mesh), [pack.ReadBytes("character/t0.png")]));
+            Assert.Equal("", CharacterRig.Check(person, model));
+            var links = ForgeVisual.HumanRig.Links(CharacterRig.Joints(person));
+            Assert.Equal(ForgeVisual.ClipRig.Count, links.Length);
+            Assert.Equal("L_Hand", links[13].Model);
+            Assert.Equal(0.5, person.Springs.Chains[0].Spec().Damping, 6);
+
+            // The skeleton with its sides swapped, and a mesh other than the descriptor's: both caught.
+            var swapped = SkinJson.Read(SkinJson.Write(pack.Manifest)).Character!;
+            (swapped.Bones["leftUpperLeg"], swapped.Bones["rightUpperLeg"]) = (swapped.Bones["rightUpperLeg"], swapped.Bones["leftUpperLeg"]);
+            (swapped.Bones["leftLowerLeg"], swapped.Bones["rightLowerLeg"]) = (swapped.Bones["rightLowerLeg"], swapped.Bones["leftLowerLeg"]);
+            (swapped.Bones["leftFoot"], swapped.Bones["rightFoot"]) = (swapped.Bones["rightFoot"], swapped.Bones["leftFoot"]);
+            Assert.Contains("swapped", CharacterRig.Check(swapped, model));
+            Assert.NotNull(CharacterRig.Matches(model, [.. files["character/model.forgemesh"].Take(16), .. Enumerable.Repeat((byte)1, 180)], [Png4]));
+        }
+
+        // The editor's export: the converted model's files on disk built into a pack (PackBuilder) and a skin mod (ModExport), the pack
+        // read back as the plugin reads it, the model licence's credit carried into the mod's README; a bone map the skeleton lacks is refused.
+        var dir = Directory.CreateTempSubdirectory("forgeskin-character-").FullName;
+        try
+        {
+            SkinDocument OnDisk()
+            {
+                var (project, _) = Character();
+                foreach (var (name, bytes) in files)
+                {
+                    Directory.CreateDirectory(Path.GetDirectoryName(Path.Combine(dir, name))!);
+                    File.WriteAllBytes(Path.Combine(dir, name), bytes);
+                }
+                var m = project.Character!.Model;
+                (m.Descriptor, m.Mesh, m.Textures) = (Path.Combine(dir, m.Descriptor), Path.Combine(dir, m.Mesh), m.Textures.Select(x => Path.Combine(dir, x)).ToList());
+                project.Character.Picture = Path.Combine(dir, "character/t0.png");
+                project.Editor = new() { ["credit"] = JsonSerializer.SerializeToElement("\"Person\" by Someone (https://creativecommons.org/licenses/by/4.0/)") };
+                return project;
+            }
+            var packPath = Path.Combine(dir, "person.forgeskin");
+            ForgeSkin.Backend.PackBuilder.Build(OnDisk(), Path.Combine(dir, "person.forgeskinproj"), packPath, [], [], -1);
+            using (var pack = SkinPack.Open(packPath))
+            {
+                ForgeSkin.Backend.PackBuilder.CheckCharacter(pack);
+                Assert.Equal(("character/model.json", "character/t0.png", "character/picture.png"), (pack.Manifest.Character!.Model.Descriptor, pack.Manifest.Character.Model.Textures[0], pack.Manifest.Character.Picture));
+                Assert.Equal(Png4, pack.ReadBytes("character/picture.png"));
+                Assert.Null(pack.Manifest.Editor);
+            }
+            // 搬到我的作品: the pack back as a work, its converted model unpacked beside it with the match kept, that builds a pack the
+            // plugin reads again; a name the author's works already use gets a number.
+            string name;
+            using (var pack = SkinPack.Open(packPath)) name = pack.Manifest.Name;
+            var moved = JsonSerializer.SerializeToNode(ForgeSkin.Backend.Projects.Adopt(packPath, Path.Combine(dir, "works"), [name], (_, _, _) => null))!;
+            Assert.Equal(["source"], moved["lost"]!.AsArray().Select(n => (string)n!));
+            Assert.Equal($"{name} 2", (string)moved["name"]!);
+            Assert.Equal(Png4, File.ReadAllBytes((string)moved["picture"]!));
+            var work = ForgeSkin.Backend.Projects.Load((string)moved["path"]!, []);
+            Assert.Equal(OnDisk().Character!.Bones, work.Character!.Bones);
+            ForgeSkin.Backend.PackBuilder.Build(work, (string)moved["path"]!, Path.Combine(dir, "again.forgeskin"), [], [], -1);
+            using (var again = SkinPack.Open(Path.Combine(dir, "again.forgeskin"))) ForgeSkin.Backend.PackBuilder.CheckCharacter(again);
+            var icon = Path.Combine(dir, "icon.png");
+            using (var image = SkiaSharp.SKImage.FromBitmap(new SkiaSharp.SKBitmap(8, 8))) File.WriteAllBytes(icon, image.Encode(SkiaSharp.SKEncodedImageFormat.Png, 100).ToArray());
+            var modPath = Path.Combine(dir, "Person_Test.zip");
+            ForgeSkin.Backend.ModExport.Export([packPath], modPath, "Person_Test", "1.0.0", "", icon, "forgeskin", false, () => [], _ => new());
+            using (var mod = ZipFile.OpenRead(modPath))
+            {
+                Assert.NotNull(mod.GetEntry("person.forgeskin"));
+                using var readme = new StreamReader(mod.GetEntry("README.md")!.Open());
+                Assert.Contains("- \"Person\" by Someone (https://creativecommons.org/licenses/by/4.0/)", readme.ReadToEnd());
+            }
+            var misfit = OnDisk();
+            misfit.Character!.Bones["head"] = "NoSuchBone";
+            Assert.Equal("bad-character-rig", Assert.Throws<SkinFormatException>(() => ForgeSkin.Backend.PackBuilder.Build(misfit, Path.Combine(dir, "misfit.forgeskinproj"), Path.Combine(dir, "misfit.forgeskin"), [], [], -1)).Code);
+        }
+        finally
+        {
+            Directory.Delete(dir, true);
+        }
+
+        // A mesh the descriptor names by its own hash but that the game could not build (an index past the vertices): the export
+        // read-back refuses it as the game's build would (ForgeCore's one file check), not only on a hash.
+        var (_, past) = Character(CharacterMesh(0, 1, 7));
+        var pastModel = ForgeVisual.ImportedModelDescriptor.Parse(System.Text.Encoding.UTF8.GetString(past["character/model.json"]), out _)!;
+        Assert.Contains("imported-model-mesh-invalid", CharacterRig.Matches(pastModel, past["character/model.forgemesh"], [Png4]));
+
+        // The character's slot of a look travels and comes back.
+        var look = new Look { Character = new LookSkin { Skin = Look.SkinNumber(doc.Id), Hash = 42, Pack = "author-people" } };
+        Look.Tweaks(doc, new Dictionary<string, float[]> { ["suit"] = [0, 0, 1] }, look.Character.Tweaks);
+        var back = Look.Decode(look.Encode())!;
+        Assert.Equal(LookFit.Fits, Look.Fit(back.Character!, doc, 42, out var shown, out _));
+        Assert.Equal(new[] { 0f, 0, 1 }, shown!["suit"]);
+
+        foreach (var (code, breakIt) in new (string, Action<SkinDocument>)[]
+        {
+            ("bad-character-bones", d => d.Character!.Bones.Remove("leftHand")),
+            ("bad-character-spring", d => d.Character!.Springs.Chains[0].Weight = 9),
+            ("bad-character-target", d => d.Target.GearId = 45),
+        })
+        {
+            var (broken, brokenFiles) = Character();
+            breakIt(broken);
+            Assert.Equal(code, Assert.Throws<SkinFormatException>(() => SkinPack.Open(Write(broken, brokenFiles)).Dispose()).Code);
+        }
+    }
 }

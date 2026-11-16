@@ -7,6 +7,7 @@ import { addLivery } from '../livery';
 import { addShape } from '../shapes';
 import { useStore } from '../store';
 import { Tour } from '../tour/Tour';
+import { CHAPTERS, isChapter } from '../tour/steps';
 import { partLabel, t } from '../i18n';
 
 const STEPS = [
@@ -58,8 +59,9 @@ function Overview() {
   );
 }
 
-/** Starts by itself on the first start (once the game is found) and when Settings or the tutorial restarts it. */
+/** The tutorial asked for (`store.tour`): the first one from the empty window's 看教程, any of them from the help menu. */
 export function Welcome() {
-  const opened = useStore((s) => s.ready && !!s.game?.found && !s.prefs.welcomed);
-  return opened ? <Tour intro={<Overview />} example={() => void exampleSkin()} /> : null;
+  const tour = useStore((s) => (s.ready && !!s.game?.found && isChapter(s.tour) ? s.tour : null));
+  if (!tour) return null;
+  return tour === 'basics' ? <Tour key={tour} steps={CHAPTERS.basics} intro={<Overview />} example={() => void exampleSkin()} /> : <Tour key={tour} steps={CHAPTERS[tour]} />;
 }

@@ -2,6 +2,8 @@ import { applyPatches, current, enablePatches, produceWithPatches, type Patch } 
 import { create } from 'zustand';
 import { AudioError, transcodeToOgg } from './audio';
 import {
+  attachedOf,
+  attachmentMaterial,
   baseName,
   call,
   dirName,
@@ -19,7 +21,6 @@ import {
   type PartTransform,
   type Profile,
   type ProjectEntry,
-  type SizeMode,
   type SkinDocument,
   type SkinsNote,
   type SkinSound,
@@ -28,9 +29,11 @@ import {
   type WeaponPreview,
 } from './protocol';
 import { detail, friendly } from './errors';
-import { fillThumbnails } from './viewport/thumbnails';
+import { itemThumbnail } from './viewport/thumbnails';
 import { CHARM_DEFAULTS } from './viewport/charm';
 import { startPoint } from './viewport/refs';
+import type { ShapeKind } from './shapes';
+import type { HoloSet } from './holoSets';
 import { showTab } from './ui/InspectorTabs';
 import { syncPlayerColors } from './playerColors';
 import { syncCodeEffects } from './codeFx';
@@ -48,6 +51,9 @@ export type Selection =
   | { kind: 'fx'; id: string }
   | null;
 
+const selectionKey = (s: Selection) => JSON.stringify(s?.kind === 'part' ? { ...s, sub: s.sub ?? null } : s);
+/** Whether two selections name the same thing (a part without a sub-part either way). */
+export const sameSelection = (a: Selection, b: Selection) => selectionKey(a) === selectionKey(b);
 
 export interface Prefs {
   ambient: number;
@@ -56,15 +62,10 @@ export interface Prefs {
   /** While the game runs, apply to the test profile a moment after each change. */
   autoApply: boolean;
   bloom: boolean;
-  sizeMode: SizeMode;
   allowMissing: boolean;
   profilePath: string | null;
   /** UI language; null follows the system. */
   lang: Lang | null;
-  /** 开发者模式: shows the log panel and the game log; off, only errors reach the user (the log file is always written). */
-  developer: boolean;
-  /** The first-start guide was closed (settings reopens it). */
-  welcomed: boolean;
 }
 
 /** Editor-only state persisted in the project's `editor` field. */
@@ -80,18 +81,15 @@ interface Step {
 }
 
 const PREFS_KEY = 'sf.prefs';
-const DEFAULT_PREFS: Prefs = {
+export const DEFAULT_PREFS: Prefs = {
   ambient: 1,
   ambientColor: '#ffffff',
   autoRotate: false,
   autoApply: false,
   bloom: true,
-  sizeMode: 'keep',
   allowMissing: true,
   profilePath: null,
   lang: null,
-  developer: false,
-  welcomed: false,
 };
 
 function loadPrefs(): Prefs {
@@ -111,7 +109,16 @@ export function editorOf(doc: SkinDocument): EditorState {
   return { ...e, enabled: e.enabled ?? {}, pending: e.pending ?? {} };
 }
 
-function normalize(doc: SkinDocument): SkinDocument {
+/** An attachment's name: what the author typed, else its default in the current language (an untouched one stores none). */
+export function attachmentName(doc: SkinDocument, a: Attachment): string {
+  if (a.name) return a.name;
+  const shape = (doc.editor as { shapes?: Record<string, { kind: ShapeKind; set?: HoloSet }> } | null | undefined)?.shapes?.[a.id ?? ''];
+  if (shape) return shape.set ? `${t(`holoSets.${shape.set}`)} · ${t(`shapes.${shape.kind}`)}` : t(`shapes.${shape.kind}`);
+  const n = (doc.attachments ?? []).findIndex((x) => x?.id === a.id) + 1;
+  return t(a.screen ? 'store.k21' : 'store.k22', { v0: n });
+}
+
+export function normalize(doc: SkinDocument): SkinDocument {
   doc.materials ??= [];
   doc.attachments ??= [];
   doc.parts ??= [];
@@ -146,7 +153,7 @@ function normalize(doc: SkinDocument): SkinDocument {
 }
 
 // A hole in an array (an undefined from a half-written vector) would save as null and fail the same way.
-const allFinite = (x: unknown): boolean =>
+export const allFinite = (x: unknown): boolean =>
   typeof x === 'number'
     ? Number.isFinite(x)
     : Array.isArray(x)
@@ -160,6 +167,12 @@ const writesFinite = (p: Patch): boolean => p.op === 'remove' || ((typeof p.path
 /** Layout entry of a part root (`path` null) or of the child at `path`. */
 export function partTransformOf(doc: SkinDocument, part: string, path?: string | null): PartTransform | undefined {
   return doc.parts?.find((t) => t?.part === part && (t.path ?? null) === (path ?? null)) ?? undefined;
+}
+
+/** What a layer of `material` belongs to, for going back from it: the attachment whose model it paints, else its part. */
+export function ownerOf(doc: SkinDocument, material: string): Selection {
+  const attached = attachedOf(material);
+  return attached ? { kind: 'attachment', id: attached } : { kind: 'part', id: materialOf(doc, material)?.part ?? '' };
 }
 
 export function materialOf(doc: SkinDocument, material: string): MaterialOverride | undefined {
@@ -212,6 +225,8 @@ interface State {
   preview: WeaponPreview | null;
   previewLoading: boolean;
   selection: Selection;
+  /** What the pointer is over: a row of the parts tree, or a part or attachment in the 3D view; both show it. */
+  hover: Selection;
   doc: SkinDocument;
   projectPath: string | null;
   undo: Step[];
@@ -221,14 +236,14 @@ interface State {
   prefs: Prefs;
   logs: LogLine[];
   progress: { text: string; done: number; total: number } | null;
-  /** Background preparation of every weapon preview (first run after a game update). */
-  cache: { done: number; total: number } | null;
   /** A new version downloading in the background (total 0 when its size is unknown). */
   update: { received: number; total: number } | null;
   /** A new version is downloaded; restarting installs it. */
   updateReady: boolean;
   /** Bumped when a file the skin uses is written outside the editor (the 3D view repaints, 自动应用 applies again). */
   fileEpoch: number;
+  /** The skin's own pictures the 3D view could not read (marked on their slots); one leaves when its file changes. */
+  unreadable: string[];
   /** Video memory the last built pack of a skin takes in game (pack.build's estimate). */
   skinMemory: { id: string; bytes: number } | null;
   /** Plain message when the last autosave failed; null when it worked. */
@@ -242,11 +257,13 @@ interface State {
   subParts: Record<string, { path: string; name: string; depth: number }[]>;
 
   init(): Promise<void>;
+  loadAll(): Promise<void>;
   log(line: string): void;
   toast(kind: NotifyKind, text: string, action?: NotifyAction): void;
   fail(e: unknown, fallback?: string): void;
   setPrefs(p: Partial<Prefs>): void;
   select(s: Selection): void;
+  setHover(h: Selection): void;
   refreshGame(): Promise<void>;
   chooseGameDir(): Promise<void>;
   refreshProfiles(): Promise<void>;
@@ -263,8 +280,20 @@ interface State {
   skinsTarget: { manifest: string; notes: SkinsNote[] } | null;
   /** The sticker / decal image picker is open: it answers here (stickers.pickDecalImage). */
   stickerPick: ((file: string | null) => void) | null;
+  /** The tutorial chapter being walked through (tour/), null when none is open. */
+  tour: string | null;
   /** The current item's skins (each its own autosaved project), newest first. */
   skins: ProjectEntry[];
+  /** Every item's skins by item id (the work list), and the character skins (character/model.ts refreshCharacters). */
+  works: Record<string, ProjectEntry[]>;
+  characters: ProjectEntry[];
+  /** When the open skin was last changed in this session (ms; 0: not since it opened); saved as editor.editedAt. */
+  editedAt: number;
+  refreshWorks(): Promise<void>;
+  /** Opens a skin of any item. */
+  openWork(weaponId: string, skinId: string): Promise<void>;
+  /** A new blank skin for an item (an item with no skins yet gets its first one). */
+  newWork(weaponId: string): Promise<void>;
   /** Skins installed in the chosen profile. */
   installed: InstalledPack[];
   refreshSkins(): Promise<ProjectEntry[]>;
@@ -272,8 +301,8 @@ interface State {
   switchSkin(id: string): Promise<void>;
   /** A new skin for the current item: blank, or a copy of the one being edited. */
   newSkin(copy: boolean): Promise<void>;
-  /** Deletes a skin's project and removes it from the chosen profile. */
-  deleteSkin(id: string): Promise<void>;
+  /** Moves a skin's project (of the open item, or of `weaponId`) to the Recycle Bin and takes it out of the chosen profile. */
+  deleteSkin(id: string, weaponId?: string): Promise<void>;
   edit(fn: (d: SkinDocument) => void, coalesceKey?: string): void;
   undoEdit(): void;
   redoEdit(): void;
@@ -320,6 +349,8 @@ interface State {
 }
 
 let initialised = false;
+/** The init run in flight: StrictMode's double effect and the backend-ready retry share it instead of loading twice. */
+let initRun: Promise<void> | undefined;
 
 type Set = (p: Partial<State>) => void;
 function subscribe(f: Window['forge'], set: Set, get: () => State) {
@@ -337,10 +368,6 @@ function subscribe(f: Window['forge'], set: Set, get: () => State) {
       const p = data as { done: number; total: number; text: string };
       set({ progress: p.done >= p.total ? null : p });
     }
-    if (event === 'cache-progress') {
-      const p = data as { done: number; total: number };
-      set({ cache: p.done >= p.total ? null : { done: p.done, total: p.total } });
-    }
   });
   f.onStatus((s) => {
     set({ backendDown: s !== 'ready' });
@@ -350,6 +377,8 @@ function subscribe(f: Window['forge'], set: Set, get: () => State) {
   });
 }
 let autosaveTimer: ReturnType<typeof setTimeout> | undefined;
+/** What a data folder move reported (actions.moveDataFolder), shown once the reloaded window starts. */
+export const DATA_NOTICE = 'sf.dataNotice';
 
 export const useStore = create<State>((set, get) => ({
   ready: false,
@@ -363,6 +392,7 @@ export const useStore = create<State>((set, get) => ({
   preview: null,
   previewLoading: false,
   selection: null,
+  hover: null,
   doc: normalize({ name: '', materials: [], attachments: [] }),
   projectPath: null,
   undo: [],
@@ -376,14 +406,18 @@ export const useStore = create<State>((set, get) => ({
   skinsReport: null,
   skinsTarget: null,
   stickerPick: null,
+  tour: null,
   skins: [],
+  works: {},
+  characters: [],
+  editedAt: 0,
   installed: [],
   logs: [],
   progress: null,
-  cache: null,
   update: null,
   updateReady: false,
   fileEpoch: 0,
+  unreadable: [],
   skinMemory: null,
   autosaveError: null,
   unmatched: [],
@@ -391,13 +425,24 @@ export const useStore = create<State>((set, get) => ({
   snapToSurface: false,
   subParts: {},
 
-  async init() {
+  init() {
+    initRun ??= get()
+      .loadAll()
+      .finally(() => (initRun = undefined));
+    return initRun;
+  },
+  async loadAll() {
     const f = window.forge;
     if (!initialised) {
       initialised = true;
       subscribe(f, set, get);
     }
     set({ dataDir: await f.dataDir() });
+    const notice = sessionStorage.getItem(DATA_NOTICE);
+    if (notice) {
+      sessionStorage.removeItem(DATA_NOTICE);
+      get().toast('ok', notice);
+    }
     await get().refreshGame();
     try {
       const catalog = await call('catalog.get', {});
@@ -408,9 +453,17 @@ export const useStore = create<State>((set, get) => ({
     await loadEnemies();
     await get().refreshProfiles();
     const last = localStorage.getItem('sf.weapon');
+    await get().refreshWorks();
+    // A practice work left by a run that ended inside the tutorial.
+    await removePractice();
     set({ ready: true });
-    if (last && !get().weaponId && get().catalog.some((c) => c.id === last)) await get().selectWeapon(last);
-    void fillThumbnails();
+    if (get().weaponId) return;
+    // The gear edited last, else the newest skin of any gear; with no skin at all the window offers to make one.
+    if (last && get().works[last] && get().catalog.some((c) => c.id === last)) return get().selectWeapon(last);
+    const newest = Object.entries(get().works)
+      .flatMap(([w, list]) => list.map((k) => ({ w, k })))
+      .sort((a, b) => b.k.modified.localeCompare(a.k.modified))[0];
+    if (newest) await get().openWork(newest.w, newest.k.id);
   },
   log(line) {
     const time = new Date().toLocaleTimeString('zh-CN', { hour12: false });
@@ -424,9 +477,12 @@ export const useStore = create<State>((set, get) => ({
   toast(kind, text, action) {
     notify(kind, text, action);
   },
+  // The log panel keeps the plain words; the raw error (code and backend text) goes only to the log file.
   fail(e, fallback) {
-    get().log(t('store.k2', { v0: detail(e) }));
-    get().toast('error', friendly(e, fallback));
+    const text = friendly(e, fallback);
+    window.forge.appLog('error', detail(e));
+    get().log(text);
+    get().toast('error', text);
   },
 
   setPrefs(p) {
@@ -434,6 +490,9 @@ export const useStore = create<State>((set, get) => ({
     localStorage.setItem(PREFS_KEY, JSON.stringify(prefs));
     set({ prefs });
     setLang(prefs.lang ?? systemLang());
+  },
+  setHover(hover) {
+    if (!sameSelection(hover, get().hover)) set({ hover });
   },
   select(selection) {
     set({ selection });
@@ -469,6 +528,7 @@ export const useStore = create<State>((set, get) => ({
   async refreshProfiles() {
     try {
       const profiles = await call('profiles.list', {});
+      const before = get().prefs.profilePath;
       set({ profiles });
       // The last one used while it still has BepInEx; else the most recently changed one with
       // BepInEx; else none (the top bar then says what to do).
@@ -476,6 +536,7 @@ export const useStore = create<State>((set, get) => ({
       const ready = profiles.filter((p) => p.hasBepInEx).sort((a, b) => (b.modified ?? '').localeCompare(a.modified ?? ''));
       const pick = last ?? ready[0];
       get().setPrefs({ profilePath: pick?.path ?? null });
+      if (before && !profiles.some((p) => p.path === before)) get().toast('info', t('store.profileGone', { v0: before }));
     } catch (e) {
       get().log(`profiles.list: ${detail(e)}`);
     }
@@ -492,12 +553,23 @@ export const useStore = create<State>((set, get) => ({
     // Each weapon keeps its skins as autosaved projects; open the one edited last, else the newest, else a new one.
     const skins = await get().refreshSkins();
     const pick = skins.find((k) => k.id === localStorage.getItem(`sf.skin.${id}`)) ?? skins[0];
-    const doc = (pick && (await loadSkin(pick.path))) || (await blankSkin(id, skins.length));
+    const doc =
+      (pick && (await loadSkin(pick.path))) ||
+      (await blankSkin(
+        id,
+        skins.map((k) => k.name),
+      ));
     if (!openSkin(doc, id, ticket)) return;
     if (!pick) await persistAutosave();
     try {
       const preview = await call('preview.weapon', { id });
       if (get().weaponId === id) set({ preview, previewLoading: false, progress: null });
+      void itemThumbnail(id, preview);
+      if (preview.damaged) {
+        const item = get().catalog.find((c) => c.id === id);
+        get().toast('info', t('store.damagedTextures', { v0: item ? localName(item) : id }));
+      }
+      if (preview.modified) get().toast('error', t('store.modifiedGame'));
     } catch (e) {
       if (get().weaponId === id) set({ previewLoading: false, progress: null });
       get().fail(e, t('store.k7'));
@@ -508,14 +580,39 @@ export const useStore = create<State>((set, get) => ({
     const id = get().weaponId;
     if (!id) return [];
     const skins: ProjectEntry[] = await call('project.list', { dir: skinDir(id) }).catch((e) => (get().log(`project.list: ${detail(e)}`), []));
+    const works = { ...get().works, [id]: skins };
+    if (!skins.length) delete works[id];
+    set({ works });
     if (get().weaponId === id) set({ skins });
     return skins;
+  },
+  async refreshWorks() {
+    const all = await call('project.listAll', { root: autosaveRoot() }).catch((e) => (get().log(`project.listAll: ${detail(e)}`), {}));
+    // The character skins have their own folder there.
+    const works = { ...(all as Record<string, ProjectEntry[]>) };
+    delete works.character;
+    set({ works });
+  },
+  async openWork(weaponId, skinId) {
+    if (get().weaponId !== weaponId) {
+      localStorage.setItem(`sf.skin.${weaponId}`, skinId);
+      return get().selectWeapon(weaponId);
+    }
+    await get().switchSkin(skinId);
+  },
+  async newWork(weaponId) {
+    const had = !!get().works[weaponId]?.length;
+    await get().selectWeapon(weaponId);
+    if (had) await get().newSkin(false);
   },
   async refreshInstalled() {
     const s = get();
     const profile = s.profiles.find((p) => p.path === s.prefs.profilePath);
-    const installed = profile?.hasBepInEx ? await call('pack.list', { profile: profile.path }).catch(() => []) : [];
-    set({ installed });
+    // Copies of the same skin go to the Recycle Bin, said in the log.
+    const installed = profile?.hasBepInEx ? await call('pack.list', { profile: profile.path, tidy: true }).catch((e) => (s.log(`pack.list: ${detail(e)}`), [])) : [];
+    for (const p of installed) if (p.dropped?.length) s.log(t('gameLog.dropped', { v0: p.name, v1: p.dropped.join('、') }));
+    // A profile chosen meanwhile has its own read under way.
+    if (get().prefs.profilePath === s.prefs.profilePath) set({ installed });
   },
   async switchSkin(id) {
     const entry = get().skins.find((k) => k.id === id);
@@ -536,27 +633,68 @@ export const useStore = create<State>((set, get) => ({
       doc = structuredClone(s.doc);
       doc.id = newSkinId(doc);
       doc.name = t('store.skinCopy', { v0: s.doc.name });
-    } else doc = await blankSkin(s.weaponId, s.skins.length);
+    } else
+      doc = await blankSkin(
+        s.weaponId,
+        s.skins.map((k) => k.name),
+      );
     if (openSkin(doc, s.weaponId, ticket)) await persistAutosave();
   },
-  async deleteSkin(id) {
+  async deleteSkin(id, weaponId = get().weaponId ?? '') {
     const s = get();
-    const entry = s.skins.find((k) => k.id === id);
+    const entry = (weaponId === s.weaponId ? s.skins : (s.works[weaponId] ?? [])).find((k) => k.id === id);
     const profile = s.profiles.find((p) => p.path === s.prefs.profilePath);
-    if (!entry || !s.weaponId) return;
+    if (!entry) return;
+    const rewatch = () =>
+      void call('project.files', { project: get().doc }).then(
+        ({ files }) => window.forge.watchFiles(files),
+        () => undefined,
+      );
+    // The editor's own watch on the open work's folders would keep them from moving to the Recycle Bin: it is let go, and not
+    // taken again by a change meanwhile (useWatchedFiles), until the delete is over.
+    const remove = async () => {
+      watchHeld = true;
+      try {
+        await window.forge.watchFiles([]);
+        await call('project.delete', { path: entry.path });
+        if (profile && s.installed.some((p) => p.id === id)) await call('pack.remove', { profile: profile.path, skinId: id });
+      } finally {
+        watchHeld = false;
+      }
+    };
+    if (weaponId !== s.weaponId) {
+      try {
+        await remove();
+      } catch (e) {
+        rewatch();
+        return get().fail(e, t('store.skinDeleteFailed'));
+      }
+      rewatch();
+      await get().refreshWorks();
+      return void get().refreshInstalled();
+    }
+    if (!s.weaponId) return;
     // The edited skin must not be written back by a pending autosave.
     if (s.doc.id === id) clearTimeout(autosaveTimer);
     const ticket = ++opening;
     try {
-      if (profile && s.installed.some((p) => p.id === id)) await call('pack.remove', { profile: profile.path, skinId: id });
-      await call('project.delete', { path: entry.path });
+      await remove();
     } catch (e) {
+      rewatch();
       return get().fail(e, t('store.skinDeleteFailed'));
     }
     const rest = await get().refreshSkins();
     void get().refreshInstalled();
-    if (get().doc.id !== id) return;
-    const next = (rest[0] && (await loadSkin(rest[0].path))) || (await blankSkin(s.weaponId, 0));
+    if (get().doc.id !== id) return rewatch();
+    // The last skin of this gear gone: another gear's newest skin opens, else a new one here.
+    const other =
+      !rest.length &&
+      Object.entries(get().works)
+        .flatMap(([w, list]) => list.map((k) => ({ w, k })))
+        .sort((a, b) => b.k.modified.localeCompare(a.k.modified))[0];
+    // No gear open while it loads, so the deleted skin is not saved back on the way.
+    if (other) return void (set({ weaponId: null }), await get().openWork(other.w, other.k.id));
+    const next = (rest[0] && (await loadSkin(rest[0].path))) || (await blankSkin(s.weaponId, []));
     if (openSkin(next, s.weaponId, ticket) && !rest.length) await persistAutosave();
   },
 
@@ -586,6 +724,7 @@ export const useStore = create<State>((set, get) => ({
       redo: [],
       lastEditKey: coalesceKey ?? null,
       lastEditAt: now,
+      editedAt: now,
     });
     get().autosave();
   },
@@ -593,14 +732,14 @@ export const useStore = create<State>((set, get) => ({
     const s = get();
     const step = s.undo.at(-1);
     if (!step) return;
-    set({ doc: applyPatches(s.doc, keepId(step.undo)), undo: s.undo.slice(0, -1), redo: [...s.redo, step], lastEditKey: null });
+    set({ doc: applyPatches(s.doc, keepId(step.undo)), undo: s.undo.slice(0, -1), redo: [...s.redo, step], lastEditKey: null, editedAt: Date.now() });
     get().autosave();
   },
   redoEdit() {
     const s = get();
     const step = s.redo.at(-1);
     if (!step) return;
-    set({ doc: applyPatches(s.doc, keepId(step.redo)), redo: s.redo.slice(0, -1), undo: [...s.undo, step], lastEditKey: null });
+    set({ doc: applyPatches(s.doc, keepId(step.redo)), redo: s.redo.slice(0, -1), undo: [...s.undo, step], lastEditKey: null, editedAt: Date.now() });
     get().autosave();
   },
 
@@ -705,9 +844,7 @@ export const useStore = create<State>((set, get) => ({
     set({ busy: t('store.k18') });
     try {
       const single = paths.length === 1 && !/\.(png|jpe?g|tga|tiff?|bmp|exr|webp)$/i.test(paths[0]);
-      const r = single
-        ? await call('match.folder', { weaponId, folder: paths[0] })
-        : await call('match.files', { weaponId, files: paths });
+      const r = single ? await call('match.folder', { weaponId, folder: paths[0] }) : await call('match.files', { weaponId, files: paths });
       get().applyMatch(r);
     } catch (e) {
       get().fail(e, t('store.k19'));
@@ -775,10 +912,8 @@ export const useStore = create<State>((set, get) => ({
     const transform = sel?.kind === 'part' ? (sel.sub ?? null) : null;
     const id = givenId ?? uid();
     get().edit((d) => {
-      const n = (d.attachments?.length ?? 0) + 1;
       d.attachments!.push({
         id,
-        name: kind === 'screen' ? t('store.k21', { v0: n }) : t('store.k22', { v0: n }),
         visible: true,
         part: anchor,
         transform,
@@ -825,6 +960,7 @@ export const useStore = create<State>((set, get) => ({
   removeAttachment(id) {
     get().edit((d) => {
       d.attachments = d.attachments!.filter((x) => x?.id !== id);
+      d.materials = d.materials!.filter((m) => m?.material !== attachmentMaterial(id)); // the paint on its model
     });
     set({ selection: null });
   },
@@ -850,10 +986,13 @@ export const useStore = create<State>((set, get) => ({
     }
   },
   updateSound(id, fn, coalesceKey) {
-    get().edit((d) => {
-      const x = d.sounds?.find((v) => v?.id === id);
-      if (x) fn(x);
-    }, coalesceKey && `sound-${id}-${coalesceKey}`);
+    get().edit(
+      (d) => {
+        const x = d.sounds?.find((v) => v?.id === id);
+        if (x) fn(x);
+      },
+      coalesceKey && `sound-${id}-${coalesceKey}`,
+    );
   },
   setSoundEvent(id, trigger, enemyId) {
     get().edit((d) => {
@@ -874,9 +1013,18 @@ export const useStore = create<State>((set, get) => ({
     get().edit((d) => {
       const a = d.attachments!.find((x) => x?.id === id);
       if (!a) return;
-      d.attachments!.push({ ...structuredClone(current(a)), id: copy, name: t('store.k25', { v0: a.name ?? '' }) });
-      const previews = (d.editor as Record<string, Record<string, string> | undefined>).meshPreviews;
-      if (previews?.[id]) previews[copy] = previews[id];
+      d.attachments!.push({ ...structuredClone(current(a)), id: copy, ...(a.name ? { name: t('store.k25', { v0: a.name }) } : {}) });
+      const ed = d.editor as Record<string, Record<string, unknown> | undefined>;
+      // The copy keeps the model, its preview and, for a built-in shape, its parameters (shapes.ts rebuilds its own model on the next change).
+      for (const k of ['meshPreviews', 'shapes']) if (ed[k]?.[id]) ed[k]![copy] = ed[k]![id];
+      // The paint on its model comes along, every layer under a new id (layers bake into folders named by id).
+      const paint = materialOf(d, attachmentMaterial(id));
+      if (paint) {
+        const p = structuredClone(current(paint));
+        p.livery = p.livery?.map((l) => l && { ...l, id: uid() });
+        p.layers = p.layers?.map((l) => l && { ...l, id: uid() });
+        d.materials!.push({ ...p, material: attachmentMaterial(copy), part: attachmentMaterial(copy) });
+      }
     });
     set({ selection: { kind: 'attachment', id: copy } });
   },
@@ -887,7 +1035,7 @@ export const useStore = create<State>((set, get) => ({
       const m = ensureMaterial(d, material, part);
       m.layers!.push({
         id,
-        name: layer.name ?? t('store.k26'),
+        name: layer.name ?? '',
         kind: layer.kind ?? 'image',
         channel: 'albedo',
         visible: true,
@@ -972,6 +1120,9 @@ function dropEmptyParts(d: SkinDocument) {
 }
 
 /** Folder of every item's skins, one folder per item id. */
+/** True while a work is being deleted: the editor then keeps no watch on files (a watched folder cannot go to the Recycle Bin). */
+export let watchHeld = false;
+
 export const autosaveRoot = (): string => `${useStore.getState().dataDir}\\autosave`;
 
 /** A new charm's settings. */
@@ -1000,7 +1151,8 @@ async function loadSkin(path: string): Promise<SkinDocument | null> {
     return await call('project.load', { path });
   } catch (e) {
     // The backend's code would blame the app version.
-    useStore.getState().log(t('store.k2', { v0: detail(e) }));
+    window.forge.appLog('error', detail(e));
+    useStore.getState().log(t('store.autosaveLoad'));
     useStore.getState().toast('error', t('store.autosaveLoad'));
     return null;
   }
@@ -1016,14 +1168,19 @@ async function loadEnemies() {
 }
 
 /** A new skin for the item; the second and later ones get a number in their name. */
-async function blankSkin(weaponId: string, existing: number): Promise<SkinDocument> {
+/** A new skin named after its gear, numbered from 2 past the names its gear's skins already have. */
+async function blankSkin(weaponId: string, taken: string[]): Promise<SkinDocument> {
   const s = useStore.getState();
   const item = s.catalog.find((c) => c.id === weaponId);
   const doc = await call('project.new', { weaponId }).catch((e) => {
     s.log(`project.new: ${detail(e)}`);
     return { materials: [], attachments: [], target: { weapon: weaponId } } as SkinDocument;
   });
-  doc.name = t('store.k6', { v0: item ? localName(item) : weaponId }) + (existing ? ` ${existing + 1}` : '');
+  const base = t('store.k6', { v0: item ? localName(item) : weaponId });
+  let n = 1;
+  const named = (k: number) => (k > 1 ? `${base} ${k}` : base);
+  while (taken.includes(named(n))) n++;
+  doc.name = named(n);
   return doc;
 }
 
@@ -1042,7 +1199,7 @@ function openSkin(loaded: SkinDocument, id: string, ticket: number): boolean {
   for (const p of item?.parts ?? []) if (ed.enabled[p.id] === undefined) ed.enabled[p.id] = p.defaultEnabled;
   doc.editor = ed as unknown as SkinDocument['editor'];
   localStorage.setItem(`sf.skin.${id}`, doc.id!);
-  useStore.setState({ doc, projectPath: null, selection: null, undo: [], redo: [], unmatched: [], lastEditKey: null });
+  useStore.setState({ doc, projectPath: null, selection: null, undo: [], redo: [], unmatched: [], lastEditKey: null, editedAt: 0 });
   void restorePreviews(doc);
   return true;
 }
@@ -1053,7 +1210,7 @@ function openSkin(loaded: SkinDocument, id: string, ticket: number): boolean {
 async function restorePreviews(doc: SkinDocument) {
   const s = useStore.getState();
   const models = [
-    ...(doc.attachments ?? []).filter((a) => a?.mesh).map((a) => ({ table: 'meshPreviews', key: a!.id!, file: a!.mesh!, name: a!.name || a!.id! })),
+    ...(doc.attachments ?? []).filter((a) => a?.mesh).map((a) => ({ table: 'meshPreviews', key: a!.id!, file: a!.mesh!, name: attachmentName(doc, a!) })),
     ...(doc.parts ?? []).filter((p) => p?.mesh && p.part).map((p) => ({ table: 'partMeshPreviews', key: partMeshKey(p!.part!, p!.path), file: p!.mesh!, name: p!.part! })),
   ];
   for (const m of models) {
@@ -1076,13 +1233,19 @@ async function restorePreviews(doc: SkinDocument) {
   }
 }
 
+/** The document as saved: with when it was last changed (editor.editedAt), the time kept from before when not changed since. */
+export function withEditedAt(doc: SkinDocument, editedAt: number): SkinDocument {
+  return editedAt ? { ...doc, editor: { ...(doc.editor ?? {}), editedAt: new Date(editedAt).toISOString() } as SkinDocument['editor'] } : doc;
+}
+
 export async function persistAutosave() {
+  clearTimeout(autosaveTimer); // this save covers the pending one
   const { weaponId, doc, skins } = useStore.getState();
   // Only a skin opened for this item is saved: while the item's skins load, the edited document is still the start-up
   // blank or the previous item's skin, and saving it would add it to this item as a new skin.
   if (!weaponId || doc.target?.weapon !== weaponId) return;
   try {
-    await call('project.save', { path: autosavePath(weaponId), project: doc });
+    await call('project.save', { path: autosavePath(weaponId), project: withEditedAt(doc, useStore.getState().editedAt) });
     useStore.setState({ autosaveError: null });
     // A new skin or a new name shows in the skin list.
     if (!skins.some((k) => k.id === doc.id && k.name === doc.name)) await useStore.getState().refreshSkins();
@@ -1090,6 +1253,38 @@ export async function persistAutosave() {
     useStore.getState().log(t('store.k27', { v0: detail(e) }));
     useStore.setState({ autosaveError: friendly(e, t('store.k28')) });
   }
+}
+
+/** Where the work the first tutorial had the player make is noted until it is deleted (tour/Tour.tsx). */
+const PRACTICE = 'sf.tourPractice';
+
+/** Marks the open work as the tutorial's practice work: in its document (editor.practice) and here, so it can be found again. */
+export function markPractice() {
+  const s = useStore.getState();
+  if (!s.weaponId || !s.doc.id) return;
+  localStorage.setItem(PRACTICE, JSON.stringify({ id: s.doc.id, weapon: s.weaponId }));
+  useStore.setState({ doc: { ...s.doc, editor: { ...(s.doc.editor ?? {}), practice: true } as SkinDocument['editor'] } });
+  void persistAutosave();
+}
+
+/** Deletes the tutorial's practice work, with its pack in the chosen profile, when its document still carries the mark. */
+export async function removePractice() {
+  const p = (() => {
+    try {
+      return JSON.parse(localStorage.getItem(PRACTICE) ?? 'null') as { id: string; weapon: string } | null;
+    } catch {
+      return null; // an unreadable note names nothing
+    }
+  })();
+  localStorage.removeItem(PRACTICE);
+  if (!p) return;
+  const s = useStore.getState();
+  const entry = (p.weapon === s.weaponId ? s.skins : (s.works[p.weapon] ?? [])).find((k) => k.id === p.id);
+  if (!entry) return;
+  const doc = s.doc.id === p.id ? s.doc : await call('project.load', { path: entry.path }).catch(() => null);
+  if (!(doc?.editor as { practice?: boolean } | null | undefined)?.practice) return;
+  await s.refreshInstalled();
+  await useStore.getState().deleteSkin(p.id, p.weapon);
 }
 
 export function currentItem(): CatalogItem | undefined {

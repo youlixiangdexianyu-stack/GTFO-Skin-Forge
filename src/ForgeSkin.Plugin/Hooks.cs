@@ -17,9 +17,10 @@ namespace ForgeSkin.Plugin;
 // gear they track.
 //
 // A TargetMethods list leaves out a target ForgeCore's patcher would refuse (Hooks.Unsupported: an empty override compiled
-// to a shared `ret` stub, such as MeleeWeaponFirstPerson.OnGearSpawnComplete, or a prologue it cannot relocate) before the
-// class is patched, because a refused target also takes the class's later targets down. Such an item is still handled where
-// its parts spawn.
+// to a shared `ret` stub, or a prologue it cannot relocate) before the class is patched, because a refused target also takes
+// the class's later targets down. A method known to be such a stub is not listed at all (Tools/Forge/check-patch-bodies.py
+// fails on one): MeleeWeaponFirstPerson.OnGearSpawnComplete is an empty override on the `ret` stub thousands of methods share,
+// so melee weapons are handled where their parts spawn.
 static class Native
 {
     // The IL2CPP MethodInfo of a generated interop method.
@@ -27,23 +28,21 @@ static class Native
         (IntPtr)Il2CppInterop.Common.Il2CppInteropUtils.GetIl2CppMethodInfoPointerFieldForGeneratedMethod(method)!.GetValue(null)!;
 
     // Per-frame reads without the managed wrapper a generated getter allocates for the object it returns: the object's
-    // pointer from a parameterless (virtual) getter, or from a reference field.
-    public static unsafe IntPtr Call(Il2CppObjectBase o, IntPtr method)
+    // pointer from a parameterless getter, or from a reference field. A virtual getter is resolved for the object's class
+    // once (Virtual) and that override is what Call runs; a field is read at its offset (ForgeCore NativeObjects.FieldOffset).
+    public static IntPtr Virtual(Il2CppObjectBase o, IntPtr method) => IL2CPP.il2cpp_object_get_virtual_method(o.Pointer, method);
+
+    public static unsafe IntPtr Call(Il2CppObjectBase o, IntPtr resolved)
     {
-        var self = o.Pointer;
         var exception = IntPtr.Zero;
-        var result = IL2CPP.il2cpp_runtime_invoke(IL2CPP.il2cpp_object_get_virtual_method(self, method), self, null, ref exception);
+        var result = IL2CPP.il2cpp_runtime_invoke(resolved, o.Pointer, null, ref exception);
         Il2CppException.RaiseExceptionIfNecessary(exception);
         return result;
     }
 
-    public static IntPtr FieldInfo<T>(string name) where T : Il2CppObjectBase =>
-        IL2CPP.GetIl2CppField(Il2CppClassPointerStore<T>.NativeClassPtr, name) is var f && f != IntPtr.Zero ? f
-            : throw new MissingFieldException(typeof(T).Name, name);
+    public static IntPtr Field(Il2CppObjectBase o, int offset) => Marshal.ReadIntPtr(o.Pointer + offset);
 
-    public static IntPtr Field(Il2CppObjectBase o, IntPtr field) => Marshal.ReadIntPtr(o.Pointer + (int)IL2CPP.il2cpp_field_get_offset(field));
-
-    public static unsafe float Float(Il2CppObjectBase o, IntPtr field) => *(float*)(o.Pointer + (int)IL2CPP.il2cpp_field_get_offset(field));
+    public static unsafe float Float(Il2CppObjectBase o, int offset) => *(float*)(o.Pointer + offset);
 }
 
 // The game methods other packages read as well are ForgeCore's GameHooks; ForgeSkin subscribes to them. Each subscription
@@ -110,11 +109,32 @@ static class SharedHooks
         {
             if (ran && NativeObjects.Is<PLOC_Downed>(state) && SkinnedGear.IsLocal(state.m_owner)) SkinnedGear.PlayerState(Trigger.Revived);
         }));
+        // A teammate's synced gun fired on this machine (their shot as the game replays it): their gear plays its skin's shot sound there.
+        On(GameHooks.Fire.BulletWeaponSynced, () => GameHooks.Fire.BulletWeaponSynced.After(static (gun, _) => SkinnedGear.RemoteFire(gun.Pointer)));
+        On(GameHooks.Fire.ShotgunSynced, () => GameHooks.Fire.ShotgunSynced.After(static (gun, _) => SkinnedGear.RemoteFire(gun.Pointer)));
+        // A player's health arriving on this machine (the set-health receive): a teammate's falling to 0 is going down, rising from 0
+        // is getting up; raised for the item in their hands (only teammates' gear hears it, not the local player's or a bot's).
+        On(GameHooks.HealthSetReceived, () => GameHooks.HealthSetReceived.Around(
+            static receiver => NativeObjects.Is<Dam_PlayerDamageBase>(receiver) ? receiver.Health : float.NaN,
+            static (receiver, before, ran) =>
+            {
+                if (!ran || float.IsNaN(before)) return;
+                float after = receiver.Health;
+                if ((before > 0) != (after > 0))
+                    SkinnedGear.RemoteState(receiver.TryCast<Dam_PlayerDamageBase>()?.Owner, after > 0 ? Trigger.Revived : Trigger.Downed);
+            }));
         // dump.cs 565768: every item the game builds (ItemSpawnManager.SpawnItem: level pickups, container contents, dropped items,
         // placed mines, held items); a pickup whose item has a skin takes it.
         On(GameHooks.ItemSpawned, () => GameHooks.ItemSpawned.After(static (call, _) => SkinnedGear.ItemSpawned(call.Item, call.Id, call.Mode)));
         // The game state changes (a level starts generating, the level is entered).
-        GameEvents.StateChanged += static () => SkinnedGear.StateChanged(GameStateManager.CurrentStateName);
+        GameEvents.StateChanged += static () =>
+        {
+            var state = GameStateManager.CurrentStateName;
+            Looks.StateChanged(state);
+            SkinnedGear.StateChanged(state);
+        };
+        // A player agent was made (joining, a level start, a checkpoint): who wears which character model is looked at again.
+        On(GameHooks.PlayerManagerSpawned, () => GameHooks.PlayerManagerSpawned.After(static (_, _) => Characters.Dirty()));
     }
 
     public static void BeforeItemSetup(ItemEquippable item) { if (NativeObjects.Is<ItemEquippable>(item)) SkinnedGear.BeforeItemSetup(item); }
@@ -215,14 +235,13 @@ static class AimHook
     static void Postfix(ItemEquippable __instance) => SkinnedGear.Event(__instance.Pointer, Trigger.Aim);
 }
 
-// Overrides of the step for melee weapons and tools (dump.cs 615703, 568870, 570177, 616222; the base and the synced gun
-// are SharedHooks); readback and tracking skip a gear they already handled when an override also runs the base.
+// Overrides of the step for tools (dump.cs 568870, 570177, 616222; the base and the synced gun are SharedHooks; the melee
+// override is empty, see Native); readback and tracking skip a gear they already handled when an override also runs the base.
 [HarmonyPatch]
 static class OverriddenGearSpawnCompleteHook
 {
     static IEnumerable<MethodBase> TargetMethods() => new MethodBase?[]
     {
-        AccessTools.DeclaredMethod(typeof(MeleeWeaponFirstPerson), nameof(MeleeWeaponFirstPerson.OnGearSpawnComplete)),
         AccessTools.DeclaredMethod(typeof(MineDeployerFirstPerson), nameof(MineDeployerFirstPerson.OnGearSpawnComplete)),
         AccessTools.DeclaredMethod(typeof(SentryGunFirstPerson), nameof(SentryGunFirstPerson.OnGearSpawnComplete)),
         AccessTools.DeclaredMethod(typeof(EnemyScanner), nameof(EnemyScanner.OnGearSpawnComplete)),

@@ -1,8 +1,10 @@
 // Spawns ForgeSkin.Backend and speaks PLAN §3.3: one JSON object per line on stdio.
 import { execFileSync, spawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
-import { basename, dirname, join } from 'node:path';
+import { existsSync } from 'node:fs';
+import { dirname, join } from 'node:path';
 import { createInterface } from 'node:readline';
 import { app } from 'electron';
+import { dataDir, formerDirs } from './dataDir';
 
 export interface BackendError {
   code: string;
@@ -22,18 +24,8 @@ export class Backend {
     private readonly onExit: (code: number | null) => void,
   ) {}
 
-  /**
-   * Data dir: `GTFO_UserData` next to the app exe when packaged, `editor/GTFO_UserData` in dev. An installed copy runs
-   * from `<install>/app-<version>/`, which every update replaces: its data lives in `<install>/GTFO_UserData`.
-   */
-  static dataDir(): string {
-    if (!app.isPackaged) return join(app.getAppPath(), 'GTFO_UserData');
-    const dir = dirname(app.getPath('exe'));
-    return join(/^app-\d/.test(basename(dir)) ? dirname(dir) : dir, 'GTFO_UserData');
-  }
-
   private command(): { file: string; args: string[]; cwd: string } {
-    const dataArgs = ['--data-dir', Backend.dataDir()];
+    const dataArgs = ['--data-dir', dataDir(), ...formerDirs().flatMap((d) => ['--former-data-dir', d])];
     if (app.isPackaged) {
       const file = join(process.resourcesPath, 'publish', 'ForgeSkin.Backend.exe');
       return { file, args: dataArgs, cwd: dirname(file) };
@@ -45,6 +37,17 @@ export class Backend {
       execFileSync('dotnet', ['build', project, '-c', 'Debug', '-nologo', '-v', 'q'], { windowsHide: true, stdio: 'pipe' });
     } catch (e) {
       this.onLog(`backend build failed: ${(e as { stdout?: Buffer }).stdout?.toString() ?? e}`);
+    }
+    // The backend installs the plugin from artifacts/forge-skin-release/publish/plugin (Install.PluginSource); when that is
+    // missing (artifacts/ gets cleaned) stage it with the release script's plugin-only mode.
+    const root = join(project, '..', '..', '..');
+    if (!existsSync(join(root, 'artifacts', 'forge-skin-release', 'publish', 'plugin', 'ForgeSkin', 'ForgeSkin.Plugin.dll'))) {
+      this.onLog('plugin staging missing, building it (build-editor-release.ps1 -PluginOnly)');
+      try {
+        execFileSync('pwsh', ['-NoProfile', '-File', join(root, 'Mods', 'ForgeSkin', 'tools', 'build-editor-release.ps1'), '-PluginOnly'], { cwd: root, windowsHide: true, stdio: 'pipe' });
+      } catch (e) {
+        this.onLog(`plugin staging failed: ${(e as { stdout?: Buffer }).stdout?.toString() ?? e}`);
+      }
     }
     const file = join(project, 'bin', 'Debug', 'net10.0', 'win-x64', 'ForgeSkin.Backend.exe');
     return { file, args: dataArgs, cwd: dirname(file) };
@@ -109,7 +112,13 @@ export class Backend {
     });
   }
 
-  stop(): void {
-    this.child?.kill();
+  /** Resolves once the process is gone. */
+  stop(): Promise<void> {
+    const child = this.child;
+    if (!child) return Promise.resolve();
+    return new Promise((done) => {
+      child.once('exit', () => done());
+      child.kill();
+    });
   }
 }

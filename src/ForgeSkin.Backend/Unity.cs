@@ -58,6 +58,7 @@ public sealed class MaterialData
 {
     public string Name = "";
     public string Shader = "";
+    public HashSet<string> Hdr = new(); // its shader's [HDR] colour properties (ForgeVisual.ColourSpace)
     public Dictionary<string, TexRef> Textures = new();
     public Dictionary<string, float> Floats = new();
     public Dictionary<string, float[]> Colors = new();
@@ -78,7 +79,7 @@ public static class Unity
         foreach (var comp in go["m_Component.Array"].Children)
         {
             var at = g.Resolve(file, comp["component"]);
-            var info = at.File.file.GetAssetInfo(at.PathId);
+            var info = GameAssets.Info(at.File, at.PathId);
             switch ((AssetClassID)info.TypeId)
             {
                 case AssetClassID.Transform:
@@ -128,7 +129,7 @@ public static class Unity
         var f = g.Field(m.File, m.PathId);
         var data = new MaterialData { Name = f["m_Name"].AsString };
         var shader = g.Resolve(m.File, f["m_Shader"]);
-        if (shader.PathId != 0) data.Shader = g.Field(shader)["m_ParsedForm.m_Name"].AsString;
+        if (shader.PathId != 0) (data.Shader, data.Hdr) = (g.Field(shader)["m_ParsedForm.m_Name"].AsString, HdrColours(g.Field(shader)));
         data.RenderQueue = f["m_CustomRenderQueue"].AsInt;
         data.Keywords = f["m_ShaderKeywords"].AsString.Split(' ', StringSplitOptions.RemoveEmptyEntries).ToList();
         var props = f["m_SavedProperties"];
@@ -145,6 +146,10 @@ public static class Unity
         return data;
     }
 
+    // The colour properties a shader marks [HDR], which Unity passes to it as they are set (ForgeVisual.ColourSpace).
+    public static HashSet<string> HdrColours(AssetTypeValueField shader) =>
+        shader["m_ParsedForm.m_PropInfo.m_Props.Array"].Children.Where(p => (p["m_Flags"].AsUInt & 16) != 0).Select(p => p["m_Name"].AsString).ToHashSet();
+
     // Decoded RGBA8, top row first.
     public static (int Width, int Height, byte[] Rgba, string Name) ReadTexture(GameAssets g, TexRef t) => DecodeTexture(LoadTexture(g, t));
 
@@ -152,7 +157,7 @@ public static class Unity
     public static (TextureFile Tex, byte[] Pixels) LoadTexture(GameAssets g, TexRef t)
     {
         var tex = TextureFile.ReadTextureFile(g.Field(t.File, t.PathId));
-        return (tex, tex.FillPictureData(t.File));
+        return (tex, tex.FillPictureData(g.StreamRoot(t.File)));
     }
 
     // Decoding is pure CPU work on the loaded bytes and may run on any thread.

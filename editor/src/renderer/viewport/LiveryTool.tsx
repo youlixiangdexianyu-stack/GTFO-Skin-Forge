@@ -10,10 +10,8 @@ import {
   EdgesGeometry,
   LineBasicMaterial,
   LineSegments,
-  Matrix4,
   Mesh,
   MeshBasicMaterial,
-  Quaternion,
   Raycaster,
   RingGeometry,
   Vector2,
@@ -24,13 +22,13 @@ import {
 } from 'three';
 import { create } from 'zustand';
 import { useShallow } from 'zustand/react/shallow';
-import { liveryLayer, updateLivery } from '../livery';
+import { isProjected, liveryLayer, placed, updateLivery } from '../livery';
+import type { LiveryLayer } from '../protocol';
 import { materialOf, useStore } from '../store';
-import { threeToUnity } from '../space';
-import { decalMatrix, setLiveryRenderer } from './liveryGpu';
+import { decalMatrix, decalPose, setLiveryRenderer } from './liveryGpu';
 import { newGesture } from './ModalTransform';
 import { activeVariant, layerIn } from '../variants';
-import { anchorObject, shown, viewRefs } from './refs';
+import { anchorObject, drawnMeshes, hitsAt, viewRefs } from './refs';
 
 export type BrushShape = 'free' | 'line' | 'circle' | 'fill';
 /**
@@ -110,10 +108,10 @@ export function LiveryTool() {
   const sel = useLiverySelection();
   const selRef = useRef(sel);
   selRef.current = sel;
-  const outline = useMemo(
-    () => new LineSegments(new EdgesGeometry(new BoxGeometry(1, 1, 2)), new LineBasicMaterial({ color: 0xff7a2f, depthTest: false, transparent: true, opacity: 0.85 })),
-    [],
-  );
+  // The selected layer's projection box, and a lighter one for a placed layer hovered in the parts tree.
+  const box = (color: number, opacity: number) => new LineSegments(new EdgesGeometry(new BoxGeometry(1, 1, 2)), new LineBasicMaterial({ color, depthTest: false, transparent: true, opacity }));
+  const outline = useMemo(() => box(0xff7a2f, 0.85), []);
+  const hoverOutline = useMemo(() => box(0xffc49a, 0.6), []);
   const ring = useMemo(() => {
     const m = new Mesh(new RingGeometry(0.42, 0.5, 40), new MeshBasicMaterial({ color: 0xff7a2f, side: DoubleSide, depthTest: false, transparent: true, opacity: 0.9 }));
     m.visible = false;
@@ -127,26 +125,17 @@ export function LiveryTool() {
 
   useEffect(() => {
     const el = gl.domElement;
-    const ray = new Raycaster();
     // A brush gesture appends to the layer's strokes (one undo step): `base` strokes were there before it; its open stroke
     // and, with the mirror on, the mirrored one.
     let drag: { gesture: string; start: Vector2; last: Vector2; meshes: Object3D[]; mask: boolean; base: number; chains: [Chain, Chain] } | null = null;
     const mirrorRay = new Raycaster();
     mirrorRay.far = 0.02;
 
-    const visibleMeshes = () => {
-      const out: Object3D[] = [];
-      viewRefs.root?.traverse((o) => void ((o as Mesh).isMesh && shown(o) && out.push(o)));
-      return out;
-    };
     /** First surface under a screen point when it is the selected layer's material. */
     const hit = (p: Vector2, meshes: Object3D[]): Intersection | null => {
       const s = selRef.current;
-      const cam = viewRefs.camera;
-      if (!s || !cam) return null;
-      const r = el.getBoundingClientRect();
-      ray.setFromCamera(new Vector2(((p.x - r.left) / r.width) * 2 - 1, -((p.y - r.top) / r.height) * 2 + 1), cam);
-      const h = ray.intersectObjects(meshes, false)[0];
+      if (!s) return null;
+      const h = hitsAt(el, p.x, p.y, meshes)[0];
       return h && h.uv && materialName(h) === s.material ? h : null;
     };
     const sample = (h: Intersection | null): Sample | null => (h ? { uv: h.uv!.clone(), point: h.point.clone(), density: density(h) } : null);
@@ -184,25 +173,18 @@ export function LiveryTool() {
 
     const placeDecal = (h: Intersection) => {
       const s = selRef.current!;
-      const anchor = (s.part && anchorObject(s.part)) || viewRefs.root!;
-      anchor.updateWorldMatrix(true, false);
-      const inv = anchor.matrixWorld.clone().invert();
-      const rotInv = new Quaternion().setFromRotationMatrix(new Matrix4().extractRotation(anchor.matrixWorld)).invert();
-      const n = h.face!.normal.clone().transformDirection(h.object.matrixWorld).applyQuaternion(rotInv).normalize();
+      const cam = viewRefs.camera!.matrixWorld;
       // The image's right is the camera's right laid onto the surface, so it reads upright from the current view.
-      const right = new Vector3().setFromMatrixColumn(viewRefs.camera!.matrixWorld, 0).applyQuaternion(rotInv);
-      let x = right.sub(n.clone().multiplyScalar(right.dot(n)));
-      if (x.lengthSq() < 1e-8) x = new Vector3().setFromMatrixColumn(viewRefs.camera!.matrixWorld, 1).applyQuaternion(rotInv);
-      x.normalize();
-      const z = n.clone().negate();
-      const y = z.clone().cross(x).normalize();
-      x = y.clone().cross(z);
-      const q = new Quaternion().setFromRotationMatrix(new Matrix4().makeBasis(x, y, z));
-      const pose = threeToUnity(h.point.clone().applyMatrix4(inv), q, new Vector3(1, 1, 1));
-      updateLivery(s.material, s.layer.id!, (l) => {
-        l.position = pose.position;
-        l.rotation = pose.rotation;
-      }, drag!.gesture);
+      const pose = decalPose(s.part, h.point, h.face!.normal.clone().transformDirection(h.object.matrixWorld), new Vector3().setFromMatrixColumn(cam, 0), new Vector3().setFromMatrixColumn(cam, 1));
+      updateLivery(
+        s.material,
+        s.layer.id!,
+        (l) => {
+          l.position = pose.position;
+          l.rotation = pose.rotation;
+        },
+        drag!.gesture,
+      );
     };
 
     /** Adds the hits to the gesture's strokes (and their mirror images); `restart` first drops what the gesture drew (a
@@ -212,15 +194,23 @@ export function LiveryTool() {
       const d = drag!;
       const { width, mirror } = useBrush.getState();
       const mirrorHits = mirror ? hits.map((h) => h && mirrored(h, d.meshes)) : [];
-      updateLivery(s.material, s.layer.id!, (l) => {
-        const list = (d.mask ? (l.mask ??= []) : (l.strokes ??= [])) as number[][];
-        if (restart) {
-          list.splice(d.base);
-          d.chains = [{ prev: null, at: 0 }, { prev: null, at: 0 }];
-        }
-        addSamples(list, d.chains[0], hits.map(sample), width);
-        if (mirror) addSamples(list, d.chains[1], mirrorHits.map(sample), width);
-      }, d.gesture);
+      updateLivery(
+        s.material,
+        s.layer.id!,
+        (l) => {
+          const list = (d.mask ? (l.mask ??= []) : (l.strokes ??= [])) as number[][];
+          if (restart) {
+            list.splice(d.base);
+            d.chains = [
+              { prev: null, at: 0 },
+              { prev: null, at: 0 },
+            ];
+          }
+          addSamples(list, d.chains[0], hits.map(sample), width);
+          if (mirror) addSamples(list, d.chains[1], mirrorHits.map(sample), width);
+        },
+        d.gesture,
+      );
     };
     /** Fills the UV island under `h` (and its mirror image's) on the layer, or in its mask. */
     const fill = (h: Intersection, meshes: Object3D[]) => {
@@ -234,8 +224,8 @@ export function LiveryTool() {
     const down = (e: PointerEvent) => {
       const s = selRef.current;
       if (!s || e.button !== 0 || e.altKey || viewRefs.modalActive) return;
-      if (!painting() && s.layer.kind !== 'decal') return;
-      const meshes = visibleMeshes();
+      if (!painting() && !isProjected(s.layer)) return;
+      const meshes = drawnMeshes();
       const p = new Vector2(e.clientX, e.clientY);
       const h = hit(p, meshes);
       if (!h) return;
@@ -243,7 +233,18 @@ export function LiveryTool() {
       if (viewRefs.controls) viewRefs.controls.enabled = false;
       el.setPointerCapture(e.pointerId);
       const mask = useBrush.getState().mask;
-      drag = { gesture: newGesture(), start: p, last: p, meshes, mask, base: ((mask ? s.layer.mask : s.layer.strokes) ?? []).length, chains: [{ prev: null, at: 0 }, { prev: null, at: 0 }] };
+      drag = {
+        gesture: newGesture(),
+        start: p,
+        last: p,
+        meshes,
+        mask,
+        base: ((mask ? s.layer.mask : s.layer.strokes) ?? []).length,
+        chains: [
+          { prev: null, at: 0 },
+          { prev: null, at: 0 },
+        ],
+      };
       if (painting()) apply([h]);
       else placeDecal(h);
     };
@@ -251,7 +252,7 @@ export function LiveryTool() {
       const p = new Vector2(e.clientX, e.clientY);
       if (!drag) {
         // Brush size under the cursor.
-        const h = painting() ? hit(p, visibleMeshes()) : null;
+        const h = painting() ? hit(p, drawnMeshes()) : null;
         ring.visible = !!h;
         if (h) {
           const n = h.face!.normal.clone().transformDirection(h.object.matrixWorld);
@@ -290,19 +291,24 @@ export function LiveryTool() {
   }, [gl, ring]);
 
   useFrame(() => {
-    const decal = sel?.layer.kind === 'decal' && sel.layer.position ? sel.layer : null;
-    outline.visible = !!decal;
     if (!sel) ring.visible = false;
-    if (!decal) return;
-    const anchor = (sel!.part && anchorObject(sel!.part)) || viewRefs.root;
-    if (!anchor) return;
-    outline.matrixAutoUpdate = false;
-    outline.matrix.multiplyMatrices(anchor.matrixWorld, decalMatrix(decal));
+    const show = (o: LineSegments, layer: LiveryLayer | undefined, part: string | null | undefined) => {
+      const anchor = placed(layer) && ((part && anchorObject(part)) || viewRefs.root);
+      o.visible = !!anchor;
+      if (!anchor) return;
+      o.matrixAutoUpdate = false;
+      o.matrix.multiplyMatrices(anchor.matrixWorld, decalMatrix(layer!));
+    };
+    show(outline, sel?.layer, sel?.part);
+    const { hover, selection, doc } = useStore.getState();
+    const h = hover?.kind === 'livery' && !(selection?.kind === 'livery' && selection.id === hover.id) ? hover : null;
+    show(hoverOutline, h ? liveryLayer(doc, h.material, h.id) : undefined, h && materialOf(doc, h.material)?.part);
   });
 
   return (
     <>
       <primitive object={outline} renderOrder={10} />
+      <primitive object={hoverOutline} renderOrder={10} />
       <primitive object={ring} renderOrder={10} />
     </>
   );

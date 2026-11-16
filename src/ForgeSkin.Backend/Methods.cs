@@ -15,19 +15,12 @@ public static class Methods
     static string? _assetsDir;
     static readonly Lock AssetsGate = new();
 
-    static int _waiting;
-    public static int Waiting => Volatile.Read(ref _waiting);
-
-    // One reader per game dir; AssetsTools is not thread safe, so callers hold the gate while reading. Requests count as
-    // waiting until they hold it, so the background preview cache lets them go first. `gameDir` (the assets.* override)
-    // reads another game folder with a reader of its own, still under the gate.
-    public static T WithGame<T>(Func<GameAssets, T> read, bool background = false, string? gameDir = null)
+    // One reader per game dir; AssetsTools is not thread safe, so callers hold the gate while reading. `gameDir` (the
+    // assets.* override) reads another game folder with a reader of its own, still under the gate.
+    public static T WithGame<T>(Func<GameAssets, T> read, string? gameDir = null)
     {
-        if (!background) Interlocked.Increment(ref _waiting);
-        bool counted = !background;
         lock (AssetsGate)
         {
-            if (counted) Interlocked.Decrement(ref _waiting);
             if (gameDir != null)
             {
                 using var other = new GameAssets(Path.GetFullPath(gameDir));
@@ -66,12 +59,14 @@ public static class Methods
 
     static string Str(JsonObject p, string name) => Get<string>(p, name);
 
+    static SkinDocument Doc(JsonObject p) => Projects.Absolute(Get<SkinDocument>(p, "project"));
+
     // Requests run in parallel. Methods that read, change and write a file (settings.json, active.json, projects, plugin
     // files) take one gate; the long ones that write packs, mods and game files take another, so a build or an apply does
     // not hold up a project save.
     static readonly Lock FileGate = new(), JobGate = new();
     static readonly HashSet<string> FileWrites = ["game.setDir", "profiles.add", "profiles.remove", "project.save", "project.delete", "skins.import",
-        "pack.install", "pack.remove", "pack.activate", "plugin.install", "plugin.uninstall", "plugin.setDevelopment"];
+        "pack.install", "pack.list", "pack.remove", "pack.adopt", "pack.activate", "plugin.install", "plugin.uninstall"];
     static readonly HashSet<string> Jobs = ["pack.build", "pack.exportMod", "assets.apply", "assets.restore", "assets.export"];
 
     public static object? Call(string method, JsonObject p, long id)
@@ -87,6 +82,7 @@ public static class Methods
         "game.setDir" => Game.SetDir(Str(p, "dir")),
         "plugin.log" => Game.PluginLog(Str(p, "profile"), Opt<DateTime?>(p, "since"), Opt<long>(p, "from"), Opt<string>(p, "head")),
         "profiles.list" => Game.Profiles(),
+        "profiles.get" => Game.ProfileAt(Str(p, "path")),
         "profiles.add" => Game.AddProfile(Str(p, "path")),
         "profiles.remove" => Game.RemoveProfile(Str(p, "path")),
         "catalog.get" => new { items = WithGame(Catalog.Get) },
@@ -97,25 +93,35 @@ public static class Methods
         "match.files" => Match(Str(p, "weaponId"), Get<List<string>>(p, "files"), id),
         "project.new" => Projects.New(Opt<string>(p, "weaponId"), WithGame(Catalog.Get)),
         "project.load" => Projects.Load(Str(p, "path"), WithGame(Catalog.Get)),
-        "project.save" => Projects.Save(Get<SkinDocument>(p, "project"), Str(p, "path")),
+        "project.save" => Projects.Save(Doc(p), Str(p, "path")),
         "project.list" => Projects.List(Str(p, "dir")),
         "project.listAll" => Projects.ListAll(Str(p, "root")),
         "skins.import" => SkinsFormat.Import(Str(p, "manifest"), Str(p, "root"), Opt<string>(p, "weapon"), Opt<string>(p, "lang") ?? "en",
             WithGame(Catalog.Get), GameMaterials),
         "project.delete" => Projects.Delete(Str(p, "path")),
-        "project.missing" => Projects.Missing(Get<SkinDocument>(p, "project")),
-        "project.files" => new { files = Projects.Files(Get<SkinDocument>(p, "project")) },
+        "project.missing" => Projects.Missing(Doc(p)),
+        "project.files" => new { files = Projects.Files(Doc(p)) },
         "mesh.import" => MeshImport.Import(Str(p, "glb")),
-        "pack.build" => Build(Get<SkinDocument>(p, "project"), Str(p, "projectPath"), Str(p, "out"), Opt<string>(p, "sizeMode") ?? "keep", id),
+        "charm.simulate" => CharmPreview.Simulate(Get<Charm>(p, "charm"), Get<double>(p, "arm"), Opt<double[]>(p, "gear"),
+            Opt<List<CharmPreview.Box>>(p, "boxes"), Get<List<CharmPreview.Frame>>(p, "frames")),
+        "springs.presets" => CharacterPreview.Presets(),
+        "springs.simulate" => CharacterPreview.Simulate(Get<SpringChain>(p, "chain"), Get<List<CharacterPreview.Node>>(p, "nodes"),
+            Opt<List<int[]>>(p, "strands"), Get<List<CharacterPreview.Frame>>(p, "frames")),
+        "character.check" => CharacterPreview.Check(Get<Dictionary<string, double[]>>(p, "joints")),
+        "character.links" => CharacterPreview.Links(Get<Dictionary<string, string>>(p, "bones"), Get<bool>(p, "fingers")),
+        "character.arms" => CharacterPreview.Arms(Str(p, "descriptor"), Str(p, "mesh"), Get<Dictionary<string, string>>(p, "bones"), Opt<List<int>>(p, "hide")),
+        "pack.build" => Build(Doc(p), Str(p, "projectPath"), Str(p, "out"), id),
         "pack.install" => Install.Pack(Str(p, "pack"), Str(p, "profile"), Opt<bool?>(p, "activate") ?? true, Opt<bool?>(p, "pick") ?? false),
-        "pack.list" => Install.List(Str(p, "profile")),
+        "pack.list" => Install.List(Str(p, "profile"), Opt<bool?>(p, "tidy") ?? false),
         "pack.remove" => Install.Remove(Str(p, "profile"), Str(p, "skinId")),
-        "pack.activate" => Install.Activate(Str(p, "profile"), Str(p, "skinId"), Opt<bool?>(p, "active") ?? true),
+        "pack.picture" => Install.Picture(Str(p, "pack"), Str(p, "cache")),
+        "pack.adopt" => Projects.Adopt(Str(p, "pack"), Str(p, "dir"), Opt<List<string>>(p, "taken") ?? [], (weapon, material, channel) => weapon == null ? null
+            : PackBuilder.BaselineSize(WithGame(g => Preview.Weapon(g, weapon, id).Textures), material, channel)),
+        "pack.activate" => Install.Activate(Str(p, "profile"), Str(p, "skinId")),
         "pack.exportMod" => ModExport.Export(Get<string[]>(p, "packs"), Str(p, "out"), Str(p, "name"), Str(p, "version"), Opt<string>(p, "description") ?? "", Str(p, "icon"),
             Opt<string>(p, "format") ?? "forgeskin", Opt<bool?>(p, "gunPack") ?? false, () => WithGame(Catalog.Get), GameMaterials),
         "plugin.install" => Install.Plugin(Str(p, "profile")),
         "plugin.uninstall" => Install.PluginUninstall(Str(p, "profile")),
-        "plugin.setDevelopment" => Install.SetDevelopment(Str(p, "profile"), Opt<bool?>(p, "on") ?? false),
         "export.obj" => WithGame(g => ObjExport.Export(g, Str(p, "weaponId"), Opt<List<string>>(p, "parts"), Opt<string>(p, "mode") ?? "separate", Str(p, "outDir"))),
         "assets.apply" => AssetPatch.Apply(Str(p, "pack"), Opt<string>(p, "gameDir"), id),
         "assets.restore" => AssetPatch.Restore(Opt<string>(p, "skinId"), Opt<bool?>(p, "discardStale") ?? false, Opt<string>(p, "gameDir")),
@@ -134,14 +140,16 @@ public static class Methods
         return Matching.Match(Catalog.Item(items, weaponId), items, textures, files);
     }
 
-    static object Build(SkinDocument project, string projectPath, string outPath, string sizeMode, long id)
+    static object Build(SkinDocument project, string projectPath, string outPath, long id)
     {
         // Each step's time goes to backend.log (not the log panel), so a slow apply on another machine shows where it waits.
         var clock = System.Diagnostics.Stopwatch.StartNew();
+        // A character skin reads nothing of the game.
+        if (project.Character != null) return PackBuilder.Build(project, projectPath, outPath, [], [], id);
         var (catalog, baseline) = WithGame(g => (Catalog.Get(g),
             project.Target.Weapon is { } w ? Preview.Weapon(g, w, id).Textures : new Dictionary<string, Dictionary<TextureChannel, string>>()));
         long game = clock.ElapsedMilliseconds;
-        var result = PackBuilder.Build(project, projectPath, outPath, sizeMode, catalog, baseline, id);
+        var result = PackBuilder.Build(project, projectPath, outPath, catalog, baseline, id);
         Log.Write($"pack.build {project.Target.Weapon}: game files {game} ms, pack {clock.ElapsedMilliseconds - game} ms", echo: false);
         return result;
     }

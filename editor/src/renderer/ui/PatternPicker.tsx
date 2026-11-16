@@ -76,8 +76,7 @@ export function PatternPicker({ value, colors, onChange }: { value: Pattern; col
     else if (e.key === 'Enter' || e.key === ' ') {
       e.preventDefault();
       choose(active);
-    }
-    else if (e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey) {
+    } else if (e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey) {
       // Type-ahead: letters typed in quick succession make one prefix.
       const now = Date.now();
       const text = (now - typed.current.at > 800 ? '' : typed.current.text) + e.key.toLowerCase();
@@ -100,7 +99,17 @@ export function PatternPicker({ value, colors, onChange }: { value: Pattern; col
       <Popover.Dropdown p={6}>
         <div ref={focusList} className="pattern-grid" role="listbox" tabIndex={0} aria-label={t('livery.patternKind')} aria-activedescendant={`${id}-${active}`} onKeyDown={onKey}>
           {PATTERNS.map((p, i) => (
-            <div key={p} id={`${id}-${i}`} role="option" aria-selected={p === value} data-active={i === active || undefined} className="pattern-option" title={names[i]} onClick={() => choose(i)} onMouseMove={() => active !== i && setActive(i)}>
+            <div
+              key={p}
+              id={`${id}-${i}`}
+              role="option"
+              aria-selected={p === value}
+              data-active={i === active || undefined}
+              className="pattern-option"
+              title={names[i]}
+              onClick={() => choose(i)}
+              onMouseMove={() => active !== i && setActive(i)}
+            >
               <Swatch url={urls[p]} />
               <span>{names[i]}</span>
             </div>

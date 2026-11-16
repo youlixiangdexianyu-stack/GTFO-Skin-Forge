@@ -25,6 +25,7 @@ const config: ForgeConfig = {
         throw new Error('Run Mods/ForgeSkin/tools/build-editor-release.ps1: it stages the backend and the plugin and sets FORGESKIN_PUBLISH_DIR.');
     },
   },
+  // build-editor-release.ps1 zips the packaged folder as the portable copy.
   makers: [new MakerSquirrel({ name: 'ForgeSkin', authors: 'NAinfini', description: 'GTFO weapon skin editor', setupIcon: 'assets/icon.ico' })],
   plugins: [
     new VitePlugin({

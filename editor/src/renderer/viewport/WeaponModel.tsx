@@ -1,21 +1,21 @@
 import { useGLTF } from '@react-three/drei';
-import { useFrame, type ThreeEvent } from '@react-three/fiber';
+import { useFrame } from '@react-three/fiber';
 import { useEffect, useMemo, useRef } from 'react';
 import { CanvasTexture, Mesh, Vector3, SRGBColorSpace, type MeshStandardMaterial, type Object3D } from 'three';
 import { baseTexturePath, drawLayer, LayerSource, loadImage } from '../frames';
-import { hasLivery } from '../livery';
+import { hasLivery, tintedPicture } from '../livery';
 import { LiveryPreview } from './liveryPreview';
 import { fileUrl, type DynamicLayer, type TextureChannel, type WeaponPreview } from '../protocol';
 import { editorOf, materialOf, useStore } from '../store';
 import { poseWith, unityDirToThree, unityToThree } from '../space';
 import { holdTextures, releaseTextures } from './textures';
 import { editableMaterials, paintMaterial, restoreUnityNames } from './weaponScene';
-import { displayOffset, hiddenMeshes, partOf, partTarget, pathChain, playTime, registerTransforms, quiet, SCENE_EVENT, viewRefs, walkGear } from './refs';
+import { displayOffset, hiddenMeshes, partOf, partTarget, playTime, registerTransforms, sceneMapped, track, viewRefs, walkGear } from './refs';
 import { t } from '../i18n';
 import { withVariant } from '../variants';
 
 /** Live composite of a base texture plus its dynamic layers (the 3D decal preview). */
-class Compositor {
+export class Compositor {
   canvas = document.createElement('canvas');
   texture = new CanvasTexture(this.canvas);
   /** Per layer id: its source and what it was loaded from. Kept across edits that do not change what it plays. */
@@ -37,20 +37,28 @@ class Compositor {
     this.canvas.width = this.canvas.height = 1024;
   }
 
-  /** Takes the document's current base (a texture path, or the live livery) and layers; placement and timing edits keep the loaded sources (no reload, no flicker). */
-  set(ch: TextureChannel, base: string | LiveryPreview | null, layers: DynamicLayer[]) {
+  /** Takes the document's current base (a texture path, or the live livery) and layers; placement and timing edits keep the
+   *  loaded sources (no reload, no flicker). `tint`: an attachment's model, whose picture shows as livery.paintTint gives it. */
+  set(ch: TextureChannel, base: string | LiveryPreview | null, layers: DynamicLayer[], tint: number[] | null = null) {
     this.dirty = true;
     // Without a base texture the plugin draws on white (albedo) or black, so the preview does too.
     this.fill = ch === 'albedo' ? '#ffffff' : '#000000';
     this.livery = base instanceof LiveryPreview ? base : null;
-    if (typeof base !== 'string') {
+    const key = `${typeof base === 'string' ? base : ''}|${tint?.join() ?? ''}`;
+    if (typeof base !== 'string' && !tint) {
       this.basePath = null;
       this.base = this.livery?.albedo ?? null;
-    } else if (base !== this.basePath) {
-      const basePath = base;
-      this.basePath = basePath;
-      this.base = null;
-      void loadImage(basePath).then((img) => this.basePath === basePath && ((this.base = img), (this.dirty = true)), () => undefined);
+    } else if (base instanceof LiveryPreview) {
+      this.basePath = null;
+      this.base = base.albedo;
+    } else if (key !== this.basePath) {
+      this.basePath = key;
+      this.base = tint && !base ? tintedPicture(null, tint) : null;
+      if (base)
+        void track(loadImage(base)).then(
+          (img) => this.basePath === key && ((this.base = tint ? tintedPicture(img, tint) : img), (this.dirty = true)),
+          () => undefined,
+        );
     }
     const next = new Map<string, { key: string; src: LayerSource }>();
     this.order = layers.map((l) => {
@@ -106,7 +114,6 @@ export function WeaponModel({ preview }: { preview: WeaponPreview }) {
   // The selected colour variant's look (variants.ts).
   const doc = useMemo(() => withVariant(edited), [edited]);
   const fileEpoch = useStore((s) => s.fileEpoch);
-  const select = useStore((s) => s.select);
   const materials = useRef(new Map<string, MeshStandardMaterial>());
   const compositors = useRef(new Map<string, Compositor>());
   const liveries = useRef(new Map<string, LiveryPreview>());
@@ -184,7 +191,7 @@ export function WeaponModel({ preview }: { preview: WeaponPreview }) {
     useStore.setState({ subParts });
     editableMaterials(scene, materials.current);
     viewRefs.materials = materials.current;
-    window.dispatchEvent(new Event(SCENE_EVENT));
+    sceneMapped();
     return () => {
       viewRefs.root = null;
       viewRefs.materials = null;
@@ -206,7 +213,13 @@ export function WeaponModel({ preview }: { preview: WeaponPreview }) {
       let livery = liveries.current.get(name);
       if (hasLivery(m)) {
         if (!livery) liveries.current.set(name, (livery = new LiveryPreview(name)));
-        livery.update(m!, baseTexturePath(doc, preview, name, 'albedo'), baseTexturePath(doc, preview, name, 'metallicSmoothness'), `${layout}|${fileEpoch}`);
+        livery.update(
+          m!,
+          baseTexturePath(doc, preview, name, 'albedo'),
+          baseTexturePath(doc, preview, name, 'metallicSmoothness'),
+          baseTexturePath(doc, preview, name, 'emissive'),
+          `${layout}|${fileEpoch}`,
+        );
       } else if (livery) {
         livery.dispose();
         liveries.current.delete(name);
@@ -220,7 +233,11 @@ export function WeaponModel({ preview }: { preview: WeaponPreview }) {
           preview,
           keep,
           () => cancelled,
-          (path) => useStore.getState().log(t('weaponModel.k3', { v0: path })),
+          (path) => {
+            const s = useStore.getState();
+            s.log(t('weaponModel.k3', { v0: path }));
+            if (!s.unreadable.includes(path)) useStore.setState({ unreadable: [...s.unreadable, path] });
+          },
           (ch, base, layers) => {
             const key = `${name}|${ch}`;
             let c = compositors.current.get(key);
@@ -240,7 +257,7 @@ export function WeaponModel({ preview }: { preview: WeaponPreview }) {
       }
     // Once the materials hold this document's textures, let go of the earlier paints: their textures that nothing uses any
     // more (replaced or undone images) are freed.
-    void Promise.allSettled(loads).then(() => !cancelled && releaseTextures(...painted.current.splice(0, painted.current.indexOf(keep))));
+    void track(Promise.allSettled(loads)).then(() => !cancelled && releaseTextures(...painted.current.splice(0, painted.current.indexOf(keep))));
     return () => {
       cancelled = true;
     };
@@ -306,30 +323,14 @@ export function WeaponModel({ preview }: { preview: WeaponPreview }) {
     const now = performance.now();
     if ((!compositors.current.size && !liveries.current.size) || now - lastDraw.current < 1000 / 30) return;
     lastDraw.current = now;
-    // An animated decal redraws its livery when its frame changes; the composites over it follow its version.
-    liveries.current.forEach((l) => l.tick());
+    // An animated decal redraws its livery when its frame changes; the composites over it follow its version. Not while
+    // the editor is hidden or another window has the focus.
+    if (!document.hidden && document.hasFocus()) liveries.current.forEach((l) => l.tick());
     compositors.current.forEach((c) => c.draw());
   });
 
-  const onClick = (e: ThreeEvent<MouseEvent>) => {
-    if (e.delta > 4 || quiet()) return;
-    e.stopPropagation();
-    const s = useStore.getState();
-    if (s.snapToSurface && s.selection?.kind === 'attachment') {
-      window.dispatchEvent(new CustomEvent('sf:surface', { detail: e }));
-      return;
-    }
-    const part = partOf(e.object);
-    if (!part) return;
-    // Clicking the selected part again drills one level down into the child transform under the cursor.
-    const chain = pathChain(part, e.object);
-    const sel = s.selection;
-    let sub: string | null = null;
-    if (sel?.kind === 'part' && sel.id === part && chain.length) sub = chain[Math.min(chain.indexOf(sel.sub ?? null) + 1, chain.length - 1)];
-    select({ kind: 'part', id: part, sub });
-  };
-
-  return <primitive object={scene} onClick={onClick} />;
+  // Clicks are picked by the view (Viewport.tsx Picking).
+  return <primitive object={scene} />;
 }
 
 // Ammo as the backend lays it out (Catalog.AmmoLayout, shared with the OBJ export): one piece per ammo part in a row

@@ -33,14 +33,36 @@ public sealed class SkinDocument
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public List<PlayerColor>? PlayerColors { get; set; }
 
+    // The author's colour schemes beyond the defaults: each gives some or all player colours a colour, and the picker offers each as one
+    // card that recolours the whole skin; null: none.
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public List<ColorScheme>? ColorSchemes { get; set; }
+
     // Colour variants (editor only): each gives chosen livery layers other colours. The editor builds one skin per
     // variant ("<id>~<variant id>", named "<name> · <variant name>"), so a pack never carries them.
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public List<ColorVariant>? Variants { get; set; }
 
+    // A gear skin's picture (the editor draws it when it packs the skin; in a pack picture.png): what the game's skin picker shows for
+    // it, without loading the skin. A character skin's is its character's (CharacterSkin.Picture). Null: none (packed by an older editor).
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? Picture { get; set; }
+
+    // Set: a character skin (Character.cs, PLAN §4.10), whose target is CharacterSkin.Target.
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public CharacterSkin? Character { get; set; }
+
     // Editor-only state (camera, selection, light settings). Never read by the plugin; dropped when packing.
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public Dictionary<string, object>? Editor { get; set; }
+}
+
+public sealed class ColorScheme
+{
+    public string Id { get; set; } = "";
+    public string Name { get; set; } = "";
+    // Player colour id -> its colour (sRGB) in this scheme; a colour left out keeps its default.
+    public Dictionary<string, float[]> Colors { get; set; } = new();
 }
 
 public sealed class ColorVariant
@@ -58,10 +80,7 @@ public sealed class PlayerColor
 {
     public string Id { get; set; } = "";
     public string Name { get; set; } = "";
-    public float[] Default { get; set; } = { 1, 1, 1 }; // linear RGB
-    // Optional colours (linear RGB) the picker offers first; the player may still pick any colour.
-    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
-    public List<float[]>? Palette { get; set; }
+    public float[] Default { get; set; } = { 1, 1, 1 }; // sRGB
     public List<ColorSlot> Slots { get; set; } = new();
 
     // Writes `rgb` into every slot (alpha, intensities and everything else kept). A slot the document no longer has is
@@ -107,7 +126,8 @@ public sealed class ColorSlot
 
 public sealed class SkinTarget
 {
-    // Catalog gear id (e.g. "auto_pistol", "sledgehammer", "bio_tracker"); null for attachment skins.
+    // Catalog gear id (e.g. "auto_pistol", "sledgehammer", "bio_tracker"); null for attachment skins; CharacterSkin.Target for a
+    // character skin (no gear or item id).
     public string? Weapon { get; set; }
     // What the plugin matches on, filled from the catalog when packing; exactly one is set for a gear skin. GearId: the
     // PlayerOfflineGearDataBlock persistentID of a gear built from parts (guns, melee weapons, tools). ItemId: the
@@ -115,8 +135,8 @@ public sealed class SkinTarget
     public uint? GearId { get; set; }
     public uint? ItemId { get; set; }
 
-    // The key in active.json: "gear:<GearId>" or "item:<ItemId>"; null for attachment skins.
-    public string? Key() => GearId is { } gear ? GearKey(gear) : ItemId is { } item ? ItemKey(item) : null;
+    // The key in active.json: "gear:<GearId>", "item:<ItemId>" or "character"; null for attachment skins.
+    public string? Key() => Weapon == CharacterSkin.Target ? CharacterSkin.Target : GearId is { } gear ? GearKey(gear) : ItemId is { } item ? ItemKey(item) : null;
     public static string GearKey(uint id) => "gear:" + id;
     public static string ItemKey(uint id) => "item:" + id;
 }
@@ -141,8 +161,15 @@ public enum TextureChannel { Albedo, Normal, MetallicSmoothness, Emissive }
 
 public sealed class MaterialOverride
 {
-    // Game material name, e.g. "Front_UZI_2". The plugin matches renderers whose shared material has this name.
+    // Game material name, e.g. "Front_UZI_2". The plugin matches renderers whose shared material has this name. "attachment:<id>"
+    // (ForAttachment) is the model of that attachment instead: its livery and layers work as on a game material, over the
+    // attachment material's own pictures. In a pack such an override carries Layers only: the editor bakes its livery into the
+    // attachment material's textures.
     public string Material { get; set; } = "";
+    public const string AttachmentPrefix = "attachment:";
+    public static string ForAttachment(string id) => AttachmentPrefix + id;
+    // The attachment whose model this override paints; null for a game material.
+    public string? Attached() => Material.StartsWith(AttachmentPrefix, StringComparison.Ordinal) ? Material[AttachmentPrefix.Length..] : null;
     public string? Part { get; set; }
 
     // Channel -> texture reference. Missing channel = keep the game's texture.
@@ -158,6 +185,12 @@ public sealed class MaterialOverride
     public Finish? Finish { get; set; }
     public List<LiveryLayer>? Livery { get; set; }
 
+    // Editor only: the longest side, in pixels, of every texture of this material in game (aspect kept). The editor bakes
+    // the livery at it and pack.build scales the material's textures to it, so the pack's textures already have it; null
+    // keeps each texture at its own size (the editor then bakes a livery at its automatic size).
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public int? TextureSize { get; set; }
+
     // Pack only: the livery baked at growing wear (a wear layer with KillsToFull), lowest kill count first. The plugin shows
     // the last stage whose kill count the local player reached with this skin on this gear, instead of Textures.
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
@@ -171,7 +204,46 @@ public sealed class WearStage
 }
 
 public enum Finish { Matte, Gloss, Satin, Metal, BrushedMetal, Chrome, Rubber, Plastic, CarbonFibre, PaintedSteel, WornMetal, Glow }
-public enum LiveryKind { Fill, Decal, Brush, Pattern, Wear }
+// Decal, Trim and Text are projected the same way (a box in the part's space); Trim draws panel lines and borders in code,
+// Text draws its letters, so both stay sharp at any size. Gradient and Tile are made from the fragment's position in the
+// item's root space, like Pattern.
+public enum LiveryKind { Fill, Decal, Brush, Pattern, Wear, Trim, Text, Gradient, Tile }
+
+// Panel lines and borders drawn inside the trim's box (editor `trim.ts`, shared with the screen border): a frame, one with
+// cut corners, a double frame, an octagon, a frame with ruler ticks, corner brackets, chevrons, hazard stripes, a seam
+// (straight lines across the box) or a grid of panels.
+public enum TrimStyle { Frame, CutFrame, Double, Notched, Ticks, Brackets, Chevron, Hazard, Seam, Panels }
+
+// A trim's lines in metres of the box (Size): line width, how far the corners are cut, how far it sits inside the box edge,
+// dashes (0: solid) with their gap, and Count (ticks, chevrons, stripes, seams, panels across).
+public sealed class Trim
+{
+    public TrimStyle Style { get; set; } = TrimStyle.CutFrame;
+    public float Width { get; set; } = 0.0008f;
+    public float Corner { get; set; } = 0.004f;
+    public float Inset { get; set; }
+    public float Dash { get; set; }
+    public float Gap { get; set; } = 0.001f;
+    public int Count { get; set; } = 3;
+}
+
+public enum GradientShape { Linear, Radial }
+
+// A colour ramp in the item's root space (Unity metres): Linear runs from Start to End, Radial out from Start to the distance
+// of End. Stops (2 to 4) are at 0..1 along it, colours RGBA; a mask uses only their alpha.
+public sealed class Gradient
+{
+    public GradientShape Shape { get; set; }
+    public float[] Start { get; set; } = { 0, 0, -0.1f };
+    public float[] End { get; set; } = { 0, 0, 0.1f };
+    public List<GradientStop> Stops { get; set; } = new();
+}
+
+public sealed class GradientStop
+{
+    public float At { get; set; }
+    public float[] Color { get; set; } = { 1, 1, 1, 1 };
+}
 
 // Procedural patterns, drawn from object-space position so they run across UV seams.
 public enum Pattern
@@ -202,6 +274,21 @@ public sealed class LiveryLayer
     public float[] Size { get; set; } = { 0.04f, 0.04f };
     public float Depth { get; set; } = 0.01f;
     public bool Mirror { get; set; }
+    // Decal, trim and text: also drawn at the mirror image of the box across the item's centre plane (root X = 0), reading
+    // the right way round on the other side.
+    public bool Symmetric { get; set; }
+    // Also lights the paint: the layer is drawn into the Emissive texture as well (bright as the material's glow).
+    public bool Glow { get; set; }
+    // Trim: its lines; Text: the letters (Color tints them, Size[1] is the letter height).
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public Trim? Trim { get; set; }
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public TextStyle? Text { get; set; }
+    // Gradient: its colours; MaskGradient (any layer): hides the layer where its alpha is low.
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public Gradient? Gradient { get; set; }
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public Gradient? MaskGradient { get; set; }
     // An animated GIF decal plays in game: the editor bakes its frames into a dynamic layer of this material, with these
     // settings (as `DynamicLayer`). Fps null = the GIF's own frame timing.
     public float? Fps { get; set; }
@@ -222,6 +309,7 @@ public sealed class LiveryLayer
     public List<float[]>? MaskFills { get; set; }
 
     // Pattern: which, its colours (one to four RGBA), size of its features in metres, rotation (Euler degrees) and seed.
+    // Tile: Image repeated every Scale metres from three sides (no seams across UV islands), turned by PatternRotation.
     public Pattern? Pattern { get; set; }
     public List<float[]>? Colors { get; set; }
     public float Scale { get; set; } = 0.05f;
@@ -239,6 +327,11 @@ public sealed class LiveryLayer
     public int KillsToFull { get; set; }
 }
 
+// Every colour of a skin is sRGB 0..1, as the editor's pickers show it (hex / 255) and as three.js previews it. The game's
+// project is linear; ForgeCore's ForgeVisual.ColourSpace is the one conversion and works out a glow's value whether the
+// property is [HDR] or plain (of the game's glow properties, CustomGearShader's _EmissiveColor is [HDR], GearShader's,
+// Display_GearShader's and Display_Hologram's are not).
+
 public sealed class MaterialParams
 {
     // The game's gear shaders have a large emission gain: an _EmissiveColor of 0.01 shows a linear colour of 1 as itself
@@ -246,16 +339,16 @@ public sealed class MaterialParams
     // in "as itself" units, as the editor previews them, and reach the game's _EmissiveColor times this.
     public const float EmissionUnit = 0.01f;
 
-    // A game _EmissiveColor (RGB, the game's units) as a skin's glow: the colour with its brightest channel at 1 and the
-    // intensity carrying the rest, so EmissiveColor x EmissiveIntensity x EmissionUnit gives it back.
-    public static (float[] Color, float Intensity) GlowFromGame(float r, float g, float b)
+    // A game _EmissiveColor (RGB, the game's units; `hdr`: the property is [HDR]) as a skin's glow, so
+    // ForgeVisual.ColourSpace.Glow(EmissiveColor, EmissiveIntensity x EmissionUnit, hdr) gives it back.
+    public static (float[] Color, float Intensity) GlowFromGame(float r, float g, float b, bool hdr)
     {
-        float k = System.Math.Max(r, System.Math.Max(g, b));
-        return k > 0 ? (new[] { r / k, g / k, b / k }, k / EmissionUnit) : (new float[3], 0);
+        var (colour, gain) = ForgeVisual.ColourSpace.FromGlow(r, g, b, hdr);
+        return (colour, gain / EmissionUnit);
     }
 
     public bool? EmissiveEnabled { get; set; }
-    public float[]? EmissiveColor { get; set; } // linear RGB
+    public float[]? EmissiveColor { get; set; } // sRGB
     public float? EmissiveIntensity { get; set; }
     public float? Metallic { get; set; }
     public float? Smoothness { get; set; }
@@ -327,6 +420,7 @@ public sealed class TextStyle
     public string? Font { get; set; }
     public float SizePx { get; set; } = 64;
     public float[] Color { get; set; } = { 1, 1, 1, 1 };
+    public float Tracking { get; set; } // extra space between letters, in letter heights
 }
 
 // Frames are laid out row by row from the top-left of the atlas image, `Columns` per row.
@@ -384,13 +478,21 @@ public sealed class Charm
     public float Stiffness { get; set; } = 0.25f; // 0: limp rope; 1: stiff wire that keeps the attachment's -Y
     public CharmStyle Style { get; set; } = CharmStyle.Chain;
     public float Thickness { get; set; } = 0.002f; // metres: a cord's diameter, a chain link's width, a bead's diameter; 0.0003 to 0.01
-    public float[] Color { get; set; } = { 0.8f, 0.8f, 0.82f }; // linear RGB
+    public float[] Color { get; set; } = { 0.8f, 0.8f, 0.82f }; // sRGB
     public bool Collide { get; set; } = true; // kept out of the gear's body (boxes from its parts' models)
 }
 
 public sealed class Hologram
 {
     public float Flicker { get; set; } = 0.3f; // 0: steady, 1: drops out often
+    // How much light it gives, 0 to 1 (the hologram adds light, so dimmer shows more of what is behind it).
+    public float Opacity { get; set; } = 1;
+    // Set: the colour runs from the attachment's colour at the bottom to this one at the top (sRGB). The editor bakes
+    // it into the attachment's picture.
+    public float[]? Color2 { get; set; }
+    // 0 to 1: scanlines rolling over it and light on its outline. The editor adds them as code effects on the attachment.
+    public float Scanlines { get; set; }
+    public float EdgeGlow { get; set; }
 }
 
 public enum EffectAction { Flash, Show }
@@ -401,7 +503,7 @@ public sealed class AttachmentEffect
 {
     public Trigger Trigger { get; set; } = Trigger.Kill;
     public EffectAction Action { get; set; } = EffectAction.Flash;
-    public float[] Color { get; set; } = { 1, 1, 1 }; // linear RGB
+    public float[] Color { get; set; } = { 1, 1, 1 }; // sRGB
     public float Intensity { get; set; } = 1;
     public float Seconds { get; set; } = 0.3f;
 }

@@ -3,9 +3,13 @@
 // target region (base texture + layer, opacity baked; the plugin copies without blending); rect.json gives the region in
 // base-texture pixels with a top-left origin. The glyph strip is GLYPHS (Screen.Glyphs) in equal cells, white on transparent;
 // a static screen's text is one image <attachmentId>-text.png. The backend traces both into meshes.
-import { cssFont, loadFont } from './fonts';
-import { dirName, fileUrl, type CatalogItem, type DynamicLayer, type Screen, type SkinDocument, type WeaponPreview } from './protocol';
+import { cssFont, isFontFile, loadFont } from './fonts';
+import { attachedOf, dirName, fileUrl, type CatalogItem, type DynamicLayer, type Screen, type SkinDocument, type WeaponPreview } from './protocol';
 import { t } from './i18n';
+import { drawTrim } from './trim';
+
+/** A dynamic layer's name: what the author typed, else the default in the current language (an untouched layer stores none). */
+export const layerName = (l: DynamicLayer) => l.name || t('store.k26');
 
 export const GLYPHS = '0123456789 -%';
 export const MAX_FRAMES = 240;
@@ -36,9 +40,7 @@ export function loadImage(path: string): Promise<HTMLImageElement> {
 }
 
 function toPng(c: HTMLCanvasElement): Promise<Uint8Array> {
-  return new Promise((resolve, reject) =>
-    c.toBlob(async (b) => (b ? resolve(new Uint8Array(await b.arrayBuffer())) : reject(new Error('png'))), 'image/png'),
-  );
+  return new Promise((resolve, reject) => c.toBlob(async (b) => (b ? resolve(new Uint8Array(await b.arrayBuffer())) : reject(new Error('png'))), 'image/png'));
 }
 
 /** Writes a canvas as a PNG file; a later loadImage of the path reads the new pixels. */
@@ -105,18 +107,24 @@ async function stillFrames(l: DynamicLayer): Promise<CanvasImageSource[]> {
   return (await Promise.all(list.map(sourceFrames))).flatMap((s) => s.frames);
 }
 
-export function textCanvas(layer: DynamicLayer): HTMLCanvasElement {
-  const t = layer.text ?? { content: '' };
+export type TextStyle = NonNullable<DynamicLayer['text']>;
+
+/** Text in its font and colour, `sizePx` high per line, `tracking` letter heights between letters (dynamic and livery text layers). */
+export function textCanvas(t: TextStyle): HTMLCanvasElement {
   const size = t.sizePx ?? 64;
   const font = cssFont(t.font, size, 600);
   const c = document.createElement('canvas');
   const ctx = c.getContext('2d')!;
-  ctx.font = font;
+  const style = () => {
+    ctx.font = font;
+    ctx.letterSpacing = `${(t.tracking ?? 0) * size}px`;
+  };
+  style();
   const lines = (t.content || ' ').split('\n');
   const w = Math.max(...lines.map((l) => ctx.measureText(l).width), 1);
   c.width = Math.ceil(w + size * 0.2);
   c.height = Math.ceil(lines.length * size * 1.25);
-  ctx.font = font;
+  style(); // resizing the canvas reset it
   const [r, g, b, a] = t.color ?? [1, 1, 1, 1];
   ctx.fillStyle = `rgba(${r * 255},${g * 255},${b * 255},${a})`;
   ctx.textBaseline = 'top';
@@ -124,10 +132,10 @@ export function textCanvas(layer: DynamicLayer): HTMLCanvasElement {
   return c;
 }
 
-/** textCanvas once its font has the layer's characters (a font that fails to load draws with the fallback). */
-async function loadedTextCanvas(layer: DynamicLayer): Promise<HTMLCanvasElement> {
-  await loadFont(layer.text?.font, layer.text?.content || ' ').catch(() => undefined);
-  return textCanvas(layer);
+/** textCanvas once its font has the text's characters (a font that fails to load draws with the fallback). */
+export async function loadedTextCanvas(t: TextStyle | null | undefined): Promise<HTMLCanvasElement> {
+  await loadFont(t?.font, t?.content || ' ').catch(() => undefined);
+  return textCanvas(t ?? { content: '' });
 }
 
 /** Live source for preview: returns the drawable for a time in seconds. */
@@ -144,7 +152,7 @@ export class LayerSource {
   private async load() {
     const l = this.layer;
     const sources = (l.sources ?? []).filter(Boolean) as string[];
-    if (l.kind === 'text') this.frames = [await loadedTextCanvas(l)];
+    if (l.kind === 'text') this.frames = [await loadedTextCanvas(l.text)];
     else if (l.kind === 'video' && sources[0]) {
       const v = document.createElement('video');
       v.src = fileUrl(sources[0]);
@@ -241,17 +249,53 @@ async function videoFrames(path: string, fps: number, onFrame: (v: HTMLVideoElem
   return count;
 }
 
-/** Base texture of a material channel: the user's override, else the game texture from the preview. */
+/** Base texture of a material channel: the user's override, else the game texture from the preview; an attachment's model
+ * (attachmentMaterial) has its own pictures. */
 export function baseTexturePath(doc: SkinDocument, preview: WeaponPreview | null, material: string, channel: string) {
   const m = doc.materials?.find((x) => x?.material === material);
-  return (m?.textures?.[channel] as string | undefined) ?? preview?.textures[material]?.[channel as 'albedo'] ?? null;
+  const attached = attachedOf(material);
+  const own = attached ? doc.attachments?.find((a) => a?.id === attached)?.material?.textures?.[channel as 'albedo'] : null;
+  return (m?.textures?.[channel] as string | undefined) ?? own ?? preview?.textures[material]?.[channel as 'albedo'] ?? null;
 }
 
 export type Rect = { x: number; y: number; w: number; h: number };
 
+/** Raise when what a bake draws from the same inputs changes: every earlier bake is then redone. */
+const BAKE_VERSION = 1;
+
+/**
+ * The input key of a bake: `inputs` (the document part it draws) and each named file's size and write time, hashed. A
+ * bake that finds its last output under the same key skips the drawing; a file written again with other bytes, or a
+ * change to the document part, gives another key.
+ */
+export async function bakeKey(inputs: unknown, files: (string | null | undefined)[]): Promise<string> {
+  const named = files.filter((f): f is string => !!f);
+  const stamps = await Promise.all(named.map((f) => window.forge.stat(f)));
+  const text = JSON.stringify([BAKE_VERSION, inputs, named, stamps]);
+  const hash = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(text));
+  return [...new Uint8Array(hash)].map((b) => b.toString(16).padStart(2, '0')).join('');
+}
+
+/** A JSON file the editor wrote (a bake's record), or null when it is missing or unreadable. */
+export async function readJson<T>(path: string): Promise<T | null> {
+  try {
+    const text = await window.forge.readText(path);
+    return text == null ? null : (JSON.parse(text) as T);
+  } catch {
+    return null;
+  }
+}
+
+/** Empties a bake record before its outputs are written again. */
+export const forgetRecord = (path: string) => window.forge.writeFile(path, new TextEncoder().encode('{}'));
+
+/** Whether every file is there (the outputs a bake record names). */
+export const allExist = async (files: string[]) => (await Promise.all(files.map((f) => window.forge.exists(f)))).every(Boolean);
+
 /**
  * Writes one layer's frames and rect.json (the contract at the top). `produce` calls `frame` once per frame, in order,
  * with a function that draws the frame in texture pixels (the canvas shows only `rect`). Returns the frames written.
+ * With `key` (bakeKey of everything the frames are drawn from), frames already written under that key are kept as they are.
  */
 export async function writeLayerFrames(
   projectPath: string,
@@ -260,54 +304,78 @@ export async function writeLayerFrames(
   W: number,
   H: number,
   produce: (frame: (draw: (ctx: CanvasRenderingContext2D) => void) => Promise<void>) => Promise<unknown>,
+  key?: string,
 ): Promise<number> {
   const dir = `${dirName(projectPath)}\\.frames\\${id}`;
+  if (key) {
+    const done = await readJson<{ key?: string; frames?: number }>(`${dir}\\rect.json`);
+    if (done?.key === key && done.frames && (await window.forge.exists(`${dir}\\${String(done.frames - 1).padStart(4, '0')}.png`))) return done.frames;
+    // A bake stopped half way must not leave the old key over new frames.
+    if (done) await forgetRecord(`${dir}\\rect.json`);
+  }
   const canvas = document.createElement('canvas');
   canvas.width = rect.w;
   canvas.height = rect.h;
   const ctx = canvas.getContext('2d')!;
   let written = 0;
-  await produce(async (draw) => {
-    ctx.setTransform(1, 0, 0, 1, -rect.x, -rect.y);
-    ctx.clearRect(rect.x, rect.y, rect.w, rect.h);
-    draw(ctx);
-    await writePng(`${dir}\\${String(written).padStart(4, '0')}.png`, canvas);
-    written++;
-  });
+  // A frame's PNG is encoded and written while the next is drawn (toBlob copies the canvas when called); at most a few
+  // wait at once, each a copy of the region.
+  const writing: Promise<void>[] = [];
+  try {
+    await produce(async (draw) => {
+      ctx.setTransform(1, 0, 0, 1, -rect.x, -rect.y);
+      ctx.clearRect(rect.x, rect.y, rect.w, rect.h);
+      draw(ctx);
+      writing.push(writePng(`${dir}\\${String(written).padStart(4, '0')}.png`, canvas));
+      written++;
+      if (writing.length >= 4) await writing.shift();
+    });
+  } finally {
+    await Promise.allSettled(writing);
+  }
+  await Promise.all(writing);
   // `frames`: how many of the folder's PNGs are this bake's (an earlier, longer bake leaves more behind).
-  const json = JSON.stringify({ ...rect, textureWidth: W, textureHeight: H, frames: written });
+  const json = JSON.stringify({ ...rect, textureWidth: W, textureHeight: H, frames: written, key });
   await window.forge.writeFile(`${dir}\\rect.json`, new TextEncoder().encode(json));
   return written;
 }
 
 /** Bake every visible layer of the document. Returns the number of frames written. */
-export async function bakeLayers(
-  doc: SkinDocument,
-  preview: WeaponPreview | null,
-  projectPath: string,
-  onProgress: (text: string) => void,
-): Promise<number> {
+export async function bakeLayers(doc: SkinDocument, preview: WeaponPreview | null, projectPath: string, onProgress: (text: string) => void): Promise<number> {
   let written = 0;
   for (const m of doc.materials ?? []) {
     for (const l of m?.layers ?? []) {
       if (!m || !l || l.visible === false) continue;
       const basePath = baseTexturePath(doc, preview, m.material!, l.channel ?? 'albedo');
-      if (!basePath) throw Object.assign(new Error('no base texture'), { code: 'no-atlas' });
+      if (!basePath) throw Object.assign(new Error(layerName(l)), { code: 'no-base-texture' });
       const base = await loadImage(basePath);
       const W = base.naturalWidth;
       const H = base.naturalHeight;
-      onProgress(t('frames.k1', { v0: l.name }));
+      onProgress(t('frames.k1', { v0: layerName(l) }));
       const sources = (l.sources ?? []).filter(Boolean) as string[];
-      written += await writeLayerFrames(projectPath, l.id!, layerRect(l, W, H), W, H, async (frame) => {
-        const writeFrame = (src: CanvasImageSource) =>
-          frame((ctx) => {
-            ctx.drawImage(base, 0, 0);
-            drawLayer(ctx, src, l, W, H);
-          });
-        if (l.kind === 'video') await videoFrames(sources[0], l.fps || 12, writeFrame);
-        else if (l.kind === 'text') await writeFrame(await loadedTextCanvas(l));
-        else for (const src of (await stillFrames(l)).slice(0, MAX_FRAMES)) await writeFrame(src);
-      });
+      const font = l.text?.font && isFontFile(l.text.font) ? l.text.font : null;
+      const key = await bakeKey([l, W, H], [basePath, ...sources, font]);
+      const layerFrames = await writeLayerFrames(
+        projectPath,
+        l.id!,
+        layerRect(l, W, H),
+        W,
+        H,
+        async (frame) => {
+          const writeFrame = (src: CanvasImageSource) =>
+            frame((ctx) => {
+              ctx.drawImage(base, 0, 0);
+              drawLayer(ctx, src, l, W, H);
+            });
+          if (l.kind === 'video') await videoFrames(sources[0], l.fps || 12, writeFrame);
+          else if (l.kind === 'text') await writeFrame(await loadedTextCanvas(l.text));
+          else for (const src of (await stillFrames(l)).slice(0, MAX_FRAMES)) await writeFrame(src);
+        },
+        key,
+      );
+      // A layer with no picture, video or text to draw gives no frames; said by name instead of failing in the build.
+      if (!layerFrames) throw Object.assign(new Error(layerName(l)), { code: 'empty-layer' });
+      written += layerFrames;
     }
   }
   return written;
@@ -367,60 +435,11 @@ export function borderCanvas(s: Screen, px: number): HTMLCanvasElement {
   const W = c.width;
   const H = c.height;
   const b = (Math.min(s.borderWidth ?? 0.0008, Math.min(w, h) / 2) * px) / w;
-  const ctx = c.getContext('2d')!;
-  ctx.fillStyle = '#fff';
   if (b <= 0) return c;
-  // The band between the rectangle inset by `i` and the one inset by `i + t`.
-  const ring = (i: number, t: number) => {
-    ctx.beginPath();
-    ctx.rect(i, i, W - 2 * i, H - 2 * i);
-    ctx.rect(i + t, i + t, W - 2 * (i + t), H - 2 * (i + t));
-    ctx.fill('evenodd');
-  };
-  switch (s.borderStyle ?? 'solid') {
-    case 'solid':
-      ring(0, b);
-      break;
-    case 'double':
-      ring(0, b);
-      ring(b * 2.5, b * 0.6);
-      break;
-    case 'corners': {
-      // An L bracket in each corner, its arms a third of the shorter side.
-      const L = Math.min(W, H) * 0.3;
-      for (const [x, y] of [[0, 0], [1, 0], [0, 1], [1, 1]]) {
-        ctx.fillRect(x ? W - L : 0, y ? H - b : 0, L, b);
-        ctx.fillRect(x ? W - b : 0, y ? H - L : 0, b, L);
-      }
-      break;
-    }
-    case 'notched': {
-      // An octagon: the corners cut at 45°; the inner edge keeps the band `b` wide on the cuts too.
-      const k = Math.min(W, H) * 0.2;
-      ctx.beginPath();
-      for (const i of [0, b]) {
-        const n = k - i * (Math.SQRT2 - 1);
-        const pts = [[i + n, i], [W - i - n, i], [W - i, i + n], [W - i, H - i - n], [W - i - n, H - i], [i + n, H - i], [i, H - i - n], [i, i + n]];
-        ctx.moveTo(pts[0][0], pts[0][1]);
-        for (const [x, y] of pts.slice(1)) ctx.lineTo(x, y);
-        ctx.closePath();
-      }
-      ctx.fill('evenodd');
-      break;
-    }
-    case 'ticks': {
-      // A thin frame with ruler ticks along the top and bottom, every third one longer.
-      ring(0, b * 0.5);
-      const n = 12;
-      for (let i = 1; i < n; i++) {
-        const len = b * (i % 3 === 0 ? 3 : 1.8);
-        const x = (W * i) / n - b * 0.25;
-        ctx.fillRect(x, 0, b * 0.5, len);
-        ctx.fillRect(x, H - len, b * 0.5, len);
-      }
-      break;
-    }
-  }
+  // A screen's styles are trims (trim.ts) with fixed proportions: brackets a third and cuts a fifth of the shorter side.
+  const short = Math.min(W, H);
+  const style = ({ solid: 'frame', corners: 'brackets', double: 'double', notched: 'notched', ticks: 'ticks' } as const)[s.borderStyle ?? 'solid'];
+  drawTrim(c.getContext('2d')!, W, H, { style, width: b, corner: style === 'brackets' ? short * 0.3 : style === 'notched' ? short * 0.2 : 0, inset: 0, dash: 0, gap: 0, count: 12 });
   return c;
 }
 
@@ -439,11 +458,7 @@ export const isBounded = (s: Source) => isAmmo(s) || isPercent(s);
 export function screenDigits(s: Screen, item: CatalogItem | undefined): { digits: number; max: number | null; grow: boolean } {
   const clip = item?.clipSize ?? null;
   const reserve = item?.maxReserve ?? null;
-  const max =
-    !isAmmo(s.source) ? null
-    : s.source === 'ammoReserve' ? reserve
-    : s.source === 'ammoTotal' ? (clip != null && reserve != null ? clip + reserve : null)
-    : clip;
+  const max = !isAmmo(s.source) ? null : s.source === 'ammoReserve' ? reserve : s.source === 'ammoTotal' ? (clip != null && reserve != null ? clip + reserve : null) : clip;
   const grow = !s.digits && !isBounded(s.source) && s.source !== 'static';
   const digits = s.digits ? s.digits : grow ? (s.source === 'kills' ? 4 : 6) : isPercent(s.source) ? 3 : max != null ? Math.min(6, String(Math.max(0, max)).length) : 2;
   return { digits, max, grow };

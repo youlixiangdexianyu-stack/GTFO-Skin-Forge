@@ -37,12 +37,12 @@ public static class Catalog
     static readonly JsonObject Naming = JsonNode.Parse(typeof(Catalog).Assembly.GetManifestResourceStream("naming.json")!)!.AsObject();
     static List<CatalogItem>? _items;
     static string? _build;
-    static bool _warmed;
+    static bool _readied;
 
     sealed record Cached(CatalogItem Item, Recipe Source);
 
     // Built once per game build and kept in that build's cache folder; later launches read only that file.
-    // Only the located game's reader warms the preview cache (which drops other builds' caches); an assets.* gameDir
+    // Only the located game's reader readies the preview cache (which drops unused cache folders); an assets.* gameDir
     // override reads its catalog and touches no cache folder of the located game.
     public static List<CatalogItem> Get(GameAssets g)
     {
@@ -60,12 +60,12 @@ public static class Catalog
                 Directory.CreateDirectory(g.Cache);
                 AtomicFile.WriteText(file, JsonSerializer.Serialize(items.Select(i => new Cached(i, i.Source)), Program.Json));
             }
-            (_items, _build, _warmed) = (items, g.BuildId, false);
+            (_items, _build, _readied) = (items, g.BuildId, false);
         }
-        if (!_warmed && Path.GetDirectoryName(g.DataDir)!.Equals(Path.TrimEndingDirectorySeparator(Game.Locate().GameDir ?? ""), StringComparison.OrdinalIgnoreCase))
+        if (!_readied && Path.GetDirectoryName(g.DataDir)!.Equals(Path.TrimEndingDirectorySeparator(Game.Locate().GameDir ?? ""), StringComparison.OrdinalIgnoreCase))
         {
-            _warmed = true;
-            PreviewCache.Ready(g, _items);
+            _readied = true;
+            PreviewCache.Ready(g);
         }
         return _items;
     }

@@ -9,11 +9,10 @@
     <AssemblyName>ForgeSkin.Plugin</AssemblyName>
     <RootNamespace>ForgeSkin.Plugin</RootNamespace>
     <IsPackable>false</IsPackable>
-    <Version>1.1.0</Version>
+    <Version>1.1.1</Version>
     <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
     <!-- Line numbers in error logs without the builder's local paths. -->
     <DebugType>embedded</DebugType>
-    <PathMap>$(MSBuildProjectDirectory)=/ForgeSkin</PathMap>
     <GTFOBepInExPath Condition="'$(GTFOBepInExPath)' == ''">$(GTFO_BEPINEX_PATH)</GTFOBepInExPath>
   </PropertyGroup>
   <!-- ForgeCore comes built, from the profile's installed package; -p:ForgeCoreDll=<path> picks another build. -->
@@ -29,6 +28,8 @@
     <Compile Include="**/*.cs;../ForgeSkin.Format/*.cs" Exclude="bin/**;obj/**" />
     <!-- The in-game texts, beside the DLL where ForgeCore's UI reads them. -->
     <None Update="lang/*.forge" CopyToOutputDirectory="PreserveNewest" />
+    <!-- The picker's CHARACTER slot icon, rendered from its SVG by the icons step of Tools/Brand/make-logo.ts. -->
+    <EmbeddedResource Include="Native/character-slot.png" LogicalName="ForgeSkin.character-slot.png" />
     <Reference Include="ForgeCore" HintPath="$(ForgeCoreDll)" Private="false" />
     <Reference Include="$(GTFOBepInExPath)/core/0Harmony.dll" Private="false" />
     <Reference Include="$(GTFOBepInExPath)/core/BepInEx.Core.dll" Private="false" />

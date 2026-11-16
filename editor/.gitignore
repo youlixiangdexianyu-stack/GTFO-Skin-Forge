@@ -4,3 +4,9 @@ out/
 artifacts/
 GTFO_UserData/
 src/renderer/generated/
+# The tutorial's pictures, made by scripts/docs-shots.mjs (media stay out of Git).
+src/renderer/docs/images/
+# The weapon gallery's images, made by scripts/gallery-thumbs.mjs from the game (media stay out of Git).
+src/renderer/thumbs/
+# The character tab's preview motions, copied by Tools/Models/stage-skin-motions.ts (media stay out of Git).
+src/renderer/motions/

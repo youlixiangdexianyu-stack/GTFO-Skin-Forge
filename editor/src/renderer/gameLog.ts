@@ -3,7 +3,7 @@
 import { useEffect } from 'react';
 import { call } from './protocol';
 import { useStore } from './store';
-import { t } from './i18n';
+import { localName, t } from './i18n';
 
 export interface PluginLine {
   time: string;
@@ -60,9 +60,35 @@ export function plainPluginLine(message: string): string {
   if ((m = message.match(/^(.+): active skin (.+) is not installed; left vanilla$/))) return t('gameLog.notInstalled', { v0: gear(m[1]), v1: m[2] });
   if ((m = message.match(/^(.+\]): (.+); left vanilla$/))) return t('gameLog.leftVanilla', { v0: gear(m[1]), v1: m[2] });
   if ((m = message.match(/^(.+\]): code effect \S+ \((.*)\): skipped, (.+)$/))) return t('gameLog.fxSkipped', { v0: gear(m[1]), v1: m[2], v2: m[3] });
-  if ((m = message.match(/^two packs share id (.+); one is ignored$/))) return t('gameLog.sameId', { v0: m[1] });
-  if ((m = message.match(/^.+?: active\.json now picks (.+), but the in-game picker's choice \((.+)\) goes first; /))) return t('gameLog.pickedFirst', { v0: m[1], v1: m[2] });
+  if ((m = message.match(SAME_ID))) return t('gameLog.sameId', { v0: skinName(m[1]) });
+  if ((m = message.match(/^(.+?): active\.json now picks (.+), but the in-game picker's choice \((.+)\) goes first; /)))
+    return t('gameLog.pickedFirst', { v0: skinName(m[2]), v1: m[3] === 'original look' ? t('gameLog.originalLook') : skinName(m[3]), v2: targetName(m[1]) });
   return message;
+}
+
+const SAME_ID = /^two packs share id (\S+); /;
+
+/** A skin by its name: the installed pack's, else the editor's own skin's, else its id. */
+function skinName(id: string): string {
+  const s = useStore.getState();
+  return s.installed.find((p) => p.id === id)?.name || s.skins.find((k) => k.id === id)?.name || id;
+}
+
+/** A skin target ("gear:14", "item:102", the character slot) by the item's name. */
+function targetName(key: string): string {
+  const [kind, n] = key.split(':');
+  const item = useStore.getState().catalog.find((c) => (kind === 'gear' ? c.gearId : c.itemId) === Number(n));
+  return item ? localName(item) : t('gameLog.thisGear');
+}
+
+/** Plugin warnings as one toast's lines: the same kind said once (the skins installed twice named together), repeats dropped. */
+export function plainWarnings(messages: string[]): string[] {
+  // A skin the plugin saw twice is said only while the profile still holds two copies: the editor's listing moves the extra one to the
+  // Recycle Bin (Install.Dedupe), and a warning the plugin wrote before that is out of date.
+  const installed = useStore.getState().installed;
+  const twice = [...new Set(messages.flatMap((m) => m.match(SAME_ID)?.[1] ?? []))].filter((id) => installed.filter((p) => p.id === id).length > 1);
+  const rest = messages.filter((m) => !SAME_ID.test(m)).map(plainPluginLine);
+  return [...new Set(twice.length ? [t('gameLog.sameId', { v0: twice.map(skinName).join('、') }), ...rest] : rest)];
 }
 
 /**
@@ -78,16 +104,8 @@ export async function confirmInGame(profile: string, since: string, skinId: stri
   const gears = () => new Set(seen.flatMap((l) => l.message.match(new RegExp(`^(.+\\]): \\S+, skin ${escape(skinId)},`))?.[1] ?? []));
   const report = () => {
     const mine = gears();
-    const warns = seen
-      .filter((l) => l.level === 'warn' && (l.message.includes(skinId) || [...mine].some((g) => l.message.startsWith(`${g}: `))))
-      .map((l) => plainPluginLine(l.message));
-    if (!warns.length) return false;
-    // Warnings are reported by useGameWarnings as they arrive, which reads the game only in 开发者模式; otherwise here.
-    if (!s.prefs.developer) {
-      for (const w of new Set(warns)) s.log(`${t('gameLog.warn')}: ${w}`);
-      s.toast('error', `${t('gameLog.warned')} ${[...new Set(warns)].join(' · ')}`);
-    }
-    return true;
+    // useGameWarnings reports the warnings themselves as they arrive.
+    return seen.some((l) => l.level === 'warn' && (l.message.includes(skinId) || [...mine].some((g) => l.message.startsWith(`${g}: `))));
   };
   for (let i = 0; i < 6; i++) {
     await new Promise((r) => setTimeout(r, 1200));
@@ -108,26 +126,24 @@ const escape = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
 /**
  * While the game runs, every plugin warning (a part left vanilla, a material destroyed, a skin not loaded) goes into the
- * log panel and pops up as an alert as it happens: after an apply, a hot reload or a re-equip in game. A 开发者模式 tool:
- * off, the game log is not read.
+ * log panel and pops up as an alert as it happens: after an apply, a hot reload or a re-equip in game.
  */
 export function useGameWarnings() {
   const profile = useStore((s) => s.prefs.profilePath);
   const running = useStore((s) => !!s.game?.running);
-  const developer = useStore((s) => s.prefs.developer);
   useEffect(() => {
-    if (!running || !profile || !developer) return;
+    if (!running || !profile) return;
     const read = pluginLogReader(profile, new Date().toISOString());
     const poll = async () => {
       const lines = (await read().catch(() => null))?.lines ?? [];
       if (!lines.length) return;
-      const warns = lines.filter((l) => l.level === 'warn').map((l) => plainPluginLine(l.message));
+      const warns = plainWarnings(lines.filter((l) => l.level === 'warn').map((l) => l.message));
       if (!warns.length) return;
       const s = useStore.getState();
       for (const w of warns) s.log(`${t('gameLog.warn')}: ${w}`);
-      s.toast('error', `${t('gameLog.warned')} ${[...new Set(warns)].join(' · ')}`);
+      s.toast('error', `${t('gameLog.warned')} ${warns.join(' · ')}`);
     };
     const id = setInterval(() => void poll(), 3000);
     return () => clearInterval(id);
-  }, [running, profile, developer]);
+  }, [running, profile]);
 }

@@ -7,9 +7,10 @@ import { IconBook, IconCircleCheck, IconPhoto } from '@tabler/icons-react';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { t } from '../i18n';
-import { useStore } from '../store';
+import { markPractice, removePractice, useStore } from '../store';
 import { openHelp } from '../ui/HelpDocs';
-import { snapshot, STEPS, putSampleTexture, type Target } from './steps';
+import { useCharacter } from '../character/state';
+import { snapshot, putSampleTexture, type Target, type TourStep } from './steps';
 import './tour.css';
 
 const PAD = 4;
@@ -33,9 +34,7 @@ function named(e: Element, name: string): boolean {
 
 /** The first visible element of the first target that has one. */
 export function findTarget(targets: Target[]): Element | null {
-  for (const x of targets)
-    for (const e of document.querySelectorAll(x.css))
-      if (!e.closest('.tour') && (!x.name || named(e, t(x.name))) && shown(e)) return e;
+  for (const x of targets) for (const e of document.querySelectorAll(x.css)) if (!e.closest('.tour') && (!x.name || named(e, t(x.name))) && shown(e)) return e;
   return null;
 }
 
@@ -61,9 +60,10 @@ const px = (e: HTMLElement | null, l: number, tp: number, w: number, h: number) 
   e.style.height = `${Math.max(0, h)}px`;
 };
 
-/** `intro`: what the first card shows; `example`: makes the example skin from the last card. */
-export function Tour({ intro, example }: { intro: ReactNode; example: () => void }) {
+/** `steps`: one tutorial; `intro`: what its first card shows besides its text; `example`: makes the example skin from the last card. */
+export function Tour({ steps: STEPS, intro, example }: { steps: TourStep[]; intro?: ReactNode; example?: () => void }) {
   const state = useStore();
+  useCharacter(); // the character tutorial's steps read the 人物模型 side too
   const [i, setI] = useState(0);
   const [confirm, setConfirm] = useState(false);
   const [target, setTarget] = useState<Element | null>(null);
@@ -86,10 +86,18 @@ export function Tour({ intro, example }: { intro: ReactNode; example: () => void
     setConfirm(false);
     setI(Math.max(0, Math.min(STEPS.length - 1, n)));
   };
-  const close = () => useStore.getState().setPrefs({ welcomed: true });
+  // The work the player makes in the first tutorial is practice: it is deleted, with its pack in the profile, however the
+  // tutorial ends (and at the next start when the editor closed inside it); works made otherwise meanwhile stay.
+  const close = (then?: () => void) => {
+    const removed = removePractice();
+    useStore.setState({ tour: null });
+    if (then) void removed.then(then);
+  };
+  useEffect(() => () => void removePractice(), []);
 
   // Done by the player: on to the next step.
   useEffect(() => {
+    if (done && step.id === 'newSkin') markPractice();
     if (done && !last) go(i + 1);
   }, [done]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -182,7 +190,7 @@ export function Tour({ intro, example }: { intro: ReactNode; example: () => void
               <Button variant="default" ref={primary} onClick={() => setConfirm(false)}>
                 {t('tour.skipNo')}
               </Button>
-              <Button color="red" variant="light" onClick={close}>
+              <Button color="red" variant="light" onClick={() => close()}>
                 {t('tour.skipYes')}
               </Button>
             </Group>
@@ -192,7 +200,7 @@ export function Tour({ intro, example }: { intro: ReactNode; example: () => void
             <Text className="tour-title" fw={650} mb={6}>
               {t(`tour.${step.id}`)}
             </Text>
-            {step.id === 'intro' ? intro : <Text size="sm">{t(`tour.${step.id}Info`)}</Text>}
+            {i === 0 && intro ? intro : <Text size="sm">{t(`tour.${step.id}Info`)}</Text>}
             {warn && (
               <Text size="xs" c="yellow" mt={8}>
                 {warn}
@@ -218,9 +226,13 @@ export function Tour({ intro, example }: { intro: ReactNode; example: () => void
             )}
             <Group justify="space-between" mt="md" gap="xs" wrap="nowrap">
               {last ? (
-                <Button variant="subtle" color="gray" onClick={() => (close(), example())}>
-                  {t('welcome.example')}
-                </Button>
+                example ? (
+                  <Button variant="subtle" color="gray" onClick={() => close(example)}>
+                    {t('welcome.example')}
+                  </Button>
+                ) : (
+                  <span />
+                )
               ) : (
                 <Button variant="subtle" color="gray" onClick={() => setConfirm(true)}>
                   {t('tour.skip')}
@@ -238,7 +250,7 @@ export function Tour({ intro, example }: { intro: ReactNode; example: () => void
                   </Button>
                 )}
                 {last ? (
-                  <Button color="flare" ref={primary} onClick={close}>
+                  <Button color="flare" ref={primary} onClick={() => close()}>
                     {t('tour.done')}
                   </Button>
                 ) : (

@@ -273,13 +273,13 @@
   "Stalwart Flow G2": {
    "id": "cfoam_launcher",
    "order": 302,
-   "nameZh": "C泡沫发射器",
+   "nameZh": "结沫发射器",
    "categoryZh": "工具"
   },
   "Krieger O4": {
    "id": "mine_deployer",
    "order": 303,
-   "nameZh": "地雷部署器",
+   "nameZh": "绊雷部署器",
    "categoryZh": "工具"
   },
   "Mechatronic SGB3": {
@@ -940,13 +940,13 @@
   "CONSUMABLE_GlueGrenade": {
    "id": "cfoam_grenade",
    "order": 508,
-   "nameZh": "C泡沫手雷",
+   "nameZh": "结沫榴弹",
    "categoryZh": "消耗品"
   },
   "CONSUMABLE_Tripmine_Glue": {
    "id": "cfoam_tripmine",
    "order": 509,
-   "nameZh": "C泡沫绊雷",
+   "nameZh": "结沫绊雷",
    "categoryZh": "消耗品"
   },
   "CONSUMABLE_Tripmine_Explosive": {

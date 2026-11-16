@@ -13,6 +13,8 @@
     "resolveJsonModule": true,
     "isolatedModules": true,
     "noEmit": true,
+    "allowImportingTsExtensions": true,
+    "paths": { "three": ["./node_modules/@types/three/index.d.ts"] },
     "types": ["node", "vite/client"]
   },
   "include": ["src", "forge.config.ts", "vite.*.config.ts", "forge.env.d.ts"]

@@ -2,27 +2,29 @@ using System.Diagnostics;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Text.RegularExpressions;
+using ForgeSkin.Format;
 using Microsoft.Win32;
 
 namespace ForgeSkin.Backend;
 
 public sealed record GameInfo(string? GameDir, string? DataDir, bool Found, bool Running);
 // Reason: why HasBepInEx is false. Modified: last time the profile changed or the game ran from it (BepInEx log).
-// Development: the plugin's hot-reload switch in its config. PluginCurrent: Install.PluginCurrent (the shipped plugin DLL, nothing retired beside it, ForgeCore at least the shipped one).
-public sealed record ProfileInfo(string Name, string Path, bool HasBepInEx, string? PluginVersion, bool PluginCurrent, bool Development, string? Reason, bool Custom, DateTime Modified);
+// PluginCurrent: Install.PluginCurrent (the shipped plugin DLL, nothing retired beside it, ForgeCore at least the shipped one).
+// PluginShipped: the plugin version the editor ships, which PluginCurrent holds the profile's to.
+public sealed record ProfileInfo(string Name, string Path, bool HasBepInEx, string? PluginVersion, bool PluginCurrent, string? Reason, bool Custom, DateTime Modified, string? PluginShipped, int Packs = 0);
 
 // Finds the GTFO install (saved choice, then Steam registry + libraryfolders.vdf + common dirs) and BepInEx profiles.
 public static class Game
 {
-    public const string PluginFolder = "ForgeSkin";
-
     static string? _chosen = ReadSetting();
+    // What the Steam search found, kept: searched again only when it found nothing or the folder is no longer an install.
+    static string? _searched;
 
     public static bool Running => Process.GetProcessesByName("GTFO").Length > 0;
 
     public static GameInfo Locate()
     {
-        var dir = Valid(_chosen) ? _chosen : Candidates().FirstOrDefault(Valid);
+        var dir = Valid(_chosen) ? _chosen : Valid(_searched) ? _searched : _searched = Candidates().FirstOrDefault(Valid);
         return new GameInfo(dir, dir == null ? null : Path.Combine(dir, "GTFO_Data"), dir != null, Running);
     }
 
@@ -43,12 +45,23 @@ public static class Game
     static bool Valid(string? dir) =>
         dir != null && File.Exists(Path.Combine(dir, "GTFO.exe")) && File.Exists(Path.Combine(dir, "GTFO_Data", "resources.assets"));
 
-    static string? ReadSetting() => (string?)ReadSettings()["gameDir"];
+    // At start an unreadable settings file only loses the saved game folder (the search finds it again); it is logged.
+    static string? ReadSetting()
+    {
+        try { return (string?)ReadSettings()["gameDir"]; }
+        catch (BackendException e) { Log.Write(e.Message); return null; }
+    }
 
+    // A settings file that is there but cannot be read (held by another program, damaged) is an error, never empty settings:
+    // a caller saving them would overwrite the added profiles and the other keys. The file is left as it is.
     static JsonObject ReadSettings()
     {
-        try { return JsonNode.Parse(File.ReadAllText(Paths.Settings)) as JsonObject ?? new(); }
-        catch (Exception e) when (e is IOException or JsonException) { return new(); }
+        if (!File.Exists(Paths.Settings)) return new();
+        try { return JsonNode.Parse(File.ReadAllText(Paths.Settings)) as JsonObject ?? throw new JsonException("not a JSON object"); }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException or JsonException)
+        {
+            throw new BackendException("settings-unreadable", $"{Paths.Settings} could not be read and was left unchanged: {e.Message}");
+        }
     }
 
     static void WriteSettings(JsonObject settings)
@@ -124,6 +137,14 @@ public static class Game
         return list.DistinctBy(p => Path.GetFullPath(p.Path).TrimEnd('\\'), StringComparer.OrdinalIgnoreCase).ToList();
     }
 
+    // One profile read as Profiles reads it, without scanning the others (the editor's plugin check before each apply).
+    public static ProfileInfo ProfileAt(string path)
+    {
+        var dir = Path.GetFullPath(path).TrimEnd('\\', '/');
+        if (!Directory.Exists(dir)) throw new BackendException("not-found", $"{dir} does not exist");
+        return Profile(dir, CustomProfiles().Contains(dir, StringComparer.OrdinalIgnoreCase));
+    }
+
     static List<string> CustomProfiles() => ReadSettings()["profiles"] is JsonArray a ? a.Select(n => (string)n!).ToList() : new();
 
     // Why a folder is not a BepInEx 6 profile, or null when it is.
@@ -146,8 +167,11 @@ public static class Game
         var reason = NotProfile(dir);
         var modified = new[] { dir, Path.Combine(dir, "BepInEx"), Path.Combine(dir, "BepInEx", "plugins"), Path.Combine(dir, "BepInEx", "LogOutput.log") }
             .Where(p => Directory.Exists(p) || File.Exists(p)).Select(File.GetLastWriteTimeUtc).Max();
+        // Packs in its skins folder, for the profile menu (skin mods' packs are counted only for the chosen profile, by pack.list).
+        var skins = SkinFolders.Skins(BepInEx(dir));
+        var packs = Directory.Exists(skins) ? Directory.GetFiles(skins, "*" + SkinPack.Extension).Length : 0;
         return new ProfileInfo(Path.GetFileName(dir.TrimEnd('\\', '/')), dir, reason == null,
-            dll != null ? ShortVersion(FileVersionInfo.GetVersionInfo(dll)) : null, dll != null && Install.PluginCurrent(dir), Install.Development(dir), reason, custom, modified);
+            dll != null ? ShortVersion(FileVersionInfo.GetVersionInfo(dll)) : null, dll != null && Install.PluginCurrent(dir), reason, custom, modified, Install.ShippedVersion(), packs);
     }
 
     // Accepts a profile root, its BepInEx folder or a game folder holding BepInEx.
@@ -183,7 +207,7 @@ public static class Game
     // `reset`. Only the bytes after `from` are read.
     public static object PluginLog(string profile, DateTime? since, long from, string? head)
     {
-        var file = Path.Combine(PluginDir(profile), "forgeskin.log");
+        var file = SkinFolders.AuthorLog(BepInEx(profile));
         if (!File.Exists(file)) return new { lines = Array.Empty<object>(), next = 0L, head = "", reset = from > 0 };
         using var s = new FileStream(file, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
         var length = s.Length;
@@ -209,5 +233,6 @@ public static class Game
         return new { lines, next = from + end, head = first, reset };
     }
 
-    public static string PluginDir(string profile) => Path.Combine(profile, "BepInEx", "plugins", PluginFolder);
+    public static string BepInEx(string profile) => Path.Combine(profile, "BepInEx");
+    public static string PluginDir(string profile) => SkinFolders.Plugin(BepInEx(profile));
 }

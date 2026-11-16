@@ -5,7 +5,13 @@ using ForgeSkin.Format;
 
 namespace ForgeSkin.Backend;
 
-public sealed record InstalledSkin(string Id, string Name, string File, string? Weapon, bool Active, string? Error);
+// `Dropped`: other copies of this skin the listing just moved to the Recycle Bin (file names), for the editor's log. `Source`:
+// "editor" (the skins folder's `<id>.forgeskin`), "hand" (another name there: put in by hand or by another tool) or "mod" (listed
+// by the skin mod `Mod` under BepInEx/plugins; the editor cannot remove those). `Modified`: the pack file's last write (ISO),
+// which the editor compares with its project's to tell an edit not applied yet.
+// `InUse`: the skin the game shows for its target, as the plugin decides it (Skins.Resolve): a pending 应用到游戏 pick, else the
+// in-game picker's choice, else active.json, else the first by path.
+public sealed record InstalledSkin(string Id, string Name, string File, string? Weapon, bool Active, string? Error, string[]? Dropped = null, string Source = "editor", string? Mod = null, bool InUse = false, string? Modified = null);
 
 // Skins and the plugin in a BepInEx profile (PLAN §3.2). Skin writes are atomic file replaces the plugin hot-reloads,
 // so they work while the game runs; only replacing the plugin DLL needs the game closed.
@@ -16,10 +22,10 @@ public static class Install
     // with ForgeCore, whose copy a second NVorbis.dll would clash with.
     static readonly string[] RetiredFiles = ["ForgeSkin.Format.dll", "NVorbis.dll"];
 
-    static string Skins(string profile) => Path.Combine(Game.PluginDir(profile), "skins");
+    internal static string Skins(string profile) => SkinFolders.Skins(Game.BepInEx(profile));
     static string ActiveFile(string profile) => Path.Combine(Skins(profile), "active.json");
 
-    static JsonObject ReadActive(string profile)
+    internal static JsonObject ReadActive(string profile)
     {
         var path = ActiveFile(profile);
         var json = File.Exists(path) ? JsonNode.Parse(File.ReadAllText(path)) as JsonObject : null;
@@ -29,7 +35,7 @@ public static class Install
         return json;
     }
 
-    static void WriteActive(string profile, JsonObject json)
+    internal static void WriteActive(string profile, JsonObject json)
     {
         AtomicFile.WriteText(ActiveFile(profile), json.ToJsonString(new JsonSerializerOptions { WriteIndented = true }));
     }
@@ -56,7 +62,7 @@ public static class Install
 
     // `pick` (the editor's 应用到游戏): the skin also goes before the player's in-game picker choice for its target. Written
     // as a one-shot `<ticks>.pick` file beside active.json ({"target", "skin"}); the plugin applies it to its own choices at
-    // its next reload (at once in a running game with Development on, else at the next launch) and deletes it. Only the
+    // its next reload (at once in a running game, else at the next launch) and deletes it. Only the
     // plugin writes ForgeSkin.choices.json, so a choice the player makes meanwhile is never written over.
     public static object Pack(string pack, string profile, bool activate, bool pick = false)
     {
@@ -67,6 +73,7 @@ public static class Install
             PackBuilder.CheckSounds(p);
             doc = p.Manifest;
         }
+        OldSkinMove.Run(profile);
         var dir = Skins(profile);
         Directory.CreateDirectory(dir);
         var target = Path.Combine(dir, Preview.Safe(doc.Id) + SkinPack.Extension);
@@ -76,47 +83,178 @@ public static class Install
             file.Commit();
         }
         if (activate) SetActive(profile, doc, true);
-        if (pick && doc.Target.Key() is { } key)
-            AtomicFile.WriteText(Path.Combine(dir, $"{DateTime.UtcNow.Ticks}{SkinPack.PickExtension}"), JsonSerializer.Serialize(new { target = key, skin = doc.Id }));
-        return new { installed = target, active = activate };
+        if (pick) WritePick(dir, doc);
+        var dropped = Dedupe(Read(dir).Where(p => p.Doc?.Id == doc.Id).ToList()).GetValueOrDefault(doc.Id) ?? [];
+        return new { installed = target, active = activate, dropped };
     }
 
-    public static List<InstalledSkin> List(string profile)
-    {
-        var dir = Skins(profile);
-        if (!Directory.Exists(dir)) return new();
-        var json = ReadActive(profile);
-        var active = json["targets"]!.AsObject().Select(kv => (string?)kv.Value).Concat(json["global"]!.AsArray().Select(n => (string?)n)).ToHashSet();
-        return Directory.GetFiles(dir, "*" + SkinPack.Extension).Order().Select(file =>
+    // Every pack in the skins folder with its manifest, or why it cannot be read.
+    static List<(string File, SkinDocument? Doc, string? Error)> Read(string dir) =>
+        Directory.GetFiles(dir, "*" + SkinPack.Extension).Order().Select(file =>
         {
             try
             {
                 using var p = SkinPack.Open(file);
-                var d = p.Manifest;
-                return new InstalledSkin(d.Id, d.Name, file, d.Target.Weapon, active.Contains(d.Id), null);
+                return (file, (SkinDocument?)p.Manifest, (string?)null);
             }
             catch (Exception e) when (e is SkinFormatException or IOException or JsonException or InvalidDataException)
             {
-                return new InstalledSkin(Path.GetFileNameWithoutExtension(file), Path.GetFileName(file), file, null, false,
-                    e is SkinFormatException f ? $"{f.Code}: {f.Message}" : e.Message);
+                return (file, null, e is SkinFormatException f ? $"{f.Code}: {f.Message}" : e.Message);
             }
         }).ToList();
+
+    // One pack per skin id. The editor installs `<id>.forgeskin` and replaces it in place; a copy of the same skin under another
+    // name (put in by hand or by another tool) makes the plugin load only one of the two. The editor's own copy stays, else the
+    // newest; the others go to the Recycle Bin and leave `packs`. Returns the file names moved away per id; one that cannot be
+    // moved (held open) stays and is logged, so the install itself never fails for it.
+    static Dictionary<string, string[]> Dedupe(List<(string File, SkinDocument? Doc, string? Error)> packs)
+    {
+        var dropped = new Dictionary<string, string[]>();
+        foreach (var group in packs.Where(p => p.Doc != null).GroupBy(p => p.Doc!.Id).Where(g => g.Count() > 1))
+        {
+            var keep = group.FirstOrDefault(p => Path.GetFileName(p.File).Equals(Preview.Safe(group.Key) + SkinPack.Extension, StringComparison.OrdinalIgnoreCase)).File
+                ?? group.MaxBy(p => File.GetLastWriteTimeUtc(p.File)).File;
+            var gone = new List<string>();
+            foreach (var (file, _, _) in group.Where(p => p.File != keep).ToList())
+                try
+                {
+                    RecycleBin.Send(file);
+                    packs.RemoveAll(p => p.File == file);
+                    gone.Add(Path.GetFileName(file));
+                    Log.Write($"{file}: another copy of skin {group.Key} (kept {Path.GetFileName(keep)}), moved to the Recycle Bin");
+                }
+                catch (IOException e) { Log.Write($"{file}: another copy of skin {group.Key} not moved: {e.Message}"); }
+            if (gone.Count > 0) dropped[group.Key] = [.. gone];
+        }
+        return dropped;
     }
 
+    // Every skin the profile's game loads: the skins folder's packs, then the skin mods' (read only). `tidy` (the editor's
+    // listing): copies of one skin under several names in the skins folder are cleared first (Dedupe).
+    public static List<InstalledSkin> List(string profile, bool tidy = false)
+    {
+        OldSkinMove.Run(profile);
+        var dir = Skins(profile);
+        var json = Directory.Exists(dir) ? ReadActive(profile) : new JsonObject { ["targets"] = new JsonObject(), ["global"] = new JsonArray() };
+        var targets = json["targets"]!.AsObject().Where(kv => kv.Value is JsonValue).ToDictionary(kv => kv.Key, kv => (string?)kv.Value);
+        var active = targets.Values.Concat(json["global"]!.AsArray().Select(n => (string?)n)).ToHashSet();
+        var packs = Directory.Exists(dir) ? Read(dir) : [];
+        var dropped = tidy ? Dedupe(packs) : new();
+        var mods = SkinFolders.ModPacks(Path.Combine(profile, "BepInEx", "plugins")).Where(m => m.Problem == null).Select(m => m.Pack).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+        var all = packs.Select(p => (p.File, p.Doc, p.Error, Mod: (string?)null))
+            .Concat(mods.Select(file => { var (f, d, e) = ReadOne(file); return (File: f, Doc: d, Error: e, Mod: (string?)Path.GetFileName(Path.GetDirectoryName(file))); })).ToList();
+        // What the game shows per target, in the plugin's order.
+        var shown = new Dictionary<string, string>();
+        foreach (var (key, id) in ReadChoices(profile)) shown[key] = id;
+        foreach (var (key, id) in ReadPicks(dir)) shown[key] = id;
+        foreach (var (key, id) in targets) if (id != null) shown.TryAdd(key, id);
+        // A skin mod's pack is worn unless something above picks for its target; among them the first by path.
+        foreach (var (_, d, _, _) in all.Where(p => p.Mod != null).OrderBy(p => p.File, StringComparer.OrdinalIgnoreCase))
+            if (d?.Target.Key() is { } key) shown.TryAdd(key, d.Id);
+        return all.Select(p => p.Doc is { } d
+            ? new InstalledSkin(d.Id, d.Name, p.File, d.Target.Weapon, active.Contains(d.Id), null, dropped.GetValueOrDefault(d.Id), SourceOf(p.File, d.Id, p.Mod), p.Mod,
+                d.Target.Key() is { } key ? shown.GetValueOrDefault(key) == d.Id : active.Contains(d.Id), Stamp(p.File))
+            : new InstalledSkin(Path.GetFileNameWithoutExtension(p.File), Path.GetFileName(p.File), p.File, null, false, p.Error, null, SourceOf(p.File, null, p.Mod), p.Mod, false, Stamp(p.File))).ToList();
+    }
+
+    static string SourceOf(string file, string? id, string? mod) =>
+        mod != null ? "mod" : id != null && Path.GetFileName(file).Equals(Preview.Safe(id) + SkinPack.Extension, StringComparison.OrdinalIgnoreCase) ? "editor" : "hand";
+
+    static string? Stamp(string file)
+    {
+        try { return File.GetLastWriteTimeUtc(file).ToString("O"); }
+        catch (IOException) { return null; }
+    }
+
+    static (string File, SkinDocument? Doc, string? Error) ReadOne(string file)
+    {
+        try
+        {
+            using var p = SkinPack.Open(file);
+            return (file, p.Manifest, null);
+        }
+        catch (Exception e) when (e is SkinFormatException or IOException or JsonException or InvalidDataException)
+        {
+            return (file, null, e is SkinFormatException f ? $"{f.Code}: {f.Message}" : e.Message);
+        }
+    }
+
+    // The in-game picker's choices (target key -> skin id, "" = the original look), written by the plugin only.
+    static Dictionary<string, string> ReadChoices(string profile)
+    {
+        var file = Path.Combine(profile, "BepInEx", "config", "ForgeSkin.choices.json");
+        try { return File.Exists(file) ? JsonSerializer.Deserialize<Dictionary<string, string>>(File.ReadAllText(file)) ?? new() : new(); }
+        catch (Exception e) when (e is IOException or JsonException) { return new(); }
+    }
+
+    // 应用到游戏 picks the plugin has not taken yet, oldest first (a later one wins, as in the plugin).
+    static IEnumerable<(string Target, string Skin)> ReadPicks(string dir)
+    {
+        if (!Directory.Exists(dir)) yield break;
+        foreach (var file in Directory.GetFiles(dir, "*" + SkinPack.PickExtension).Order())
+        {
+            JsonObject? pick;
+            try { pick = JsonNode.Parse(File.ReadAllText(file)) as JsonObject; }
+            catch (Exception e) when (e is IOException or JsonException) { continue; }
+            if (pick?["target"]?.GetValue<string>() is { } target && pick["skin"]?.GetValue<string>() is { } skin) yield return (target, skin);
+        }
+    }
+
+    // A character pack's card picture (the one the game's skin page shows) as base64 PNG. A pack without one gives its converted
+    // model instead, unpacked under `cache`, for the editor to draw the picture from (`character`: the model files and bone match).
+    public static object Picture(string pack, string cache)
+    {
+        using var p = SkinPack.Open(pack);
+        if (p.Manifest.Character?.Picture is { } picture) return new { png = Convert.ToBase64String(p.ReadBytes(picture)), character = (CharacterSkin?)null };
+        var doc = SkinJson.Read(SkinJson.Write(p.Manifest));
+        if (doc.Character != null) Projects.Unpack(p, doc, cache, new HashSet<string>());
+        return new { png = (string?)null, character = doc.Character };
+    }
+
+    // Takes a skin out of the profile: its pack goes to the Recycle Bin (the player can put it back), and active.json forgets it.
     public static object Remove(string profile, string skinId)
     {
-        var skin = List(profile).FirstOrDefault(s => s.Id == skinId) ?? throw new BackendException("not-found", $"Skin {skinId} is not installed");
+        // A skin mod's pack belongs to the mod manager: only the skins folder's copies are taken out.
+        var skin = List(profile).FirstOrDefault(s => s.Id == skinId && s.Source != "mod") ?? throw new BackendException("not-found", $"Skin {skinId} is not in the skins folder");
         SetActive(profile, new SkinDocument { Id = skinId }, false);
-        File.Delete(skin.File);
+        RecycleBin.Send(skin.File);
         return new { removed = skin.File };
     }
 
-    public static object Activate(string profile, string skinId, bool active)
+    // Turning a skin on also goes before the player's in-game picker choice for its target (a pick, as 应用到游戏 does), so the
+    // game shows what the editor says.
+    public static object Activate(string profile, string skinId)
     {
         var skin = List(profile).FirstOrDefault(s => s.Id == skinId && s.Error == null) ?? throw new BackendException("not-found", $"Skin {skinId} is not installed");
-        using var p = SkinPack.Open(skin.File);
-        SetActive(profile, p.Manifest, active);
-        return new { id = skinId, active };
+        SkinDocument doc;
+        using (var p = SkinPack.Open(skin.File)) doc = p.Manifest;
+        SetActive(profile, doc, true);
+        WritePick(Skins(profile), doc);
+        return new { id = skinId };
+    }
+
+    // An older pick for the same target that the plugin has not taken (it is not running) is dropped first, as the newer one
+    // would win anyway; picks for other targets stay.
+    static void WritePick(string dir, SkinDocument doc)
+    {
+        if (doc.Target.Key() is not { } key) return;
+        Directory.CreateDirectory(dir);
+        foreach (var file in Directory.GetFiles(dir, "*" + SkinPack.PickExtension))
+        {
+            try
+            {
+                if ((JsonNode.Parse(File.ReadAllText(file)) as JsonObject)?["target"]?.GetValue<string>() == key) File.Delete(file);
+            }
+            catch (Exception e) when (e is IOException or JsonException or UnauthorizedAccessException) { } // the plugin took it meanwhile
+        }
+        AtomicFile.WriteText(Path.Combine(dir, $"{DateTime.UtcNow.Ticks}{SkinPack.PickExtension}"), JsonSerializer.Serialize(new { target = key, skin = doc.Id }));
+    }
+
+    /// <summary>The ForgeSkin plugin version this editor ships (what a profile's plugin is held to), or null without a plugin build.</summary>
+    public static string? ShippedVersion()
+    {
+        try { return DllVersion(Path.Combine(PluginSource(), "ForgeSkin", PluginDll)).ToString(3); }
+        catch (BackendException) { return null; }
     }
 
     // The plugin the app ships, next to the backend: plugin/ForgeSkin/ForgeSkin.Plugin.dll and plugin/ForgeCore/, the unpacked
@@ -127,7 +265,7 @@ public static class Install
         for (var dir = new DirectoryInfo(AppContext.BaseDirectory); dir != null; dir = dir.Parent)
             foreach (var plugin in new[] { Path.Combine(dir.FullName, "plugin"), Path.Combine(dir.FullName, "artifacts", "forge-skin-release", "publish", "plugin") })
                 if (File.Exists(Path.Combine(plugin, "ForgeSkin", PluginDll)) && File.Exists(Path.Combine(plugin, "ForgeCore", CoreDll))) return plugin;
-        throw new BackendException("no-plugin", "Plugin build not found: neither plugin/ next to the backend nor artifacts/forge-skin-release in the checkout");
+        throw new BackendException("no-plugin", "Plugin build not found: neither plugin/ next to the backend nor artifacts/forge-skin-release/publish/plugin in the checkout (run Mods/ForgeSkin/tools/build-editor-release.ps1 -PluginOnly)");
     }
 
     static Version DllVersion(string dll)
@@ -146,7 +284,7 @@ public static class Install
     }
 
     // The newest ForgeSkin.Plugin.dll a mod manager installed (anywhere under BepInEx/plugins but the editor's own
-    // plugins/ForgeSkin/, usually NAinfini-ForgeSkin/), or null. The skins stay in plugins/ForgeSkin/skins either way.
+    // plugins/ForgeSkin/, usually NAinfini-ForgeSkin/), or null. The skins are in BepInEx/ForgeSkin/skins either way.
     static string? ManagedPlugin(string profile)
     {
         var plugins = Path.Combine(profile, "BepInEx", "plugins");
@@ -211,7 +349,7 @@ public static class Install
             throw new BackendException("forge-skin-old", $"ForgeSkin {DllVersion(managed)} at {managed} is older than {plugin}, which this editor needs; update ForgeSkin in the mod manager");
         MovePreRenameInstall(profile);
         var dir = Game.PluginDir(profile);
-        Directory.CreateDirectory(Path.Combine(dir, "skins"));
+        Directory.CreateDirectory(Skins(profile));
         foreach (var f in RetiredFiles.Append(PluginDll)) RequireUnlocked(Path.Combine(dir, f));
         if (core == null)
         {
@@ -265,32 +403,11 @@ public static class Install
         if (File.Exists(oldConfig) && !File.Exists(ConfigFile(profile))) File.Move(oldConfig, ConfigFile(profile));
         var oldReadback = Path.Combine(bepInEx, "SkinForge");
         // Readback files are debug output the plugin writes again; a folder held open elsewhere stays where it is.
-        try { if (Directory.Exists(oldReadback) && !Directory.Exists(Path.Combine(bepInEx, "ForgeSkin"))) Directory.Move(oldReadback, Path.Combine(bepInEx, "ForgeSkin")); }
+        try { if (Directory.Exists(oldReadback) && !Directory.Exists(SkinFolders.Root(bepInEx))) Directory.Move(oldReadback, SkinFolders.Root(bepInEx)); }
         catch (Exception e) when (e is IOException or UnauthorizedAccessException) { Log.Write($"pre-rename {oldReadback} kept: {e.Message}"); }
     }
 
-    // The plugin's development switch (hot reload), the `Development` entry of BepInEx/config/ForgeSkin.cfg. The plugin
-    // reads it when the game starts, so a change applies from the next launch.
     static string ConfigFile(string profile) => Path.Combine(profile, "BepInEx", "config", "ForgeSkin.cfg");
-    static readonly System.Text.RegularExpressions.Regex DevLine = new(@"^Development[ \t]*=[ \t]*(\w+)", System.Text.RegularExpressions.RegexOptions.Multiline);
-    static readonly System.Text.RegularExpressions.Regex GeneralLine = new(@"^\[General\][ \t]*\r?$", System.Text.RegularExpressions.RegexOptions.Multiline);
-
-    public static bool Development(string profile) =>
-        File.Exists(ConfigFile(profile)) && DevLine.Match(File.ReadAllText(ConfigFile(profile))) is { Success: true } m && m.Groups[1].Value.Equals("true", StringComparison.OrdinalIgnoreCase);
-
-    public static object SetDevelopment(string profile, bool on)
-    {
-        RequireProfile(profile);
-        var file = ConfigFile(profile);
-        var line = "Development = " + (on ? "true" : "false");
-        var text = File.Exists(file) ? File.ReadAllText(file) : "";
-        text = DevLine.IsMatch(text) ? DevLine.Replace(text, line, 1)
-            : GeneralLine.IsMatch(text) ? GeneralLine.Replace(text, "$0\n" + line, 1)
-            : text + (text.Length > 0 && !text.EndsWith('\n') ? "\n" : "") + "[General]\n" + line + "\n";
-        Directory.CreateDirectory(Path.GetDirectoryName(file)!);
-        AtomicFile.WriteText(file, text);
-        return new { development = on, restartNeeded = Game.Running };
-    }
 
     // Removes the editor's plugin DLLs; installed skins stay, and so do ForgeCore and a ForgeSkin the mod manager installed
     // (the mod manager owns them).

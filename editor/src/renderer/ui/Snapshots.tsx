@@ -83,7 +83,7 @@ export function SnapshotsModal({ opened, onClose }: { opened: boolean; onClose: 
       <Modal opened={!!confirm} onClose={() => setConfirm(null)} title={t(confirm?.restore ? 'snapshots.restoreTitle' : 'snapshots.deleteTitle')} centered>
         <Text size="sm">{confirm && t(confirm.restore ? 'snapshots.restoreBody' : 'snapshots.deleteBody', { v0: confirm.k.name })}</Text>
         <Group justify="flex-end" mt="md">
-          <Button variant="default" onClick={() => setConfirm(null)}>
+          <Button variant="default" data-autofocus onClick={() => setConfirm(null)}>
             {t('skins.cancel')}
           </Button>
           <Button color={confirm?.restore ? undefined : 'red'} onClick={go}>

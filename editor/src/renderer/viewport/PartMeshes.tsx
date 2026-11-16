@@ -2,11 +2,11 @@
 // with the node's (painted) material, as the plugin does in game (mesh swap, same material, children untouched).
 import { useGLTF } from '@react-three/drei';
 import { createPortal } from '@react-three/fiber';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo } from 'react';
 import type { Material, Mesh, Object3D } from 'three';
 import { fileUrl } from '../protocol';
 import { partMeshKey, useStore } from '../store';
-import { ownMeshes, partTarget, SCENE_EVENT } from './refs';
+import { ownMeshes, partTarget, useSceneVersion } from './refs';
 
 function Replacement({ glb, node }: { glb: string; node: Object3D }) {
   const gltf = useGLTF(fileUrl(glb));
@@ -33,13 +33,7 @@ function Replacement({ glb, node }: { glb: string; node: Object3D }) {
 export function PartMeshes() {
   const parts = useStore((s) => s.doc.parts);
   const previews = useStore((s) => (s.doc.editor as Record<string, Record<string, string> | undefined> | undefined)?.partMeshPreviews);
-  const [, force] = useState(0);
-  // Nodes exist only after the weapon model mounted.
-  useEffect(() => {
-    const f = () => force((n) => n + 1);
-    window.addEventListener(SCENE_EVENT, f);
-    return () => window.removeEventListener(SCENE_EVENT, f);
-  }, []);
+  useSceneVersion(); // nodes exist only after the weapon model mapped them
   return (
     <>
       {(parts ?? []).map((p) => {

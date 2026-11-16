@@ -38,6 +38,7 @@ import type { CodeEffect, TextureChannel } from '../protocol';
 import { useStore } from '../store';
 import { meshesOf } from './liveryGpu';
 import { previewEvents, viewRefs } from './refs';
+import { hologramEffects } from '../hologram';
 
 export const FX_CATALOG = catalogJson as FxCatalog;
 /** How much larger an attachment's effect copy is than its model (Native/CodeFx.cs FxShell.Lift). */
@@ -248,19 +249,29 @@ quadGeometry.setAttribute('uv', new Float32BufferAttribute([0, 0, 1, 0, 1, 1, 0,
 const hidden = new MeshBasicMaterial({ visible: false });
 const camera = new OrthographicCamera();
 
-/** The effect copies of attachment models, by model mesh. */
-const shells = new WeakMap<Mesh, Mesh>();
+/** The effect copies of attachment models: by model mesh, one per effect. */
+const shells = new WeakMap<Mesh, Map<string, Mesh>>();
+/** Each copy's program, held here so the copy always draws it whatever another view wrote into `material`. */
+const programs = new WeakMap<Mesh, RawShaderMaterial>();
 
-function shellOf(model: Mesh, e: CodeEffect): Mesh {
-  let shell = shells.get(model);
+function dropShell(shell: Mesh) {
+  programs.get(shell)?.dispose();
+  shell.removeFromParent();
+}
+
+function shellOf(model: Mesh, e: CodeEffect): { shell: Mesh; program: RawShaderMaterial } {
+  let byFx = shells.get(model);
+  if (!byFx) shells.set(model, (byFx = new Map()));
+  let shell = byFx.get(e.id!);
   const additive = e.blend === 'additive';
-  if (shell && (shell.userData.fx !== e.id || shell.userData.additive !== additive)) {
-    (shell.material as Material).dispose();
-    shell.removeFromParent();
+  // Rebuilt when its blend changed or anything took it off the model.
+  if (shell && (shell.userData.additive !== additive || shell.parent !== model)) {
+    dropShell(shell);
     shell = undefined;
   }
   if (!shell) {
     shell = new Mesh(model.geometry, fxMaterial(false, additive));
+    programs.set(shell, shell.material as RawShaderMaterial);
     shell.userData = { fx: e.id, additive, sfFxShell: true };
     shell.raycast = () => undefined; // clicks go to the model
     shell.renderOrder = 3;
@@ -269,21 +280,27 @@ function shellOf(model: Mesh, e: CodeEffect): Mesh {
     shell.position.copy(c.multiplyScalar(1 - LIFT));
     shell.scale.setScalar(LIFT);
     model.add(shell);
-    shells.set(model, shell);
+    byFx.set(e.id!, shell);
   }
-  return shell;
+  const program = programs.get(shell)!;
+  shell.material = program;
+  return { shell, program };
 }
 
 /** Draws the skin's code effects in the 3D view (mounted in the viewport's canvas). */
 export function CodeEffects() {
   const gl = useThree((s) => s.gl);
   const doc = useStore((s) => s.doc);
-  const effects = (doc.codeEffects ?? []).filter((e): e is CodeEffect => !!e && e.visible !== false);
+  // A hologram's scanlines and outline are code effects too (hologram.ts), drawn the same way.
+  const effects = [...(doc.codeEffects ?? []), ...hologramEffects(doc)].filter((e): e is CodeEffect => !!e && e.visible !== false);
 
-  useEffect(() => () => {
-    canvases.forEach((c) => c.dispose());
-    canvases.clear();
-  }, []);
+  useEffect(
+    () => () => {
+      canvases.forEach((c) => c.dispose());
+      canvases.clear();
+    },
+    [],
+  );
 
   useFrame(() => {
     const start = startedAt;
@@ -313,7 +330,11 @@ export function CodeEffects() {
         c.dispose();
         canvases.delete(key);
       }
-    for (const [key, c] of canvases) c.draw(gl, resolved.filter((r) => `${r.e.material}|${r.e.channel === 'emissive' ? 'emissive' : 'albedo'}` === key));
+    for (const [key, c] of canvases)
+      c.draw(
+        gl,
+        resolved.filter((r) => `${r.e.material}|${r.e.channel === 'emissive' ? 'emissive' : 'albedo'}` === key),
+      );
     // Attachment models.
     const live = new Set<Mesh>();
     for (const r of resolved) {
@@ -321,22 +342,20 @@ export function CodeEffects() {
       viewRefs.attachments.get(r.e.attachment)?.traverse((o) => {
         const m = o as Mesh;
         if (!m.isMesh || !m.userData.original || m.userData.sfFxShell) return;
-        const shell = shellOf(m, r.e);
+        const { shell, program } = shellOf(m, r.e);
         const time = clockOf(r.e, r.start);
         shell.visible = time !== null;
-        if (time !== null) applyFx(shell.material as RawShaderMaterial, r.v, time);
-        live.add(m);
+        if (time !== null) applyFx(program, r.v, time);
+        live.add(shell);
       });
     }
-    for (const g of viewRefs.attachments.values())
-      g.traverse((o) => {
-        const m = o as Mesh;
-        const shell = m.isMesh && !live.has(m) ? shells.get(m) : undefined;
-        if (!shell) return;
-        (shell.material as Material).dispose();
-        shell.removeFromParent();
-        shells.delete(m);
-      });
+    // Every copy no effect drew this frame goes, those another module instance made too (a hot reload).
+    const stale: Mesh[] = [];
+    for (const g of viewRefs.attachments.values()) g.traverse((o) => void (o.userData.sfFxShell && !live.has(o as Mesh) && stale.push(o as Mesh)));
+    for (const shell of stale) {
+      (programs.get(shell) ?? (shell.material as Material)).dispose();
+      shell.removeFromParent();
+    }
   });
   return null;
 }

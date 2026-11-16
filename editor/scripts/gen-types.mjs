@@ -2,7 +2,8 @@
 // Usage: pnpm gen:types            (asks the backend; FORGESKIN_BACKEND_EXE=<exe> picks a specific build)
 //        pnpm gen:types --from x.json  (uses a schema file the backend wrote)
 import { spawn } from 'node:child_process';
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { createInterface } from 'node:readline';
 import { fileURLToPath } from 'node:url';
@@ -13,23 +14,33 @@ const skin = join(appDir, '..');
 const out = join(appDir, 'src/renderer/generated/skin-document.ts');
 
 function askBackend() {
-  const exe = process.env.FORGESKIN_BACKEND_EXE ?? ['Debug', 'Release']
-    .flatMap((c) => ['', 'win-x64/'].map((rid) => join(skin, `src/ForgeSkin.Backend/bin/${c}/net10.0/${rid}ForgeSkin.Backend.exe`)))
-    .find(existsSync);
-  const dataDir = join(appDir, 'GTFO_UserData');
-  const child = exe
-    ? spawn(exe, ['--data-dir', dataDir])
-    : spawn('dotnet', ['run', '--project', join(skin, 'src/ForgeSkin.Backend'), '--', '--data-dir', dataDir]);
+  const exe =
+    process.env.FORGESKIN_BACKEND_EXE ?? ['Debug', 'Release'].flatMap((c) => ['', 'win-x64/'].map((rid) => join(skin, `src/ForgeSkin.Backend/bin/${c}/net10.0/${rid}ForgeSkin.Backend.exe`))).find(existsSync);
+  // The schema needs no data: a throwaway folder, so this script never decides where the editor's data lives.
+  const dataDir = mkdtempSync(join(tmpdir(), 'forgeskin-schema-'));
+  const child = exe ? spawn(exe, ['--data-dir', dataDir]) : spawn('dotnet', ['run', '--project', join(skin, 'src/ForgeSkin.Backend'), '--', '--data-dir', dataDir]);
   return new Promise((resolve, reject) => {
     createInterface({ input: child.stdout }).on('line', (line) => {
       let msg;
-      try { msg = JSON.parse(line); } catch { return; }
+      try {
+        msg = JSON.parse(line);
+      } catch {
+        return;
+      }
       if (msg.id !== 1) return;
       child.kill();
-      msg.error ? reject(new Error(msg.error.message)) : resolve(msg.result);
+      if (msg.error) reject(new Error(msg.error.message));
+      else resolve(msg.result);
     });
     child.on('error', reject);
-    child.on('exit', (code) => reject(new Error(`backend exited (${code}) before answering schema`)));
+    child.on('exit', (code) => {
+      try {
+        rmSync(dataDir, { recursive: true, force: true, maxRetries: 5 });
+      } catch {
+        /* a temp folder left behind */
+      }
+      reject(new Error(`backend exited (${code}) before answering schema`));
+    });
     child.stdin.write(JSON.stringify({ id: 1, method: 'schema', params: {} }) + '\n');
   });
 }

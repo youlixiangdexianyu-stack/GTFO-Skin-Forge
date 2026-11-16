@@ -21,7 +21,8 @@ public sealed record SkinsImport(List<SkinsImported> Skins, List<SkinsNote> Note
 
 // How the game draws one material of a gear, as the Skins library sees it: its shader and the name of the texture in each
 // texture slot (Skins' match_groups compare these names).
-public sealed record GameMaterial(string Shader, Dictionary<string, string> Textures);
+// Hdr: the shader's [HDR] colour properties (ForgeVisual.ColourSpace).
+public sealed record GameMaterial(string Shader, Dictionary<string, string> Textures, HashSet<string> Hdr);
 
 // The skin group format of the Skins library (food-Skins on Thunderstore, source git.takina.io/gtfo/skins): a folder
 // with manifest.skingroup.json (name, author, desc, guid, filterGroups: OR of AND-ed filters on the offline gear id, the
@@ -50,7 +51,7 @@ public static class SkinsFormat
             {
                 if (m.PathId == 0 || result.ContainsKey(m.Name)) continue;
                 var data = Unity.ReadMaterial(g, m);
-                result[m.Name] = new GameMaterial(data.Shader, data.Textures.ToDictionary(t => t.Key, t => g.Field(t.Value.File, t.Value.PathId)["m_Name"].AsString));
+                result[m.Name] = new GameMaterial(data.Shader, data.Textures.ToDictionary(t => t.Key, t => g.Field(t.Value.File, t.Value.PathId)["m_Name"].AsString), data.Hdr);
             }
         return result;
     });
@@ -59,7 +60,11 @@ public static class SkinsFormat
 
     // One parsed *.mattarget.json: its material, variant conditions (OR of AND-ed slot = texture name) and what it sets.
     sealed record Target(string File, string Material, List<List<(string Slot, string Value)>> Variants, string? Shader,
-        Dictionary<TextureChannel, string> Files, Dictionary<TextureChannel, string> Macros, MaterialParams Params);
+        Dictionary<TextureChannel, string> Files, Dictionary<TextureChannel, string> Macros, MaterialParams Params)
+    {
+        // The emissive colour property it sets and its value, read as a skin's glow once the material's shader is known.
+        public (string Property, float[] Value)? Glow;
+    }
 
     /// <summary>
     /// The group at `manifestPath` as one project per gear it names, saved as `root/&lt;gear&gt;/&lt;skin id&gt;.forgeskinproj` (the
@@ -114,6 +119,8 @@ public static class SkinsFormat
                     Part = gear.Parts.FirstOrDefault(p => p.Materials.Contains(t.Material))?.Id,
                     Params = JsonSerializer.Deserialize<MaterialParams>(JsonSerializer.Serialize(t.Params))!,
                 };
+                if (t.Glow is var (property, v))
+                    (o.Params.EmissiveColor, o.Params.EmissiveIntensity) = MaterialParams.GlowFromGame(v[0], v[1], v[2], materials(gear)[t.Material].Hdr.Contains(property));
                 foreach (var (channel, file) in t.Files) o.Textures[channel] = file;
                 var textures = Path.Combine(root, gear.Id, doc.Id + ".textures");
                 foreach (var (channel, macro) in t.Macros)
@@ -223,7 +230,7 @@ public static class SkinsFormat
                     float C(string k, float d) => data[k] is JsonValue x && x.TryGetValue<float>(out var f) ? f : d;
                     float[] c = [C("r", 0), C("g", 0), C("b", 0), C("a", 1)];
                     if (property == "_Color") t.Params.Tint = c;
-                    else (t.Params.EmissiveColor, t.Params.EmissiveIntensity) = MaterialParams.GlowFromGame(c[0], c[1], c[2]);
+                    else t.Glow = (property, c);
                     break;
                 case "Vector": notes.Add(new("vector", skin, what)); break;
                 default: notes.Add(new("property", skin, $"{what} ({type})")); break;
@@ -399,9 +406,8 @@ public static class SkinsFormat
                 if (p.EmissiveEnabled != null || emissive) properties["_EnableEmissive"] = Property("Float", new JsonObject { ["value"] = (p.EmissiveEnabled ?? true) ? 1 : 0 });
                 if (p.EmissiveColor != null || p.EmissiveIntensity != null)
                 {
-                    var c = p.EmissiveColor ?? [1, 1, 1];
-                    float k = (p.EmissiveIntensity ?? 1) * MaterialParams.EmissionUnit; // the game's units
-                    properties["_EmissiveColor"] = Property("Color", new JsonObject { ["r"] = c[0] * k, ["g"] = c[1] * k, ["b"] = c[2] * k, ["a"] = 1 });
+                    var c = ForgeVisual.ColourSpace.Glow(p.EmissiveColor ?? [1, 1, 1], (p.EmissiveIntensity ?? 1) * MaterialParams.EmissionUnit, game?.Hdr.Contains("_EmissiveColor") ?? true); // the game's units
+                    properties["_EmissiveColor"] = Property("Color", new JsonObject { ["r"] = c[0], ["g"] = c[1], ["b"] = c[2], ["a"] = 1 });
                 }
                 if (p.Metallic is float metal) properties["_Metallic"] = Property("Float", new JsonObject { ["value"] = metal });
                 if (p.Smoothness is float smooth) properties["_Glossiness"] = Property("Float", new JsonObject { ["value"] = smooth });

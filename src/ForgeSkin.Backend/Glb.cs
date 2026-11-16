@@ -136,34 +136,140 @@ public sealed class GlbWriter
     }
 }
 
-// Reads every mesh primitive of a GLB into one Unity-space mesh (node transforms applied).
+// The look of a glTF's model, which is read as one mesh: the first material its triangles use that has a picture (else the
+// first they use). Pictures as the file holds them (PNG, JPEG, ...), factors as glTF gives them (linear).
+public sealed class GlbLook
+{
+    public byte[]? BaseColor, Normal, MetallicRoughness, Emissive;
+    public float[] BaseColorFactor = [1, 1, 1, 1];
+    public float MetallicFactor = 1, RoughnessFactor = 1;
+    public float[] EmissiveFactor = [0, 0, 0];
+    public float EmissiveStrength = 1; // KHR_materials_emissive_strength
+    public List<string> Notes = new();
+}
+
+// Reads every mesh primitive of a glTF (.glb, or .gltf with its buffers and pictures as files beside it or data: URIs) into
+// one Unity-space mesh (node transforms applied).
 public static class GlbReader
 {
-    public static MeshData Read(string path)
+    // The JSON and its buffers: a .glb's BIN chunk is its first buffer (the one without a uri); every other buffer is read
+    // from its uri.
+    static (JsonNode Json, byte[][] Buffers, string Dir) Parse(string path)
     {
         var data = File.ReadAllBytes(path);
-        if (data.Length < 20 || BitConverter.ToUInt32(data, 0) != 0x46546C67) throw new BackendException("bad-mesh", $"{path} is not a binary glTF (.glb)");
-        int jsonLen = BitConverter.ToInt32(data, 12);
-        if (jsonLen < 0 || 20L + jsonLen > data.Length) throw new BackendException("bad-mesh", $"{path}: JSON chunk reaches past the end of the file");
-        JsonNode json;
-        try { json = JsonNode.Parse(Encoding.UTF8.GetString(data, 20, jsonLen))!; }
-        catch (JsonException e) { throw new BackendException("bad-mesh", $"{path}: {e.Message}"); }
-        int binStart = 20 + jsonLen + 8;
+        var dir = Path.GetDirectoryName(Path.GetFullPath(path))!;
+        int jsonStart = 0, jsonLen = data.Length;
+        byte[]? bin = null;
+        if (data.Length >= 4 && BitConverter.ToUInt32(data, 0) == 0x46546C67)
+        {
+            if (data.Length < 20) throw new BackendException("bad-mesh", $"{path} is cut short");
+            (jsonStart, jsonLen) = (20, BitConverter.ToInt32(data, 12));
+            if (jsonLen < 0 || 20L + jsonLen > data.Length) throw new BackendException("bad-mesh", $"{path}: JSON chunk reaches past the end of the file");
+            int at = 20 + jsonLen;
+            if (at + 8L <= data.Length && BitConverter.ToUInt32(data, at + 4) == 0x004E4942)
+            {
+                int binLen = BitConverter.ToInt32(data, at);
+                if (binLen < 0 || at + 8L + binLen > data.Length) throw new BackendException("bad-mesh", $"{path}: BIN chunk reaches past the end of the file");
+                bin = data.AsSpan(at + 8, binLen).ToArray();
+            }
+        }
+        JsonNode? json;
+        try { json = JsonNode.Parse(Encoding.UTF8.GetString(data, jsonStart, jsonLen)); }
+        catch (JsonException e) { throw new BackendException("bad-mesh", $"{path} is not a glTF (.glb or .gltf): {e.Message}"); }
+        if (json is not JsonObject) throw new BackendException("bad-mesh", $"{path} is not a glTF (.glb or .gltf)");
         if (json["extensionsRequired"] is JsonArray req && req.Count > 0)
             throw new BackendException("bad-mesh", $"{path} needs {string.Join(", ", req)}; export without compression");
+        var buffers = (json["buffers"] as JsonArray ?? []).Select((b, i) =>
+            (string?)b?["uri"] is { } uri ? Uri(dir, uri) ?? throw new BackendException("bad-mesh", $"{path}: buffer {uri} not found next to the model")
+            : i == 0 && bin != null ? bin : throw new BackendException("bad-mesh", $"{path}: buffer {i} has no data")).ToArray();
+        return (json, buffers, dir);
+    }
+
+    // A uri's bytes: a data: URI's own, else the file it names relative to the glTF; null when that file is not there.
+    static byte[]? Uri(string dir, string uri)
+    {
+        if (uri.StartsWith("data:", StringComparison.Ordinal))
+            try { return Convert.FromBase64String(uri[(uri.IndexOf(',') + 1)..]); }
+            catch (FormatException e) { throw new BackendException("bad-mesh", $"a data: URI that is not base64: {e.Message}"); }
+        var file = Path.Combine(dir, System.Uri.UnescapeDataString(uri));
+        return File.Exists(file) ? File.ReadAllBytes(file) : null;
+    }
+
+    // A buffer view's buffer and where in it the view starts and how long it is.
+    static (byte[] Buffer, long Start, long Length) View(JsonNode json, byte[][] buffers, int index)
+    {
+        var view = json["bufferViews"]![index]!;
+        return (buffers[(int?)view["buffer"] ?? 0], (long?)view["byteOffset"] ?? 0, (long)view["byteLength"]!);
+    }
+
+    public static GlbLook Look(string path)
+    {
+        var (json, buffers, dir) = Parse(path);
+        var look = new GlbLook();
+        try
+        {
+            var used = (json["meshes"]?.AsArray() ?? []).SelectMany(m => m!["primitives"]!.AsArray()).Select(p => (int?)p!["material"]).OfType<int>().Distinct().ToList();
+            static bool Textured(JsonNode m) => m["pbrMetallicRoughness"]?["baseColorTexture"] != null || m["pbrMetallicRoughness"]?["metallicRoughnessTexture"] != null
+                || m["normalTexture"] != null || m["emissiveTexture"] != null;
+            var textured = used.Where(i => Textured(json["materials"]![i]!)).ToList();
+            if (textured.Count > 1) look.Notes.Add($"{textured.Count} textured materials; only the first one's pictures are used");
+            if ((textured.Count > 0 ? textured[0] : used.Count > 0 ? used[0] : (int?)null) is not { } index) return look;
+            var mat = json["materials"]![index]!;
+            var pbr = mat["pbrMetallicRoughness"];
+
+            byte[]? Image(JsonNode? info, string what)
+            {
+                if (info == null) return null;
+                if (((int?)info["texCoord"] ?? 0) != 0) look.Notes.Add($"{what}: uses a second UV set; the model has only its first");
+                if (info["extensions"]?["KHR_texture_transform"] != null) look.Notes.Add($"{what}: its texture transform is left out");
+                var image = (int?)json["textures"]![(int)info["index"]!]!["source"] is { } source ? json["images"]![source]! : null;
+                if (image == null) { look.Notes.Add($"{what}: no picture a PNG or JPEG reader can open; left out"); return null; }
+                if (image["bufferView"] is { } bv)
+                {
+                    var (buffer, start, length) = View(json, buffers, (int)bv);
+                    if (start < 0 || length < 0 || start + length > buffer.Length) throw new BackendException("bad-mesh", $"{path}: {what} picture reaches past the end of its buffer");
+                    return buffer.AsSpan((int)start, (int)length).ToArray();
+                }
+                var uri = (string)image["uri"]!;
+                if (Uri(dir, uri) is { } bytes) return bytes;
+                look.Notes.Add($"{what}: {uri} not found next to the model; left out");
+                return null;
+            }
+
+            look.BaseColor = Image(pbr?["baseColorTexture"], "base colour");
+            look.MetallicRoughness = Image(pbr?["metallicRoughnessTexture"], "metallic-roughness");
+            look.Normal = Image(mat["normalTexture"], "normal");
+            look.Emissive = Image(mat["emissiveTexture"], "emissive");
+            if (pbr?["baseColorFactor"] is JsonArray c) look.BaseColorFactor = c.Select(v => (float)v!).ToArray();
+            look.MetallicFactor = (float?)pbr?["metallicFactor"] ?? 1;
+            look.RoughnessFactor = (float?)pbr?["roughnessFactor"] ?? 1;
+            if (mat["emissiveFactor"] is JsonArray e) look.EmissiveFactor = e.Select(v => (float)v!).ToArray();
+            look.EmissiveStrength = (float?)mat["extensions"]?["KHR_materials_emissive_strength"]?["emissiveStrength"] ?? 1;
+        }
+        catch (Exception e) when (e is ArgumentOutOfRangeException or IndexOutOfRangeException or NullReferenceException or InvalidOperationException or FormatException)
+        {
+            throw new BackendException("bad-mesh", $"{path}: {e.Message}");
+        }
+        return look;
+    }
+
+    public static MeshData Read(string path)
+    {
+        var (json, buffers, _) = Parse(path);
 
         float[] Floats(int accessor, out int comps)
         {
             var acc = json["accessors"]![accessor]!;
             var view = json["bufferViews"]![(int)acc["bufferView"]!]!;
+            var (data, viewStart, _) = View(json, buffers, (int)acc["bufferView"]!);
             comps = (string)acc["type"]! switch { "SCALAR" => 1, "VEC2" => 2, "VEC3" => 3, "VEC4" => 4, var t => throw new BackendException("bad-mesh", $"accessor type {t}") };
             int count = (int)acc["count"]!, type = (int)acc["componentType"]!;
             bool norm = (bool?)acc["normalized"] ?? false;
             int size = type switch { 5126 or 5125 => 4, 5123 or 5122 => 2, _ => 1 };
             int stride = (int?)view["byteStride"] ?? size * comps;
-            long start = binStart + ((long?)view["byteOffset"] ?? 0) + ((long?)acc["byteOffset"] ?? 0);
+            long start = viewStart + ((long?)acc["byteOffset"] ?? 0);
             if (count < 0 || stride < 0 || start < 0 || start + (count - 1L) * stride + comps * size > data.Length)
-                throw new BackendException("bad-mesh", $"{path}: accessor {accessor} reaches past the end of the file");
+                throw new BackendException("bad-mesh", $"{path}: accessor {accessor} reaches past the end of its buffer");
             var result = new float[count * comps];
             for (int i = 0; i < count; i++)
                 for (int c = 0; c < comps; c++)

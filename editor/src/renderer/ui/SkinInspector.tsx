@@ -1,37 +1,78 @@
-import { ActionIcon, Badge, Button, Chip, Group, Menu, Select, SimpleGrid, Switch, Text, Tooltip, UnstyledButton } from '@mantine/core';
-import { Dropzone, type FileWithPath } from '@mantine/dropzone';
-import { IconArrowsMove, IconArrowsShuffle, IconBox, IconLayoutDashboard, IconCheck, IconChevronRight, IconDeviceDesktop, IconFolderOpen, IconPlayerPlay, IconPlus, IconTrash, IconX } from '@tabler/icons-react';
+import { ActionIcon, Badge, Button, Group, Menu, Select, Switch, Text, TextInput, Tooltip, UnstyledButton } from '@mantine/core';
+import { Dropzone, type FileRejection, type FileWithPath } from '@mantine/dropzone';
+import {
+  IconAdjustmentsHorizontal,
+  IconArrowsMove,
+  IconArrowsShuffle,
+  IconBox,
+  IconLayoutDashboard,
+  IconCheck,
+  IconChevronRight,
+  IconComponents,
+  IconDeviceDesktop,
+  IconFolderOpen,
+  IconId,
+  IconInfoCircle,
+  IconPalette,
+  IconPlayerPlay,
+  IconPlus,
+  IconSun,
+  IconTrash,
+  IconX,
+} from '@tabler/icons-react';
 import { importMesh, MEMORY_FINE, MEMORY_HEAVY, mb } from '../actions';
 import { ShapeItems, ShapeMenuItems } from './ShapePanel';
-import { FEATURE, FeatureHead, FeatureTile, Info } from './Features';
-import { InspectorTabs, type InspectorTab } from './InspectorTabs';
+import { Empty, FEATURE, FeatureTile, Info, InspHead, Section } from './Features';
+import { InspectorTabs, showTab, type InspectorTab } from './InspectorTabs';
 import { PartLayers } from './DynamicInspector';
-import { PartLivery } from './LiveryPanel';
+import { PartLivery, TextureSizeField } from './LiveryPanel';
 import { PartModel } from './PartModel';
 import { useState, type ReactElement } from 'react';
 import { MAX_SECONDS, playGroup, playSound, soundChance, soundGroupKey } from '../audio';
 import { baseName, CHANNELS, fileUrl, TRIGGERS, triggersFor, type Attachment, type CatalogPart, type EnemyInfo, type SkinSound, type TextureChannel, type Trigger } from '../protocol';
-import { editorOf, glowOf, materialOf, pendingKey, useItem, useStore } from '../store';
+import { attachmentName, editorOf, glowOf, materialOf, pendingKey, useItem, useStore } from '../store';
 import { Color, Field, Slider } from './fields';
 import { SelectionLayout } from './SelectionLayout';
 import { Variants } from './Variants';
 import { PlayerColors } from './PlayerColors';
+import { ColorSchemes } from './ColorSchemes';
+import { Palettes } from './Palettes';
 import { localName, partLabel, t } from '../i18n';
+import { pieceLabel } from '../pieces';
 
 export const CHANNEL_LABEL: Record<TextureChannel, string> = {
-  get albedo() { return t('skinInspector.k1'); },
-  get normal() { return t('skinInspector.k2'); },
-  get metallicSmoothness() { return t('skinInspector.k3'); },
-  get emissive() { return t('skinInspector.k4'); },
+  get albedo() {
+    return t('skinInspector.k1');
+  },
+  get normal() {
+    return t('skinInspector.k2');
+  },
+  get metallicSmoothness() {
+    return t('skinInspector.k3');
+  },
+  get emissive() {
+    return t('skinInspector.k4');
+  },
 };
 
 export const IMAGE_EXT = ['png', 'jpg', 'jpeg', 'tga', 'tif', 'tiff', 'bmp', 'webp'];
 const IMAGE_ACCEPT = { 'image/*': IMAGE_EXT.map((x) => `.${x}`) };
 
-/** Keep the native File objects (they carry the disk path) instead of react-dropzone's copies. */
+/** The dropped Files that are folders: only the drag item says so (a folder's File looks like an empty file). */
+export const droppedFolders = new WeakSet<File>();
+
+/** Keep the native File objects (they carry the disk path) instead of react-dropzone's copies. While a drag is still in
+ *  the air only the dragged items (their count and type) are readable: enough for a drop target to light up. */
 export const nativeFiles = async (e: unknown): Promise<FileWithPath[]> => {
-  const ev = e as { dataTransfer?: DataTransfer; target?: HTMLInputElement };
-  return [...(ev.dataTransfer?.files ?? ev.target?.files ?? [])] as FileWithPath[];
+  const ev = e as { type?: string; dataTransfer?: DataTransfer; target?: HTMLInputElement };
+  const items = [...(ev.dataTransfer?.items ?? [])].filter((i) => i.kind === 'file');
+  if (ev.dataTransfer && ev.type !== 'drop') return items as unknown as FileWithPath[];
+  if (!ev.dataTransfer) return [...(ev.target?.files ?? [])] as FileWithPath[];
+  return items.flatMap((i) => {
+    const file = i.getAsFile();
+    if (file && i.webkitGetAsEntry()?.isDirectory) droppedFolders.add(file);
+    return file ? [file as FileWithPath] : [];
+  });
 };
 
 function ChannelSlot({ material, part, channel }: { material: string; part: string; channel: TextureChannel }) {
@@ -42,21 +83,46 @@ function ChannelSlot({ material, part, channel }: { material: string; part: stri
   const vanilla = preview?.textures[material]?.[channel] ?? null;
   const pending = editorOf(doc).pending[pendingKey(material, channel)];
   const shown = mine ?? vanilla;
+  const broken = useStore((s) => !!mine && s.unreadable.includes(mine));
   const set = (files: File[]) => {
     if (files[0]) setTexture(material, part, channel, window.forge.pathOf(files[0]));
   };
+  const reject = (r: FileRejection[]) =>
+    useStore
+      .getState()
+      .toast('error', r.length > 1 ? t('skinInspector.dropOneOnly', { v0: CHANNEL_LABEL[channel] }) : t('skinInspector.dropNotImage', { v0: r[0]?.file.name ?? '', v1: IMAGE_EXT.join(', ') }));
   return (
     <div className={`slot ${pending ? 'pending' : ''}`} role="group" aria-label={CHANNEL_LABEL[channel]}>
-      <Dropzone onDrop={set} accept={IMAGE_ACCEPT} multiple={false} getFilesFromEvent={nativeFiles} dragEventsBubbling={false} p={0} radius={0} className="slot-drop">
+      <Dropzone onDrop={set} onReject={reject} accept={IMAGE_ACCEPT} multiple={false} getFilesFromEvent={nativeFiles} dragEventsBubbling={false} p={0} radius={0} className="slot-drop">
         <Tooltip label={mine ?? t('skinInspector.k5')} openDelay={600}>
           <div className={`img ${mine ? '' : 'vanilla'}`}>
-            {shown ? <img src={fileUrl(shown)} alt="" draggable={false} /> : <Text size="xs" c="dimmed">{t('skinInspector.k6')}</Text>}
+            {shown ? (
+              <img src={fileUrl(shown)} alt="" draggable={false} />
+            ) : (
+              <Text size="xs" c="dimmed">
+                {t('skinInspector.k6')}
+              </Text>
+            )}
           </div>
         </Tooltip>
+        <Dropzone.Accept>
+          <div className="slot-hint">{t('skinInspector.dropInto', { v0: CHANNEL_LABEL[channel] })}</div>
+        </Dropzone.Accept>
+        <Dropzone.Reject>
+          <div className="slot-hint">{t('skinInspector.dropOneImage')}</div>
+        </Dropzone.Reject>
       </Dropzone>
-      <Badge className="tag" size="xs" radius="sm" variant={mine ? 'filled' : 'default'}>
-        {mine ? t('skinInspector.k7') : t('skinInspector.k8')}
-      </Badge>
+      {broken ? (
+        <Tooltip label={t('skinInspector.unreadableInfo')} multiline w={240}>
+          <Badge className="tag" size="xs" radius="sm" color="red" variant="filled">
+            {t('skinInspector.unreadable')}
+          </Badge>
+        </Tooltip>
+      ) : (
+        <Badge className="tag" size="xs" radius="sm" variant={mine ? 'filled' : 'default'}>
+          {mine ? t('skinInspector.k7') : t('skinInspector.k8')}
+        </Badge>
+      )}
       {mine && (
         <Tooltip label={t('skinInspector.k9')}>
           <ActionIcon className="x" size="sm" variant="filled" color="dark" onClick={() => setTexture(material, part, channel, null)}>
@@ -73,7 +139,9 @@ function ChannelSlot({ material, part, channel }: { material: string; part: stri
       {pending && (
         <div className="confirm">
           <Tooltip label={pending.reason}>
-            <span>{t('skinInspector.k10')} {Math.round(pending.confidence * 100)}%</span>
+            <span>
+              {t('skinInspector.k10')} {Math.round(pending.confidence * 100)}%
+            </span>
           </Tooltip>
           <Button size="compact-xs" color="yellow" variant="light" leftSection={<IconCheck size={12} />} onClick={() => confirmPending(material, channel)}>
             {t('skinInspector.k11')}
@@ -96,18 +164,32 @@ function EmissiveSection({ material }: { material: string }) {
   const { setParams, copyEmissiveToAll, setTexture } = useStore.getState();
   const { m, p, preview } = useParams(material);
   const hasEmissive = !!(m?.textures?.emissive ?? preview?.textures[material]?.emissive);
-  if (!hasEmissive) return <p className="hint">{t('skinInspector.k12')}</p>;
+  const head = { id: 'tex-glow', title: t('skinInspector.k13'), icon: IconSun, color: 'var(--warn)' };
+  if (!hasEmissive)
+    return (
+      <Section {...head}>
+        <p className="hint">{t('skinInspector.k12')}</p>
+      </Section>
+    );
   // Shown as the game shows it (the slider reaches the game's own glow, often far above 1); an edit sets colour and
   // intensity together, so the pack never scales the game's own glow.
   const glow = glowOf(preview?.params[material], m?.params ?? {});
   return (
-    <>
-      <Switch mb="sm" label={t('skinInspector.k13')} checked={p.emissiveEnabled ?? true} onChange={(e) => setParams(material, { emissiveEnabled: e.currentTarget.checked })} />
+    <Section
+      {...head}
+      actions={<Switch size="sm" aria-label={t('skinInspector.k13')} checked={p.emissiveEnabled ?? true} onChange={(e) => setParams(material, { emissiveEnabled: e.currentTarget.checked })} />}
+    >
       <Field label={t('skinInspector.k14')}>
         <Color rgb slot={{ kind: 'emissive', target: material }} value={glow.color} onChange={(c) => setParams(material, { emissiveColor: c, emissiveIntensity: glow.intensity }, `emc-${material}`)} />
       </Field>
       <Field label={t('skinInspector.k15')}>
-        <Slider value={glow.intensity} min={0} max={Math.max(10, Math.ceil(preview?.params[material]?.emissiveIntensity ?? 0))} step={0.05} onChange={(v) => setParams(material, { emissiveColor: glow.color, emissiveIntensity: v }, `emi-${material}`)} />
+        <Slider
+          value={glow.intensity}
+          min={0}
+          max={Math.max(10, Math.ceil(preview?.params[material]?.emissiveIntensity ?? 0))}
+          step={0.05}
+          onChange={(v) => setParams(material, { emissiveColor: glow.color, emissiveIntensity: v }, `emi-${material}`)}
+        />
       </Field>
       <Field label={t('skinInspector.k16')}>
         <Group gap={6} wrap="nowrap">
@@ -117,7 +199,14 @@ function EmissiveSection({ material }: { material: string }) {
           <Button
             variant="default"
             onClick={async () => {
-              const [f] = await window.forge.openDialog('files', [{ get name() { return t('skinInspector.k18'); }, extensions: IMAGE_EXT }]);
+              const [f] = await window.forge.openDialog('file', [
+                {
+                  get name() {
+                    return t('skinInspector.k18');
+                  },
+                  extensions: IMAGE_EXT,
+                },
+              ]);
               if (f) setTexture(material, m?.part ?? undefined, 'emissive', f);
             }}
           >
@@ -130,10 +219,10 @@ function EmissiveSection({ material }: { material: string }) {
           )}
         </Group>
       </Field>
-      <Button mt="sm" variant="default" onClick={() => copyEmissiveToAll(material)}>
+      <Button mt="sm" size="compact-sm" variant="light" color="yellow" onClick={() => copyEmissiveToAll(material)}>
         {t('skinInspector.k21')}
       </Button>
-    </>
+    </Section>
   );
 }
 
@@ -143,25 +232,26 @@ function MaterialParams({ material }: { material: string }) {
   // Only what the game material has (the preview reads its values from the game files); the plugin ignores the rest.
   const game = preview?.params[material];
   const has = (v: unknown) => !game || v != null;
-  if (game && game.metallic == null && game.smoothness == null && game.tint == null) return <p className="hint">{t('skinInspector.noParams')}</p>;
+  const none = game && game.metallic == null && game.smoothness == null && game.tint == null;
   return (
-    <>
-      {has(game?.metallic) && (
+    <Section id="tex-material" title={t('skinInspector.k29')} icon={IconAdjustmentsHorizontal} color="var(--scan)">
+      {none && <p className="hint">{t('skinInspector.noParams')}</p>}
+      {!none && has(game?.metallic) && (
         <Field label={t('skinInspector.k22')}>
           <Slider value={p.metallic ?? 1} onChange={(v) => setParams(material, { metallic: v }, `met-${material}`)} />
         </Field>
       )}
-      {has(game?.smoothness) && (
+      {!none && has(game?.smoothness) && (
         <Field label={t('skinInspector.k23')}>
           <Slider value={p.smoothness ?? 1} onChange={(v) => setParams(material, { smoothness: v }, `smo-${material}`)} />
         </Field>
       )}
-      {has(game?.tint) && (
+      {!none && has(game?.tint) && (
         <Field label={t('skinInspector.k24')}>
           <Color slot={{ kind: 'tint', target: material }} value={p.tint ?? [1, 1, 1, 1]} onChange={(c) => setParams(material, { tint: [c[0], c[1], c[2], 1] }, `tint-${material}`)} />
         </Field>
       )}
-    </>
+    </Section>
   );
 }
 
@@ -169,7 +259,6 @@ function PartPanel({ part }: { part: CatalogPart }) {
   const [mi, setMi] = useState(0);
   const material = part.materials[Math.min(mi, part.materials.length - 1)];
   const doc = useStore((s) => s.doc);
-  const sounds = useSoundsTab();
   if (!material) return <p className="hint section">{t('skinInspector.k25')}</p>;
   // Counts on the side-panel icons: what this part already has of each kind.
   const mats = part.materials.map((m) => materialOf(doc, m));
@@ -179,59 +268,58 @@ function PartPanel({ part }: { part: CatalogPart }) {
   const attachments = (doc.attachments ?? []).filter((a) => a?.part === part.id).length;
   const textureTab = (
     <>
-      <div className="section">
-        <FeatureHead feature="texture" title={t('skinInspector.k26')}>
+      {/* A part with several materials: which one this tab edits. */}
+      {part.materials.length > 1 && (
+        <div className="section mat-bar">
+          <Field label={t('skinInspector.material')}>
+            <Select aria-label={t('skinInspector.material')} value={String(mi)} onChange={(v) => v && setMi(+v)} data={part.materials.map((m, i) => ({ value: String(i), label: m }))} />
+          </Field>
+        </div>
+      )}
+      <Section
+        feature="texture"
+        title={t('skinInspector.k26')}
+        actions={
           <Tooltip label={t('skinInspector.k27')}>
-            <Button size="compact-xs" variant="subtle" leftSection={<IconFolderOpen size={12} />} onClick={pickTextureFolder}>
+            <Button size="compact-xs" variant="light" leftSection={<IconFolderOpen size={13} />} onClick={pickTextureFolder}>
               {t('skinInspector.k28')}
             </Button>
           </Tooltip>
-        </FeatureHead>
+        }
+      >
         <div className="slots">
           {CHANNELS.map((ch) => (
             <ChannelSlot key={ch} material={material} part={part.id} channel={ch} />
           ))}
         </div>
-      </div>
-      <div className="section">
-        <h3>{t('skinInspector.k13')}</h3>
-        <EmissiveSection material={material} />
-      </div>
-      <div className="section">
-        <h3>{t('skinInspector.k29')}</h3>
-        <MaterialParams material={material} />
-      </div>
+        <TextureSizeField material={material} part={part.id} />
+      </Section>
+      <EmissiveSection material={material} />
+      <MaterialParams material={material} />
     </>
   );
   return (
     <>
-      {part.materials.length > 1 && (
-        <div className="section" style={{ paddingBottom: 10 }}>
-          <Chip.Group value={String(mi)} onChange={(v) => setMi(+v)}>
-            <Group gap={4}>
-              {part.materials.map((m, i) => (
-                <Chip key={m} value={String(i)} size="xs" variant="outline">
-                  {m}
-                </Chip>
-              ))}
-            </Group>
-          </Chip.Group>
-        </div>
-      )}
       <InspectorTabs
         id="part"
         tabs={[
           { id: 'texture', label: t('tabs.texture'), icon: FEATURE.texture.icon, color: FEATURE.texture.color, count: textures, content: textureTab },
           { id: 'livery', label: t('tabs.livery'), icon: FEATURE.livery.icon, color: FEATURE.livery.color, count: liveries, content: <PartLivery part={part} /> },
           { id: 'layers', label: t('tabs.layers'), icon: FEATURE.layer.icon, color: FEATURE.layer.color, count: layers, content: <PartLayers part={part} /> },
-          { id: 'attach', label: t('tabs.attach'), icon: FEATURE.attachment.icon, color: FEATURE.attachment.color, count: attachments, content: (
-            <>
-              <PartAttachments part={part.id} />
-              <PartModel part={part.id} />
-            </>
-          ) },
+          {
+            id: 'attach',
+            label: t('tabs.attach'),
+            icon: FEATURE.attachment.icon,
+            color: FEATURE.attachment.color,
+            count: attachments,
+            content: (
+              <>
+                <PartAttachments part={part.id} />
+                <PartModel part={part.id} />
+              </>
+            ),
+          },
           { id: 'place', label: t('tabs.place'), icon: IconArrowsMove, content: <SelectionLayout /> },
-          sounds,
         ]}
       />
     </>
@@ -241,7 +329,14 @@ function PartPanel({ part }: { part: CatalogPart }) {
 const AUDIO_EXT = ['wav', 'mp3', 'ogg', 'flac', 'm4a', 'aac', 'opus', 'webm'];
 
 async function pickSound(trigger?: Trigger, enemyId?: number | null) {
-  const [f] = await window.forge.openDialog('files', [{ get name() { return t('skinInspector.k30'); }, extensions: AUDIO_EXT }]);
+  const [f] = await window.forge.openDialog('file', [
+    {
+      get name() {
+        return t('skinInspector.k30');
+      },
+      extensions: AUDIO_EXT,
+    },
+  ]);
   if (f) await useStore.getState().addSound(f, trigger, enemyId);
 }
 
@@ -266,19 +361,23 @@ function AddAttachmentMenu({ children }: { children: ReactElement }) {
 
 /** Screens and models mounted on one part, with adding right there. */
 function PartAttachments({ part }: { part: string }) {
-  const all = useStore((s) => s.doc.attachments);
-  const list = (all ?? []).filter((a): a is Attachment => !!a && a.part === part);
+  const doc = useStore((s) => s.doc);
+  const list = (doc.attachments ?? []).filter((a): a is Attachment => !!a && a.part === part);
   const { select } = useStore.getState();
   return (
-    <div className="section">
-      <FeatureHead feature="attachment" title={t('skinInspector.partAttachments')} info={t('skinInspector.attachInfo')}>
+    <Section
+      feature="attachment"
+      title={t('skinInspector.partAttachments')}
+      info={t('skinInspector.attachInfo')}
+      actions={
         <AddAttachmentMenu>
           <Button size="compact-xs" variant="light" color="cyan" leftSection={<IconPlus size={12} />}>
             {t('leftRail.k16')}
           </Button>
         </AddAttachmentMenu>
-      </FeatureHead>
-      {!list.length && <p className="hint">{t('skinInspector.noAttachments')}</p>}
+      }
+    >
+      {!list.length && <Empty>{t('skinInspector.noAttachments')}</Empty>}
       <div className="list">
         {list.map((a) => {
           const Icon = a.screen ? IconDeviceDesktop : IconBox;
@@ -286,18 +385,18 @@ function PartAttachments({ part }: { part: string }) {
             <UnstyledButton key={a.id} className="item" onClick={() => select({ kind: 'attachment', id: a.id! })}>
               <Icon size={15} color={FEATURE.attachment.color} />
               <Text size="sm" truncate>
-                {a.name}
+                {attachmentName(doc, a)}
               </Text>
               <IconChevronRight size={14} />
             </UnstyledButton>
           );
         })}
       </div>
-    </div>
+    </Section>
   );
 }
 
-/** 音效: the skin's sounds are skin-wide, so every inspector's side panel offers them. */
+/** 音效: the skin's sounds are skin-wide, so the whole gun's panel holds them. */
 export function useSoundsTab(): InspectorTab {
   const count = useStore((s) => (s.doc.sounds ?? []).filter(Boolean).length);
   return { id: 'sounds', label: t('tabs.sounds'), icon: FEATURE.sound.icon, color: FEATURE.sound.color, count, content: <Sounds /> };
@@ -422,15 +521,19 @@ function SoundGroupHead({ group }: { group: SoundGroup }) {
 function Sounds() {
   const groups = useSoundGroups();
   return (
-    <div className="section">
-      <FeatureHead feature="sound" title={t('skinInspector.k31')} info={`${t('skinInspector.k33')} ${MAX_SECONDS} ${t('skinInspector.k34')} ${t('skinInspector.soundWeightInfo')}`}>
+    <Section
+      feature="sound"
+      title={t('skinInspector.k31')}
+      info={`${t('skinInspector.k33')} ${MAX_SECONDS} ${t('skinInspector.k34')} ${t('skinInspector.soundWeightInfo')}`}
+      actions={
         <AddSoundMenu>
           <Button size="compact-xs" variant="light" color="green" leftSection={<IconPlus size={12} />}>
             {t('skinInspector.k32')}
           </Button>
         </AddSoundMenu>
-      </FeatureHead>
-      {!groups.length && <p className="hint">{t('skinInspector.noSounds')}</p>}
+      }
+    >
+      {!groups.length && <Empty>{t('skinInspector.noSounds')}</Empty>}
       {groups.map((g) => (
         <div key={g.key} className="sound-group" role="group" aria-label={g.label}>
           <SoundGroupHead group={g} />
@@ -441,7 +544,7 @@ function Sounds() {
           </div>
         </div>
       ))}
-    </div>
+    </Section>
   );
 }
 
@@ -472,14 +575,29 @@ export function SoundInspector() {
   };
   return (
     <>
-      <div className="insp-head">
-        <UnstyledButton className="kind" onClick={() => select(null)}>
-          ← {t('skinInspector.k31')}
-        </UnstyledButton>
-        <div className="title">{soundName(x)}</div>
-        <div className="meta">{baseName(x.file ?? '')}</div>
-      </div>
-      <div className="section">
+      <InspHead
+        kind={t('skinInspector.k31')}
+        icon={FEATURE.sound.icon}
+        color={FEATURE.sound.color}
+        onBack={() => select(null)}
+        title={soundName(x)}
+        meta={baseName(x.file ?? '')}
+        actions={
+          <>
+            <Tooltip label={t('skinInspector.k35')}>
+              <ActionIcon variant="light" color="green" aria-label={t('skinInspector.k35')} onClick={() => playSound(x)}>
+                <IconPlayerPlay size={16} />
+              </ActionIcon>
+            </Tooltip>
+            <Tooltip label={t('skinInspector.k36')}>
+              <ActionIcon variant="subtle" color="red" aria-label={t('skinInspector.k36')} onClick={remove}>
+                <IconTrash size={16} />
+              </ActionIcon>
+            </Tooltip>
+          </>
+        }
+      />
+      <Section title={null}>
         <Field label={t('skinInspector.soundWhen')}>
           <Select aria-label={t('skinInspector.soundWhen')} value={trigger} data={triggers} allowDeselect={false} onChange={(v) => v && setSoundEvent(x.id!, v as Trigger, x.enemyId)} />
         </Field>
@@ -516,14 +634,14 @@ export function SoundInspector() {
             min={0}
             max={100}
             step={1}
-            label={(v) => `${v}%`}
+            unit="%"
             onChange={(v) => updateSound(x.id!, (s) => void (s.volume = Math.min(100, Math.max(0, v)) / 100), 'vol')}
           />
         </Field>
         <Field label={t('skinInspector.soundWeight')}>
           <Group gap={6} wrap="nowrap">
             <div style={{ flex: 1 }}>
-              <Slider value={x.weight ?? 1} min={0.5} max={10} step={0.5} label={(v) => v.toFixed(1)} onChange={(v) => updateSound(x.id!, (s) => void (s.weight = Math.min(10, Math.max(0.5, v))), 'weight')} />
+              <Slider value={x.weight ?? 1} min={0.5} max={10} step={0.5} onChange={(v) => updateSound(x.id!, (s) => void (s.weight = Math.min(10, Math.max(0.5, v))), 'weight')} />
             </div>
             <Info label={t('skinInspector.soundWeightInfo')} />
           </Group>
@@ -548,34 +666,39 @@ export function SoundInspector() {
             </Group>
           </Field>
         )}
-      </div>
-      <div className="section">
-        <FeatureHead feature="sound" title={t('skinInspector.soundGroupOf', { v0: group?.label ?? '' })} info={t('skinInspector.soundWeightInfo')}>
-          {siblings.length > 1 && (
-            <Button size="compact-xs" variant="subtle" color="green" leftSection={<IconArrowsShuffle size={12} />} onClick={() => playGroup(siblings)}>
-              {t('skinInspector.soundPlayRandom')}
+      </Section>
+      <Section
+        feature="sound"
+        title={t('skinInspector.soundGroupOf', { v0: group?.label ?? '' })}
+        info={t('skinInspector.soundWeightInfo')}
+        actions={
+          <>
+            {siblings.length > 1 && (
+              <Tooltip label={t('skinInspector.soundPlayRandom')}>
+                <ActionIcon size="sm" variant="subtle" color="green" aria-label={t('skinInspector.soundPlayRandom')} onClick={() => playGroup(siblings)}>
+                  <IconArrowsShuffle size={14} />
+                </ActionIcon>
+              </Tooltip>
+            )}
+            <Button
+              size="compact-xs"
+              variant="light"
+              color="green"
+              leftSection={<IconPlus size={12} />}
+              aria-label={t('skinInspector.soundAddTo', { v0: group?.label ?? '' })}
+              onClick={() => void pickSound(trigger, x.enemyId)}
+            >
+              {t('skinInspector.soundAdd')}
             </Button>
-          )}
-          <Button size="compact-xs" variant="light" color="green" leftSection={<IconPlus size={12} />} aria-label={t('skinInspector.soundAddTo', { v0: group?.label ?? '' })} onClick={() => void pickSound(trigger, x.enemyId)}>
-            {t('skinInspector.soundAdd')}
-          </Button>
-        </FeatureHead>
+          </>
+        }
+      >
         <div className="list">
           {siblings.map((v) => (
             <SoundRow key={v.id} x={v} group={siblings} current={v.id === x.id} />
           ))}
         </div>
-      </div>
-      <div className="section">
-        <Group justify="space-between">
-          <Button variant="light" color="green" leftSection={<IconPlayerPlay size={14} />} onClick={() => playSound(x)}>
-            {t('skinInspector.k35')}
-          </Button>
-          <Button variant="default" color="red" leftSection={<IconTrash size={14} />} onClick={remove}>
-            {t('skinInspector.k36')}
-          </Button>
-        </Group>
-      </div>
+      </Section>
     </>
   );
 }
@@ -593,134 +716,225 @@ function SkinMemory() {
   if (memory == null) return null;
   const color = memory > MEMORY_HEAVY ? 'var(--mantine-color-red-5)' : memory > MEMORY_FINE ? 'var(--mantine-color-yellow-5)' : undefined;
   return (
-    <div className="meta" style={{ color }}>
-      {t('skinInspector.memory', { v0: mb(memory) })} <Info label={t('skinInspector.memoryInfo', { v0: mb(MEMORY_FINE), v1: mb(MEMORY_HEAVY) })} />
-    </div>
+    <span style={{ color, display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+      · {t('skinInspector.memory', { v0: mb(memory) })} <Info label={t('skinInspector.memoryInfo', { v0: mb(MEMORY_FINE), v1: mb(MEMORY_HEAVY) })} />
+    </span>
   );
 }
 
-/** Nothing selected: the start of the texture flow. */
-function Overview() {
+/** The first part (in the gear's order) that has something of a kind, to open on its tab. */
+function firstPart(has: (part: CatalogPart) => boolean): CatalogPart | undefined {
+  return useStore
+    .getState()
+    .catalog.find((c) => c.id === useStore.getState().weaponId)
+    ?.parts.find(has);
+}
+
+/** 整把枪 · 外观: the texture folder, matches to confirm, colour schemes, player colours and the other colour tools. */
+function GunLook({ liveries }: { liveries: number }) {
   const doc = useStore((s) => s.doc);
   const item = useItem();
   const { confirmAllPending, select } = useStore.getState();
   const pending = Object.entries(editorOf(doc).pending);
-  const replaced = (doc.materials ?? []).reduce((n, m) => n + Object.keys(m?.textures ?? {}).length, 0);
   const unmatched = useStore((s) => s.unmatched);
-  const attachments = (doc.attachments ?? []).filter(Boolean).length;
-  const soundsTab = useSoundsTab();
-  const sounds = soundsTab.count ?? 0;
-  const layers = (doc.materials ?? []).reduce((n, m) => n + (m?.layers ?? []).filter(Boolean).length, 0);
-  const liveries = (doc.materials ?? []).reduce((n, m) => n + (m?.livery ?? []).filter(Boolean).length, 0);
-  const holograms = (doc.attachments ?? []).filter((a) => a?.hologram).length;
-  // Texture, livery and layers live on a part: the tile asks which part, then opens it.
-  const onPart = (tile: ReactElement) => (
-    <Menu position="bottom-start">
-      <Menu.Target>{tile}</Menu.Target>
-      <Menu.Dropdown>
-        <Menu.Label>{t('skinInspector.pickPart')}</Menu.Label>
-        {item?.parts.map((p) => (
-          <Menu.Item key={p.id} onClick={() => select({ kind: 'part', id: p.id })}>
-            {partLabel(p)}
-          </Menu.Item>
-        ))}
-      </Menu.Dropdown>
-    </Menu>
-  );
   return (
     <>
-      <div className="insp-head">
-        <div className="kind">
-          {t('skinInspector.k39')} <Info label={`${t('skinInspector.k49')} ${t('skinInspector.k50')}${t('skinInspector.k51')}`} />
-        </div>
-        <div className="title">{item ? localName(item) : t('skinInspector.k40')}</div>
-        <div className="meta">{replaced ? t('skinInspector.k41', { v0: replaced }) : t('skinInspector.k42')}</div>
-        <SkinMemory />
+      <div className="section">
+        <Tooltip label={t('skinInspector.k44')} multiline w={280}>
+          <UnstyledButton className="drop-card" onClick={pickTextureFolder}>
+            <IconFolderOpen size={24} stroke={1.5} />
+            <b>{t('skinInspector.k43')}</b>
+          </UnstyledButton>
+        </Tooltip>
       </div>
+      {unmatched.length > 0 && (
+        <Section title={`${t('skinInspector.k45')} ${unmatched.length}`} icon={IconX} color="var(--bad)" info={t('skinInspector.k46')}>
+          <div className="list">
+            {unmatched.map((f) => (
+              <Text key={f} size="xs" c="dimmed" truncate title={f}>
+                {baseName(f)}
+              </Text>
+            ))}
+          </div>
+        </Section>
+      )}
+      {pending.length > 0 && (
+        <Section
+          title={`${t('skinInspector.k47')} ${pending.length}`}
+          icon={IconCheck}
+          color="var(--warn)"
+          actions={
+            <Button size="compact-xs" variant="light" color="yellow" onClick={confirmAllPending}>
+              {t('skinInspector.k48')}
+            </Button>
+          }
+        >
+          <div className="list">
+            {pending.map(([key, cell]) => {
+              const [mat, ch] = key.split('|') as [string, TextureChannel];
+              const part = item?.parts.find((p) => p.materials.includes(mat));
+              return (
+                <UnstyledButton key={key} className="item" onClick={() => part && select({ kind: 'part', id: part.id })} style={{ gridTemplateColumns: '36px 1fr auto' }}>
+                  <img src={fileUrl(cell.file ?? '')} alt="" style={{ width: 36, height: 36, objectFit: 'cover', borderRadius: 4 }} />
+                  <div style={{ minWidth: 0 }}>
+                    <div>
+                      {part ? partLabel(part) : mat} · {CHANNEL_LABEL[ch]}
+                    </div>
+                    <Text size="xs" c="dimmed" truncate>
+                      {baseName(cell.file ?? '')} · {Math.round(cell.confidence * 100)}%
+                    </Text>
+                  </div>
+                  <IconChevronRight size={14} />
+                </UnstyledButton>
+              );
+            })}
+          </div>
+        </Section>
+      )}
+      <ColorSchemes />
+      <PlayerColors />
+      {liveries > 0 && <Variants />}
+      <Palettes />
+    </>
+  );
+}
+
+/** 整把枪 · 信息: the skin's name and author, what it has (a tile opens the first part with it on that tab, or adds one), and
+ * what the game keeps for parts and channels the skin leaves out. */
+function GunInfo({ counts }: { counts: Record<'texture' | 'livery' | 'attachment' | 'hologram' | 'layer' | 'sound', number> }) {
+  const name = useStore((s) => s.doc.name);
+  const author = useStore((s) => s.doc.author);
+  const allowMissing = useStore((s) => s.prefs.allowMissing);
+  const { edit, select, setPrefs } = useStore.getState();
+  const item = useItem();
+  const doc = useStore((s) => s.doc);
+  const openPart = (part: CatalogPart | undefined, tab: string) => part && (select({ kind: 'part', id: part.id }), showTab('part', tab));
+  const mats = (part: CatalogPart) => part.materials.map((m) => materialOf(doc, m));
+  const hasAttachment = (part: CatalogPart, hologram: boolean) => (doc.attachments ?? []).some((a) => a?.part === part.id && !!a.hologram === hologram);
+  // Texture, livery and layers live on a part: with none yet, the tile asks which part, then opens it.
+  const onPart = (tile: ReactElement, tab: string, has: (part: CatalogPart) => boolean, count: number) =>
+    count > 0 ? (
+      <span onClick={() => openPart(firstPart(has), tab)}>{tile}</span>
+    ) : (
+      <Menu position="bottom-start">
+        <Menu.Target>{tile}</Menu.Target>
+        <Menu.Dropdown>
+          <Menu.Label>{t('skinInspector.pickPart')}</Menu.Label>
+          {item?.parts.map((p) => (
+            <Menu.Item key={p.id} onClick={() => openPart(p, tab)}>
+              {partLabel(p)}
+            </Menu.Item>
+          ))}
+        </Menu.Dropdown>
+      </Menu>
+    );
+  return (
+    <>
+      <Section title={t('skinInspector.infoTitle')} icon={IconId} color="var(--flare)">
+        <Field label={t('skinInspector.skinName')}>
+          <TextInput size="xs" aria-label={t('skinInspector.skinName')} value={name ?? ''} onChange={(e) => edit((d) => void (d.name = e.currentTarget.value), 'skin-name')} />
+        </Field>
+        <Field label={t('skinInspector.author')}>
+          <TextInput size="xs" aria-label={t('skinInspector.author')} value={author ?? ''} onChange={(e) => edit((d) => void (d.author = e.currentTarget.value), 'skin-author')} />
+        </Field>
+      </Section>
+      <Section title={t('skinInspector.overview')} icon={IconPlus} color="var(--flare)" info={t('skinInspector.tilesInfo')}>
+        <div className="tiles">
+          {onPart(
+            <FeatureTile feature="texture" title={t('addMenu.texture')} count={counts.texture} />,
+            'texture',
+            (p) => mats(p).some((m) => Object.values(m?.textures ?? {}).some(Boolean)),
+            counts.texture,
+          )}
+          {onPart(<FeatureTile feature="livery" title={t('livery.title')} count={counts.livery} />, 'livery', (p) => mats(p).some((m) => (m?.livery ?? []).some(Boolean)), counts.livery)}
+          {counts.attachment > 0 ? (
+            <FeatureTile
+              feature="attachment"
+              title={t('skinInspector.attachTile')}
+              count={counts.attachment}
+              onClick={() =>
+                openPart(
+                  firstPart((p) => hasAttachment(p, false)),
+                  'attach',
+                )
+              }
+            />
+          ) : (
+            <AddAttachmentMenu>
+              <FeatureTile feature="attachment" title={t('skinInspector.attachTile')} count={0} />
+            </AddAttachmentMenu>
+          )}
+          {counts.hologram > 0 ? (
+            <FeatureTile
+              feature="hologram"
+              title={t('shapes.tile')}
+              count={counts.hologram}
+              onClick={() =>
+                openPart(
+                  firstPart((p) => hasAttachment(p, true)),
+                  'attach',
+                )
+              }
+            />
+          ) : (
+            <Menu position="bottom-start">
+              <Menu.Target>
+                <FeatureTile feature="hologram" title={t('shapes.tile')} count={0} />
+              </Menu.Target>
+              <Menu.Dropdown>
+                <ShapeItems color={FEATURE.hologram.color} />
+              </Menu.Dropdown>
+            </Menu>
+          )}
+          {onPart(<FeatureTile feature="layer" title={t('dynamicInspector.k33')} count={counts.layer} />, 'layers', (p) => mats(p).some((m) => (m?.layers ?? []).some(Boolean)), counts.layer)}
+          <FeatureTile feature="sound" title={t('skinInspector.k31')} count={counts.sound} onClick={() => (counts.sound ? showTab('skin', 'sounds') : void pickSound())} />
+        </div>
+      </Section>
+      <Section title={t('skinInspector.missingTitle')} icon={IconAdjustmentsHorizontal} color="var(--dust)">
+        <Group gap={6} wrap="nowrap">
+          <Switch size="sm" label={t('topBar.k53')} checked={allowMissing} onChange={(e) => setPrefs({ allowMissing: e.currentTarget.checked })} style={{ flex: 1 }} />
+          <Info label={t('skinInspector.missingInfo')} />
+        </Group>
+      </Section>
+    </>
+  );
+}
+
+/** 整把枪: what the whole gun has, on three tabs: its look, its sounds, its information. */
+function Overview() {
+  const doc = useStore((s) => s.doc);
+  const item = useItem();
+  const replaced = (doc.materials ?? []).reduce((n, m) => n + Object.keys(m?.textures ?? {}).length, 0);
+  const soundsTab = useSoundsTab();
+  const counts = {
+    texture: replaced,
+    livery: (doc.materials ?? []).reduce((n, m) => n + (m?.livery ?? []).filter(Boolean).length, 0),
+    attachment: (doc.attachments ?? []).filter((a) => a && !a.hologram).length,
+    hologram: (doc.attachments ?? []).filter((a) => a?.hologram).length,
+    layer: (doc.materials ?? []).reduce((n, m) => n + (m?.layers ?? []).filter(Boolean).length, 0),
+    sound: soundsTab.count ?? 0,
+  };
+  return (
+    <>
+      <InspHead
+        kind={t('skinInspector.wholeGun')}
+        icon={IconLayoutDashboard}
+        color="var(--flare)"
+        title={item ? localName(item) : t('skinInspector.k40')}
+        meta={
+          <>
+            {replaced ? t('skinInspector.k41', { v0: replaced }) : t('skinInspector.k42')}
+            <SkinMemory />
+          </>
+        }
+        actions={<Info label={`${t('skinInspector.k49')} ${t('skinInspector.k50')}${t('skinInspector.k51')}`} />}
+      />
       <InspectorTabs
         id="skin"
         tabs={[
-          { id: 'overview', label: t('tabs.overview'), icon: IconLayoutDashboard, content: (
-            <>
-              <div className="section">
-                <UnstyledButton className="drop-card" onClick={pickTextureFolder}>
-                  <IconFolderOpen size={26} stroke={1.4} />
-                  <b>{t('skinInspector.k43')}</b>
-                  {t('skinInspector.k44')}
-                </UnstyledButton>
-              </div>
-              {unmatched.length > 0 && (
-                <div className="section">
-                  <h3>
-                    <span className="grow">{t('skinInspector.k45')} {unmatched.length}</span>
-                  </h3>
-                  <p className="hint">{t('skinInspector.k46')}</p>
-                  <div className="list">
-                    {unmatched.map((f) => (
-                      <Text key={f} size="xs" c="dimmed" truncate title={f}>
-                        {baseName(f)}
-                      </Text>
-                    ))}
-                  </div>
-                </div>
-              )}
-              {pending.length > 0 && (
-                <div className="section">
-                  <h3>
-                    <span className="grow" style={{ color: 'var(--warn)' }}>
-                      {t('skinInspector.k47')} {pending.length}
-                    </span>
-                    <Button size="compact-xs" variant="light" color="yellow" onClick={confirmAllPending}>
-                      {t('skinInspector.k48')}
-                    </Button>
-                  </h3>
-                  <div className="list">
-                    {pending.map(([key, cell]) => {
-                      const [mat, ch] = key.split('|') as [string, TextureChannel];
-                      const part = item?.parts.find((p) => p.materials.includes(mat));
-                      return (
-                        <UnstyledButton key={key} className="item" onClick={() => part && select({ kind: 'part', id: part.id })} style={{ gridTemplateColumns: '36px 1fr auto' }}>
-                          <img src={fileUrl(cell.file ?? '')} alt="" style={{ width: 36, height: 36, objectFit: 'cover', borderRadius: 4 }} />
-                          <div style={{ minWidth: 0 }}>
-                            <div>
-                              {part ? partLabel(part) : mat} · {CHANNEL_LABEL[ch]}
-                            </div>
-                            <Text size="xs" c="dimmed" truncate>
-                              {baseName(cell.file ?? '')} · {Math.round(cell.confidence * 100)}%
-                            </Text>
-                          </div>
-                          <IconChevronRight size={14} />
-                        </UnstyledButton>
-                      );
-                    })}
-                  </div>
-                </div>
-              )}
-              {liveries > 0 && <Variants />}
-              <PlayerColors />
-              <div className="section">
-                <h3>{t('skinInspector.addMore')}</h3>
-                <SimpleGrid cols={2} spacing={8}>
-                  {onPart(<FeatureTile feature="texture" title={t('addMenu.texture')} count={replaced} />)}
-                  {onPart(<FeatureTile feature="livery" title={t('livery.title')} count={liveries} />)}
-                  <AddAttachmentMenu>
-                    <FeatureTile feature="attachment" title={t('skinInspector.attachTile')} count={attachments} />
-                  </AddAttachmentMenu>
-                  <Menu position="bottom-start">
-                    <Menu.Target>
-                      <FeatureTile feature="hologram" title={t('shapes.tile')} count={holograms} />
-                    </Menu.Target>
-                    <Menu.Dropdown>
-                      <ShapeItems color={FEATURE.hologram.color} />
-                    </Menu.Dropdown>
-                  </Menu>
-                  {onPart(<FeatureTile feature="layer" title={t('dynamicInspector.k33')} count={layers} />)}
-                  <FeatureTile feature="sound" title={t('skinInspector.k31')} count={sounds} onClick={() => void pickSound()} />
-                </SimpleGrid>
-              </div>
-            </>
-          ) },
+          { id: 'look', label: t('tabs.look'), icon: IconPalette, color: 'var(--paint)', content: <GunLook liveries={counts.livery} /> },
           soundsTab,
+          { id: 'info', label: t('tabs.info'), icon: IconInfoCircle, content: <GunInfo counts={counts} /> },
         ]}
       />
     </>
@@ -734,13 +948,13 @@ export function SkinInspector() {
   if (!part) return <Overview />;
   return (
     <>
-      <div className="insp-head">
-        <div className="kind">{selection?.kind === 'part' && selection.sub ? t('skinInspector.k52', { v0: partLabel(part) }) : t('skinInspector.k53')}</div>
-        <div className="title">{(selection?.kind === 'part' && selection.sub?.split('/').pop()) || partLabel(part)}</div>
-        <div className="meta">
-          {item ? localName(item) : ''} · {part.role}
-        </div>
-      </div>
+      <InspHead
+        kind={selection?.kind === 'part' && selection.sub ? t('skinInspector.k52', { v0: partLabel(part) }) : t('skinInspector.k53')}
+        icon={IconComponents}
+        color="var(--flare)"
+        title={selection?.kind === 'part' && selection.sub ? pieceLabel(selection.sub) : partLabel(part)}
+        meta={`${item ? localName(item) : ''} · ${part.role}`}
+      />
       <PartPanel key={part.id} part={part} />
     </>
   );

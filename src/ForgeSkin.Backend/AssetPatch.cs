@@ -279,7 +279,8 @@ public static class AssetPatch
                 foreach (var m in node.Materials)
                 {
                     if (m.PathId == 0 || !wanted.Contains(m.Name)) continue;
-                    if (!Path.GetDirectoryName(Path.GetFullPath(m.File.path))!.Equals(Path.GetFullPath(g.DataDir), StringComparison.OrdinalIgnoreCase))
+                    // A file this tool already patched is read from its backup, which belongs to GTFO_Data all the same.
+                    if (!Path.GetFullPath(g.StreamRoot(m.File)).Equals(Path.GetFullPath(g.DataDir), StringComparison.OrdinalIgnoreCase))
                     {
                         warnings.Add($"{m.Name}: lives in the engine's built-in resources; not written");
                         continue;
@@ -403,7 +404,7 @@ public static class AssetPatch
             long next = inst.file.AssetInfos.Max(i => i.PathId) + 1;
             foreach (var group in edits.GroupBy(e => e.PathId))
             {
-                var info = inst.file.GetAssetInfo(group.Key) ?? throw new BackendException("not-found", $"{Path.GetFileName(source)}: object {group.Key} missing");
+                var info = GameAssets.Info(inst, group.Key);
                 var mat = am.GetBaseField(inst, info);
                 var name = mat["m_Name"].AsString;
                 var envs = mat["m_SavedProperties.m_TexEnvs.Array"];
@@ -441,7 +442,8 @@ public static class AssetPatch
                     env["second.m_Texture.m_FileID"].AsInt = 0;
                     env["second.m_Texture.m_PathID"].AsLong = next++;
                 }
-                foreach (var e in group) Params(mat, e.Override, name, warningsOf(e.Skin));
+                var hdr = Unity.HdrColours(Texture(am, inst, data, mat["m_Shader"]));
+                foreach (var e in group) Params(mat, e.Override, name, hdr, warningsOf(e.Skin));
                 info.SetNewData(mat);
             }
             using var w = new AssetsFileWriter(outPath);
@@ -459,11 +461,11 @@ public static class AssetPatch
     {
         int fileId = pptr["m_FileID"].AsInt;
         var file = fileId == 0 ? inst : am.LoadAssetsFile(Path.Combine(data, Path.GetFileName(inst.file.Metadata.Externals[fileId - 1].PathName)), false);
-        return am.GetBaseField(file, pptr["m_PathID"].AsLong);
+        return am.GetBaseField(file, GameAssets.Info(file, pptr["m_PathID"].AsLong));
     }
 
     // The plugin's parameter rules (SkinnedGear.Params): a property the Material does not hold is reported, not added.
-    static void Params(AssetTypeValueField mat, MaterialOverride o, string name, List<string> warnings)
+    static void Params(AssetTypeValueField mat, MaterialOverride o, string name, HashSet<string> hdr, List<string> warnings)
     {
         var props = mat["m_SavedProperties"];
         var p = o.Params;
@@ -493,10 +495,10 @@ public static class AssetPatch
             float k = p.EmissiveIntensity ?? 1;
             // The skin's colour is in "as itself" units (MaterialParams.EmissionUnit); the material's own is in the game's.
             const float u = MaterialParams.EmissionUnit;
-            float[]? c = p.EmissiveColor is { } e ? [e[0] * u, e[1] * u, e[2] * u, 1] : current is { } cur ? [cur["r"].AsFloat, cur["g"].AsFloat, cur["b"].AsFloat, cur["a"].AsFloat] : null;
+            float[]? c = p.EmissiveColor is { } e ? [.. ForgeVisual.ColourSpace.Glow(e, u * k, hdr.Contains("_EmissiveColor")), 1]
+                : current is { } cur ? [cur["r"].AsFloat * k, cur["g"].AsFloat * k, cur["b"].AsFloat * k, cur["a"].AsFloat * k] : null;
             if (c != null)
             {
-                c = c.Select(x => x * k).ToArray();
                 if (current != null) Color(current, c);
                 else warnings.Add($"{name}: the material has no emissive colour; not written");
                 if (Entry("m_Colors", "_EmissionColor") is { } emission) Color(emission, c);
@@ -614,6 +616,20 @@ public static class AssetPatch
     static T Read<T>(string? gameDir, Func<GameAssets, T> read) => Methods.WithGame(read, gameDir: gameDir);
 
     static string Root => Path.Combine(Paths.Data, "game-assets");
+
+    // The backups of the files this tool rewrote in the game at `dir`, by file name, where the backup still holds the
+    // original (GameAssets reads those instead of the game's copies).
+    public static Dictionary<string, string> Originals(string dir, string buildId)
+    {
+        var originals = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        var stateDir = StateDir(buildId, dir);
+        foreach (var (file, rec) in LoadState(stateDir)?.Files ?? [])
+        {
+            var backup = Path.Combine(stateDir, "originals", file);
+            if (File.Exists(backup) && FileHash.Sha256(backup, cached: true) == rec.OriginalSha) originals[file] = backup;
+        }
+        return originals;
+    }
 
     static string StateDir(string buildId, string dir) =>
         Path.Combine(Root, $"{buildId}-{Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(dir.ToLowerInvariant())))[..8]}");

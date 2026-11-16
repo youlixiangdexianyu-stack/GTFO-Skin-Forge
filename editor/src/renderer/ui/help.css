@@ -1,47 +1,148 @@
-/* The tutorial pages: contents on the left, the page on the right. */
+/* The tutorial: contents on the left, the page in the middle, its sections on the right. */
 .help-header {
   border-bottom: 1px solid var(--line-soft);
   padding: 12px 18px;
 }
 .help {
   display: grid;
-  grid-template-columns: 230px 1fr;
-  height: min(720px, 76vh);
+  grid-template-columns: 250px 1fr;
+  height: min(780px, 82vh);
 }
 .help-nav {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 10px;
   padding: 14px 10px 14px 14px;
   border-right: 1px solid var(--line-soft);
+  background: var(--ground);
   min-height: 0;
 }
 .help-list {
   flex: 1;
   min-height: 0;
 }
-.help-body {
-  overflow-y: auto;
-  padding: 18px 28px 28px;
-  user-select: text;
-  line-height: 1.65;
-  font-size: 14px;
-  color: var(--bone);
+.help-group {
+  margin: 14px 0 4px 12px;
+  font-family: var(--stencil);
+  font-size: 12px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--dust);
 }
-.help-body h1 {
-  margin: 0 0 12px;
+.help-group:first-child {
+  margin-top: 2px;
+}
+.help-hit {
+  padding-left: 26px;
+  font-size: 12px;
+  color: var(--dust);
+}
+.help-body {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 180px;
+  gap: 28px;
+  align-items: start;
+  overflow-y: auto;
+  padding: 22px 28px 28px 36px;
+  user-select: text;
+  color: var(--bone);
+  position: relative;
+}
+.help-article {
+  max-width: 760px;
+  min-width: 0;
+  line-height: 1.7;
+  font-size: 14.5px;
+}
+.help-article h1 {
+  margin: 0 0 14px;
   font-family: var(--stencil);
   font-weight: 400;
-  font-size: 24px;
+  font-size: 28px;
+  letter-spacing: 0.02em;
   color: var(--flare);
+}
+.help-toc {
+  position: sticky;
+  top: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 4px 0 4px 12px;
+  border-left: 1px solid var(--line);
+  font-size: 12.5px;
+}
+.help-toc-title {
+  margin-bottom: 6px;
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ash);
+}
+.help-toc a {
+  color: var(--dust);
+  cursor: pointer;
+  padding: 3px 0;
+  line-height: 1.35;
+}
+.help-toc a:hover {
+  color: var(--bone);
+}
+.help-page h2 {
+  margin: 30px 0 10px;
+  padding-top: 14px;
+  border-top: 1px solid var(--line-soft);
+  font-size: 18px;
+  font-weight: 650;
+  color: #fff;
+}
+.help-page h3 {
+  margin: 20px 0 6px;
+  font-size: 15px;
+  color: var(--scan);
 }
 .help-page p,
 .help-page ul,
 .help-page ol {
   margin: 0 0 12px;
 }
+.help-page ul {
+  padding-left: 22px;
+}
 .help-page li {
-  margin: 3px 0;
+  margin: 4px 0;
+}
+.help-page li::marker {
+  color: var(--flare);
+}
+/* Step lists: numbered circles. */
+.help-page ol {
+  list-style: none;
+  counter-reset: step;
+  padding-left: 0;
+}
+.help-page ol > li {
+  counter-increment: step;
+  position: relative;
+  padding-left: 36px;
+  margin: 8px 0;
+}
+.help-page ol > li::before {
+  content: counter(step);
+  position: absolute;
+  left: 0;
+  top: 1px;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  font:
+    600 12px/1 'JetBrains Mono',
+    Consolas,
+    monospace;
+  color: #1a1209;
+  background: var(--flare);
 }
 .help-page strong {
   color: #fff;
@@ -49,19 +150,60 @@
 .help-page a {
   color: var(--scan);
   cursor: pointer;
+  text-decoration: underline;
+  text-decoration-color: rgba(99, 210, 228, 0.35);
+  text-underline-offset: 3px;
+}
+.help-page a[href^='editor:'] {
+  text-decoration: none;
+  padding: 1px 7px;
+  border-radius: 4px;
+  border: 1px solid rgba(99, 210, 228, 0.4);
+  background: rgba(99, 210, 228, 0.08);
+  white-space: nowrap;
+}
+.help-page a[href^='editor:']::after {
+  content: ' ↗';
 }
 .help-page code {
   font-family: 'JetBrains Mono', Consolas, monospace;
   font-size: 12.5px;
   padding: 1px 5px;
   border-radius: 4px;
-  background: var(--ground);
+  background: var(--raised);
   color: var(--holo);
+}
+.help-page pre {
+  margin: 0 0 14px;
+  padding: 10px 12px;
+  border-radius: 6px;
+  background: var(--ground);
+  border: 1px solid var(--line);
+  overflow-x: auto;
+}
+.help-page pre code {
+  padding: 0;
+  background: none;
+}
+.help-page kbd {
+  font:
+    600 11.5px 'JetBrains Mono',
+    Consolas,
+    monospace;
+  padding: 1px 6px;
+  border: 1px solid var(--line);
+  border-bottom-width: 2px;
+  border-radius: 4px;
+  background: var(--raised);
 }
 .help-page table {
   border-collapse: collapse;
-  margin: 4px 0 14px;
+  margin: 6px 0 16px;
   width: 100%;
+  font-size: 13.5px;
+}
+.help-page thead th {
+  background: var(--raised);
 }
 .help-page th,
 .help-page td {
@@ -75,6 +217,90 @@
   font-weight: 600;
 }
 .help-page td:first-child {
-  white-space: nowrap;
   color: var(--warn);
+}
+.help-page tbody tr:hover {
+  background: rgba(255, 255, 255, 0.02);
+}
+.help-fig {
+  margin: 14px 0 18px;
+}
+.help-fig img {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  border-radius: 6px;
+  border: 1px solid var(--line);
+  cursor: zoom-in;
+  background: var(--ground);
+}
+.help-fig figcaption {
+  margin-top: 6px;
+  font-size: 12.5px;
+  color: var(--dust);
+}
+.help-missing {
+  display: grid;
+  place-items: center;
+  height: 120px;
+  border: 1px dashed var(--line);
+  border-radius: 6px;
+  color: var(--ash);
+  font:
+    12px 'JetBrains Mono',
+    Consolas,
+    monospace;
+}
+.help-callout {
+  margin: 14px 0;
+  padding: 10px 14px 4px;
+  border-radius: 6px;
+  border-left: 3px solid var(--accent);
+  background: color-mix(in srgb, var(--accent) 9%, transparent);
+}
+.help-callout > b {
+  display: block;
+  margin-bottom: 2px;
+  font-size: 12px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--accent);
+}
+.help-callout.tip {
+  --accent: var(--holo);
+}
+.help-callout.note {
+  --accent: var(--scan);
+}
+.help-callout.warning {
+  --accent: var(--warn);
+}
+.help-page blockquote {
+  margin: 12px 0;
+  padding-left: 12px;
+  border-left: 3px solid var(--line);
+  color: var(--dust);
+}
+.help-pager {
+  margin-top: 34px;
+  padding-top: 16px;
+  border-top: 1px solid var(--line-soft);
+}
+.help-zoom {
+  padding: 0;
+  background: var(--ground);
+}
+.help-zoom img {
+  display: block;
+  max-width: 92vw;
+  max-height: 88vh;
+  cursor: zoom-out;
+}
+@media (max-width: 1100px) {
+  .help-body {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .help-toc {
+    display: none;
+  }
 }

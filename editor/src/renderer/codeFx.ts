@@ -32,10 +32,13 @@ export function addCodeEffect(target: { material: string; part: string } | { att
 }
 
 export function updateCodeEffect(id: string, fn: (e: CodeEffect) => void, coalesceKey?: string) {
-  useStore.getState().edit((d) => {
-    const e = d.codeEffects?.find((x) => x?.id === id);
-    if (e) fn(e);
-  }, coalesceKey && `fx-${id}-${coalesceKey}`);
+  useStore.getState().edit(
+    (d) => {
+      const e = d.codeEffects?.find((x) => x?.id === id);
+      if (e) fn(e);
+    },
+    coalesceKey && `fx-${id}-${coalesceKey}`,
+  );
 }
 
 export function removeCodeEffect(id: string) {

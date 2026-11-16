@@ -1,18 +1,46 @@
 // Unity-Transform style block for the selected part, sub-part or attachment: Position (mm) / Rotation (°) / Scale rows of
 // X/Y/Z fields. Shows the resulting local values; the caller stores only the delta. Axis letters scrub (Shift fine,
 // Ctrl snaps); typed values commit on Enter or blur; each commit or scrub gesture is one undo step.
-import { ActionIcon, Button, Group, NumberInput, Text, Tooltip } from '@mantine/core';
-import { IconEye, IconEyeOff, IconLink, IconLinkOff, IconRestore } from '@tabler/icons-react';
+import { ActionIcon, Group, NumberInput, Text, Tooltip } from '@mantine/core';
+import { IconArrowsMove, IconEye, IconEyeOff, IconLink, IconLinkOff, IconRestore } from '@tabler/icons-react';
 import { useEffect, useRef, useState } from 'react';
 import type { UnityPose, Vec3 } from '../space';
 import { newGesture } from '../viewport/ModalTransform';
 import { t } from '../i18n';
+import { Section } from './Features';
 
 type Row = 'position' | 'rotation' | 'scale';
 const ROWS: { row: Row; label: string; factor: number; step: number; snap: number; digits: number }[] = [
-  { row: 'position', get label() { return t('transformBlock.k1'); }, factor: 1000, step: 0.5, snap: 1, digits: 2 },
-  { row: 'rotation', get label() { return t('transformBlock.k2'); }, factor: 1, step: 0.5, snap: 5, digits: 2 },
-  { row: 'scale', get label() { return t('transformBlock.k3'); }, factor: 1, step: 0.005, snap: 0.1, digits: 3 },
+  {
+    row: 'position',
+    get label() {
+      return t('transformBlock.k1');
+    },
+    factor: 1000,
+    step: 0.5,
+    snap: 1,
+    digits: 2,
+  },
+  {
+    row: 'rotation',
+    get label() {
+      return t('transformBlock.k2');
+    },
+    factor: 1,
+    step: 0.5,
+    snap: 5,
+    digits: 2,
+  },
+  {
+    row: 'scale',
+    get label() {
+      return t('transformBlock.k3');
+    },
+    factor: 1,
+    step: 0.005,
+    snap: 0.1,
+    digits: 3,
+  },
 ];
 const AXES = [
   { l: 'X', c: 'var(--x)' },
@@ -20,21 +48,7 @@ const AXES = [
   { l: 'Z', c: 'var(--z)' },
 ];
 
-function AxisField({
-  value,
-  digits,
-  step,
-  snap,
-  axis,
-  onCommit,
-}: {
-  value: number;
-  digits: number;
-  step: number;
-  snap: number;
-  axis: number;
-  onCommit: (v: number, key?: string) => void;
-}) {
+function AxisField({ value, digits, step, snap, axis, onCommit }: { value: number; digits: number; step: number; snap: number; axis: number; onCommit: (v: number, key?: string) => void }) {
   const shown = +value.toFixed(digits);
   const [text, setText] = useState<string | number>(shown);
   const editing = useRef(false);
@@ -85,7 +99,7 @@ function AxisField({
           (e.target as HTMLInputElement).blur();
         }
       }}
-      leftSectionWidth={20}
+      leftSectionWidth={18}
       leftSection={
         <Tooltip label={t('transformBlock.k4')} openDelay={700}>
           <Text component="span" size="xs" fw={700} ff="monospace" onPointerDown={scrub} style={{ color: AXES[axis].c, cursor: 'ew-resize', padding: '0 4px' }}>
@@ -93,7 +107,7 @@ function AxisField({
           </Text>
         </Tooltip>
       }
-      styles={{ input: { fontFamily: 'var(--mantine-font-family-monospace)', paddingLeft: 22 } }}
+      styles={{ input: { fontFamily: 'var(--mantine-font-family-monospace)', paddingLeft: 20, paddingRight: 4 } }}
     />
   );
 }
@@ -127,24 +141,30 @@ export function TransformBlock({
     onChange(next, key);
   };
   return (
-    <div className="section">
-      <h3>
-        <span className="grow">{title}</span>
-        <Tooltip label={visible ? t('transformBlock.k5') : t('transformBlock.k6')}>
-          <ActionIcon variant="subtle" color={visible ? 'gray' : 'flare'} size="sm" onClick={() => onVisible(!visible)}>
-            {visible ? <IconEye size={14} /> : <IconEyeOff size={14} />}
-          </ActionIcon>
-        </Tooltip>
-        <Button size="compact-xs" variant="subtle" color="gray" leftSection={<IconRestore size={12} />} onClick={() => onReset()}>
-          {t('transformBlock.k7')}
-        </Button>
-      </h3>
+    <Section
+      title={title}
+      icon={IconArrowsMove}
+      color="var(--scan)"
+      info={t('transformBlock.k11')}
+      actions={
+        <>
+          <Tooltip label={visible ? t('transformBlock.k5') : t('transformBlock.k6')}>
+            <ActionIcon variant="subtle" color={visible ? 'gray' : 'flare'} size="sm" aria-label={visible ? t('transformBlock.k5') : t('transformBlock.k6')} onClick={() => onVisible(!visible)}>
+              {visible ? <IconEye size={14} /> : <IconEyeOff size={14} />}
+            </ActionIcon>
+          </Tooltip>
+          <Tooltip label={t('transformBlock.k7')}>
+            <ActionIcon variant="subtle" color="gray" size="sm" aria-label={t('transformBlock.k7')} onClick={() => onReset()}>
+              <IconRestore size={14} />
+            </ActionIcon>
+          </Tooltip>
+        </>
+      }
+    >
       {ROWS.map(({ row, label, factor, step, snap, digits }) => (
         <div className="trow" key={row}>
-          <Text size="xs" c="dimmed">
-            {label}
-          </Text>
-          <div className="vec" style={{ gridTemplateColumns: 'repeat(3, 1fr)' }}>
+          <span className="field-label">{label}</span>
+          <div className="vec" style={{ gridTemplateColumns: 'repeat(3, minmax(0, 1fr))' }}>
             {[0, 1, 2].map((i) => (
               <AxisField key={i} axis={i} value={pose[row][i] * factor} digits={digits} step={step} snap={snap} onCommit={(v, key) => set(row, i, v, factor, key)} />
             ))}
@@ -167,11 +187,6 @@ export function TransformBlock({
           </Group>
         </div>
       ))}
-      <Group justify="space-between" mt={8}>
-        <Text size="xs" c="dimmed">
-          {t('transformBlock.k11')}
-        </Text>
-      </Group>
-    </div>
+    </Section>
   );
 }

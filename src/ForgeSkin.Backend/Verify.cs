@@ -18,7 +18,7 @@ public static class Verify
 
     public static List<VerifyResult> Profile(GameAssets g, string profile)
     {
-        var dir = Path.Combine(profile, "BepInEx", "ForgeSkin", "readback");
+        var dir = ForgeSkin.Format.SkinFolders.Readback(Game.BepInEx(profile));
         if (!Directory.Exists(dir)) throw new BackendException("not-found", $"No readback folder {dir}; set Readback = true in ForgeSkin.cfg and equip the gear");
         var catalog = Catalog.Get(g);
         return Directory.GetFiles(dir, "*.json").Order().Select(file =>

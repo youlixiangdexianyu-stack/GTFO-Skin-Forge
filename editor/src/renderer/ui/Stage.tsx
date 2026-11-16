@@ -1,38 +1,53 @@
-import {
-  ActionIcon,
-  Button,
-  ColorInput,
-  Group,
-  Kbd,
-  Loader,
-  Paper,
-  Popover,
-  SegmentedControl,
-  Slider,
-  Stack,
-  Stepper,
-  Switch,
-  Text,
-  Title,
-  Tooltip,
-} from '@mantine/core';
-import { IconArrowsMove, IconFocusCentered, IconFolder, IconMagnet, IconRotate, IconRotate360, IconSun, IconZoomScan } from '@tabler/icons-react';
+import { ActionIcon, Button, ColorInput, Group, Kbd, Loader, Menu, Paper, Popover, SegmentedControl, Slider, Stack, Switch, Text, Title, Tooltip, UnstyledButton } from '@mantine/core';
+import { IconArrowsMove, IconChevronUp, IconCrosshair, IconFocusCentered, IconFolder, IconMagnet, IconRotate, IconRotate360, IconSchool, IconSun, IconUser, IconZoomScan } from '@tabler/icons-react';
+import { useState } from 'react';
+import { chooseModel } from '../character/model';
+import { useCharacter } from '../character/state';
 import { playGroup, soundGroupKey } from '../audio';
 import { triggersFor, type SkinSound, type Trigger } from '../protocol';
 import { useItem, useStore } from '../store';
 import { simulate } from '../viewport/refs';
+import { wholeGun } from './Library';
 import { LiveryBar } from './LiveryPanel';
-import { WeaponTitle } from './WeaponGallery';
+import { GearGallery, WeaponTitle } from './WeaponGallery';
 import { focusSelection, useModal, useViewStore, Viewport } from '../viewport/Viewport';
 import { t } from '../i18n';
 
+/** Until a weapon skin is open: loading, finding the game, or (no work yet) the two ways to start and the tutorial. */
 function FirstRun() {
   const game = useStore((s) => s.game);
   const ready = useStore((s) => s.ready);
   const weaponId = useStore((s) => s.weaponId);
   const choose = useStore((s) => s.chooseGameDir);
+  const [gallery, setGallery] = useState(false);
   const found = !!game?.found;
   if (ready && found && weaponId) return null;
+  if (ready && found)
+    return (
+      <div className="stage-empty">
+        <Paper className="card start" bg="transparent">
+          <Stack align="center" gap="lg">
+            <Title order={2}>{t('start.title')}</Title>
+            <Group gap="md" wrap="nowrap">
+              <UnstyledButton className="start-choice" onClick={() => setGallery(true)} data-tour="start-weapon">
+                <IconCrosshair size={30} />
+                <b>{t('start.weapon')}</b>
+                <span>{t('start.weaponInfo')}</span>
+              </UnstyledButton>
+              <UnstyledButton className="start-choice" onClick={() => (useCharacter.setState({ mode: 'character' }), void chooseModel().then((ok) => ok && wholeGun()))} data-tour="start-character">
+                <IconUser size={30} />
+                <b>{t('start.character')}</b>
+                <span>{t('start.characterInfo')}</span>
+              </UnstyledButton>
+            </Group>
+            <Button variant="subtle" color="cyan" leftSection={<IconSchool size={16} />} onClick={() => useStore.setState({ tour: 'basics' })}>
+              {t('start.tutorial')}
+            </Button>
+          </Stack>
+        </Paper>
+        <GearGallery opened={gallery} onClose={() => setGallery(false)} onPick={(id) => void useStore.getState().newWork(id).then(wholeGun)} />
+      </div>
+    );
   return (
     <div className="stage-empty">
       <Paper className="card" bg="transparent">
@@ -44,19 +59,11 @@ function FirstRun() {
           </Stack>
         ) : (
           <Stack>
-            <Title order={2}>{found ? t('stage.k3') : t('stage.k4')}</Title>
-            <Text c="dimmed">{found ? t('stage.k5') : t('stage.k6')}</Text>
-            <Stepper active={found ? 1 : 0} orientation="vertical" size="sm" color="flare">
-              <Stepper.Step label={t('stage.k7')} />
-              <Stepper.Step label={t('stage.k8')} />
-              <Stepper.Step label={t('stage.k9')} />
-              <Stepper.Step label={t('stage.k10')} />
-            </Stepper>
-            {!found && (
-              <Button size="sm" leftSection={<IconFolder size={16} />} onClick={() => void choose()}>
-                {t('stage.k11')}
-              </Button>
-            )}
+            <Title order={2}>{t('stage.k4')}</Title>
+            <Text c="dimmed">{t('stage.k6')}</Text>
+            <Button size="sm" leftSection={<IconFolder size={16} />} onClick={() => void choose()}>
+              {t('stage.k11')}
+            </Button>
           </Stack>
         )}
       </Paper>
@@ -133,12 +140,7 @@ function LightBar() {
         </Popover.Dropdown>
       </Popover>
       <Tooltip label={t('stage.k22')}>
-        <ActionIcon
-          variant={prefs.autoRotate ? 'light' : 'subtle'}
-          color={prefs.autoRotate ? 'flare' : 'gray'}
-          onClick={() => setPrefs({ autoRotate: !prefs.autoRotate })}
-          aria-label={t('stage.k22')}
-        >
+        <ActionIcon variant={prefs.autoRotate ? 'light' : 'subtle'} color={prefs.autoRotate ? 'flare' : 'gray'} onClick={() => setPrefs({ autoRotate: !prefs.autoRotate })} aria-label={t('stage.k22')}>
           <IconRotate360 size={16} />
         </ActionIcon>
       </Tooltip>
@@ -189,13 +191,7 @@ function AttachTools() {
       />
       {selection?.kind === 'attachment' && (
         <Tooltip label={t('stage.k26')}>
-          <Button
-            size="xs"
-            variant={snap ? 'light' : 'subtle'}
-            color={snap ? 'flare' : 'gray'}
-            leftSection={<IconMagnet size={14} />}
-            onClick={() => useStore.setState({ snapToSurface: !snap })}
-          >
+          <Button size="xs" variant={snap ? 'light' : 'subtle'} color={snap ? 'flare' : 'gray'} leftSection={<IconMagnet size={14} />} onClick={() => useStore.setState({ snapToSurface: !snap })}>
             {t('stage.k27')}
           </Button>
         </Tooltip>
@@ -242,6 +238,8 @@ function ModalHint() {
   );
 }
 
+const MAIN_EVENTS: Trigger[] = ['fire', 'kill', 'hit', 'reloadStart'];
+
 /** Plays game events in the 3D view, exactly as the game triggers layers, attachment effects and sounds. */
 function EventBar() {
   const item = useItem();
@@ -250,15 +248,33 @@ function EventBar() {
     // One sound of the event's group, picked as the plugin picks it (a simulated kill is of an enemy without its own sounds).
     playGroup((useStore.getState().doc.sounds ?? []).filter((s): s is SkinSound => !!s && soundGroupKey(s) === x));
   };
+  const all = triggersFor(item).filter((x) => x.simulate);
+  // The four most used stay in sight; the rest wait in 更多.
+  const main = all.filter((x) => MAIN_EVENTS.includes(x.value));
+  const more = all.filter((x) => !MAIN_EVENTS.includes(x.value));
   return (
     <Group className="overlay events" gap={2}>
-      {triggersFor(item)
-        .filter((x) => x.simulate)
-        .map((x) => (
-          <Button key={x.value} size="compact-xs" variant="subtle" color="flare" onClick={() => play(x.value)}>
-            {t('stage.simulate', { v0: x.label })}
-          </Button>
-        ))}
+      {main.map((x) => (
+        <Button key={x.value} size="compact-xs" variant="subtle" color="flare" onClick={() => play(x.value)}>
+          {t('stage.simulate', { v0: x.label })}
+        </Button>
+      ))}
+      {!!more.length && (
+        <Menu position="top" withinPortal>
+          <Menu.Target>
+            <Button size="compact-xs" variant="subtle" color="gray" rightSection={<IconChevronUp size={12} />}>
+              {t('stage.moreEvents')}
+            </Button>
+          </Menu.Target>
+          <Menu.Dropdown>
+            {more.map((x) => (
+              <Menu.Item key={x.value} onClick={() => play(x.value)}>
+                {t('stage.simulate', { v0: x.label })}
+              </Menu.Item>
+            ))}
+          </Menu.Dropdown>
+        </Menu>
+      )}
     </Group>
   );
 }

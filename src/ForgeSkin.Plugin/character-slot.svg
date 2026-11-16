@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" width="128" height="128">
+  <!-- The picker's CHARACTER slot: a default avatar, head and shoulders, in the interface's light foreground. -->
+  <g fill="#F2F2F2">
+    <circle cx="64" cy="40" r="26"/>
+    <path d="M12 124c0-30 23-52 52-52s52 22 52 52z"/>
+  </g>
+</svg>

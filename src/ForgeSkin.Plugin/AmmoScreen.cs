@@ -24,7 +24,7 @@ sealed class AmmoScreen
     readonly float _barWidth;
     readonly Material? _text, _border;
     readonly Material _template;
-    readonly bool _hologram; // every surface a hologram, glowing even with GlowInGame off
+    readonly Format.Hologram? _hologram; // every surface a hologram, glowing even with GlowInGame off
     readonly float[] _textColor;
     readonly float[]? _lowColor;
     // Emission per step of the Glow slider. Measured on the game's own glowing gear materials (Cell/Player gear shaders,
@@ -49,7 +49,7 @@ sealed class AmmoScreen
     float _mix; // 0 = text colour, 1 = low colour
     readonly float[] _mixed = new float[3];
 
-    public AmmoScreen(SkinnedGear gear, Skin skin, Format.Screen s, Material template, GameObject root, bool hologram)
+    public AmmoScreen(SkinnedGear gear, Skin skin, Format.Screen s, Material template, GameObject root, Format.Hologram? hologram)
     {
         _hologram = hologram;
         _source = s.Source;
@@ -150,9 +150,9 @@ sealed class AmmoScreen
     // as itself, no bloom); text and border the glow.
     Material Surface(SkinnedGear gear, float[] c, float gain)
     {
-        if (_hologram)
+        if (_hologram != null)
         {
-            var holo = Holograms.Surface(gear, _template, null, new Color(c[0], c[1], c[2]), gain > 0 ? gain : Holograms.Glow);
+            var holo = Holograms.Surface(gear, _template, null, new Color(c[0], c[1], c[2]), (gain > 0 ? gain : Holograms.Glow) * _hologram.Opacity);
             Surfaces.Add(holo);
             return holo;
         }
@@ -166,18 +166,18 @@ sealed class AmmoScreen
         return m;
     }
 
-    static void Paint(Material m, float[] c, float gain)
+    void Paint(Material m, float[] c, float gain)
     {
         var colour = new Color(c[0], c[1], c[2]);
         if (Holograms.Is(m))
         {
-            Holograms.Paint(m, colour, gain > 0 ? gain : Holograms.Glow);
+            Holograms.Paint(m, colour, (gain > 0 ? gain : Holograms.Glow) * (_hologram?.Opacity ?? 1));
             return;
         }
         var albedo = m.GetTexture(SkinnedGear.MainTex).Cast<Texture2D>();
         albedo.SetPixel(0, 0, colour);
         albedo.Apply(false, false);
-        if (gain > 0) SkinnedGear.SetEmission(m, colour * gain);
+        if (gain > 0) SkinnedGear.SetEmission(m, colour, gain);
         else
         {
             ForgeVisual.Glow.SetColour(m, Color.black);

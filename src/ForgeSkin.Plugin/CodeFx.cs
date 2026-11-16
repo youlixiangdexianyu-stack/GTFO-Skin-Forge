@@ -13,14 +13,18 @@ sealed class CodeFx : ITriggered
     public readonly CodeEffect Effect;
     public readonly ProceduralLook Look;
     readonly string _skin;
+    // A teammate's changes, fixed for this effect's life (a new look puts the gear on again); null: the local player's, read again
+    // whenever they move.
+    readonly IReadOnlyDictionary<string, float[]>? _mate;
     readonly CodeEffectValues _values = new();
     float _start;
     bool _started;
     int _tweaks = -1;
 
-    public CodeFx(string skin, CodeEffect effect)
+    public CodeFx(string skin, CodeEffect effect, IReadOnlyDictionary<string, float[]>? mate)
     {
         _skin = skin;
+        _mate = mate;
         Effect = effect;
         CodeEffects.Resolve(effect, null, _values);
         Look = new ProceduralLook(_values.Program);
@@ -38,13 +42,13 @@ sealed class CodeFx : ITriggered
 
     public void Update(float time)
     {
-        if (_tweaks != Skins.TweakVersion) Read();
+        if (_mate == null && _tweaks != Skins.TweakVersion) Read();
     }
 
     void Read()
     {
         _tweaks = Skins.TweakVersion;
-        CodeEffects.Resolve(Effect, Skins.ColoursOf(_skin), _values);
+        CodeEffects.Resolve(Effect, _mate ?? Skins.ColoursOf(_skin), _values);
         for (int i = 0; i < _values.Program.Params.Count; i++) Look.Set(i, _values.Params[i]);
         for (int i = 0; i < _values.Program.Colours.Count; i++)
         {
@@ -217,7 +221,7 @@ sealed partial class SkinnedGear
             }
             try
             {
-                var fx = new CodeFx(skin.Doc.Id, e);
+                var fx = new CodeFx(skin.Doc.Id, e, _mate?.Picks);
                 if (e.Material != null) PaintOver(fx, e);
                 else DrawOn(fx, e);
                 _fx.Add(fx);
@@ -282,10 +286,11 @@ sealed partial class SkinnedGear
     }
 
     // Whether the code effects draw: the lobby's gear preview always, an icon never, a first-person item while in the local player's
-    // hands, a third-person one while the first-person copy of the same gear is.
+    // hands, a third-person one while the first-person copy of the same gear is, a teammate's while it is in their hands.
     bool FxHeld()
     {
         if (_item == null) return !_icon;
+        if (Remote) return OwnerWielded() == _itemPointer;
         if (_wielded != _keyOfPointer)
         {
             _keyOfPointer = _wielded;

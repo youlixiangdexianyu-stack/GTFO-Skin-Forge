@@ -19,7 +19,9 @@ import { t } from './i18n';
 /** Bundled fonts by group, with the weight each one ships in. */
 export const FONT_GROUPS: { group: string; fonts: { family: string; weight: number }[] }[] = [
   {
-    get group() { return t('fonts.k1'); },
+    get group() {
+      return t('fonts.k1');
+    },
     fonts: [
       { family: 'Orbitron', weight: 700 },
       { family: 'Share Tech Mono', weight: 400 },
@@ -29,7 +31,9 @@ export const FONT_GROUPS: { group: string; fonts: { family: string; weight: numb
     ],
   },
   {
-    get group() { return t('fonts.k2'); },
+    get group() {
+      return t('fonts.k2');
+    },
     fonts: [
       { family: 'JetBrains Mono', weight: 700 },
       { family: 'Roboto Mono', weight: 700 },
@@ -37,7 +41,9 @@ export const FONT_GROUPS: { group: string; fonts: { family: string; weight: numb
     ],
   },
   {
-    get group() { return t('fonts.k3'); },
+    get group() {
+      return t('fonts.k3');
+    },
     fonts: [
       { family: 'Press Start 2P', weight: 400 },
       { family: 'Monoton', weight: 400 },

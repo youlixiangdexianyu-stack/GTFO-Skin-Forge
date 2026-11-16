@@ -2,8 +2,8 @@ ForgeSkin - notices and credits
 Copyright (c) 2026 NAinfini. Licensed under the MIT License, except for the third-party material listed below, which keeps its own licence.
 
 This is an unofficial fan-made mod for GTFO. It is not made, endorsed or supported by 10 Chambers Collective.
-GTFO and its game data belong to their owners; no file taken from the game is included in this package. The editor reads the game
-installed on the user's own machine and never ships its files.
+GTFO and its game data belong to their owners. The plugin includes no file taken from the game. The editor reads the game installed
+on the user's own machine; the only game-derived data it ships are the player motion clips listed below.
 
 The plugin (the zip on Thunderstore) carries no third-party code. It depends on the ForgeCore package (MIT, NAinfini), which
 decodes the skins' sounds and carries its own notices.
@@ -18,4 +18,8 @@ The editor (the installer, built from Mods/ForgeSkin/Editor and Mods/ForgeSkin/B
   Apache License 2.0 (Lucas Hrabovsky). Electron itself (MIT) brings Chromium and Node.js with their own licence files inside the installer.
 - Authors of the NuGet packages named in the asset table: AssetsTools.NET and AssetsTools.NET.Texture (MIT, nesrak1), BCnEncoder.Net (MIT or
   Unlicense, Nominom), LibTessDotNet (MIT, speps), SkiaSharp (MIT, Microsoft and contributors).
+- The motion clips of the character preview (src/renderer/motions, copied in at build by Tools/Models/stage-skin-motions.ts): twelve
+  player motions extracted from GTFO's game files and converted to Forge's animation format (bone keys only, no mesh, texture or
+  sound), shipped with the owner's approval; and eight Mixamo animations (Adobe) converted by ForgeEmote, an owner-approved conversion.
+  The original Mixamo FBX files are not distributed.
 - The Unity class database Backend/classdata.tpk: from UABEA by nesrak1 and UABEA contributors (https://github.com/nesrak1/UABEA, MIT), ReleaseFiles/classdata.tpk at commit 5adb448; it holds engine class layouts only.

@@ -8,8 +8,15 @@ namespace ForgeSkin.Tests;
 
 // Local-resource layer: needs the installed game, reported as skipped ("not run") without it. The game is read only;
 // the data dir is the test output's GTFO_UserData (its cache makes later runs fast) and the profile is a temp folder.
+// The game cache is in that data dir too (FORGESKIN_GAME_CACHE overrides it): the machine-wide one is written and pruned
+// at the same time by the editor and other checkouts, which would change the catalog and prefab index under a run.
 public sealed class GameFactAttribute : FactAttribute
 {
+    static GameFactAttribute()
+    {
+        if (Environment.GetEnvironmentVariable("FORGESKIN_GAME_CACHE") is not { Length: > 0 }) Paths.GameCache = Path.Combine(Paths.Data, "game-cache");
+    }
+
     public GameFactAttribute()
     {
         if (!Game.Locate().Found) Skip = "needs local GTFO install, not run";
@@ -40,6 +47,7 @@ public class GameTests
 
         var preview = Call("preview.weapon", new { id = "auto_pistol" });
         Assert.True(File.Exists((string)preview["glb"]!));
+        Assert.False((bool)preview["modified"]!); // the game's own textures pass the vanilla list
         var albedo = (string)preview["textures"]!["Front_UZI_2"]!["albedo"]!;
 
         var dir = Directory.CreateTempSubdirectory("sf-flow-").FullName;
@@ -47,22 +55,27 @@ public class GameTests
         var ammo = items.First(i => (string)i!["slot"]! == "ammo")!;
         File.Copy((string)Call("preview.weapon", new { id = (string)ammo["id"]! })["glb"]!, Path.Combine(dir, "bullet.glb"));
         Images.SavePng(GlyphMeshTests.Strip(), Path.Combine(Directory.CreateDirectory(Path.Combine(dir, ".frames")).FullName, "counter-glyphs.png"));
+        // One baked frame of a dynamic layer (the editor's bake contract, frames.ts).
+        var (tw, th) = Images.Size(albedo);
+        using (var frame = new SkiaSharp.SKBitmap(64, 32)) { frame.Erase(new SkiaSharp.SKColor(200, 40, 90)); Images.SavePng(frame, Path.Combine(dir, ".frames", "sticker", "0000.png")); }
+        File.WriteAllText(Path.Combine(dir, ".frames", "sticker", "rect.json"), JsonSerializer.Serialize(new { x = 100, y = 200, w = 64, h = 32, textureWidth = tw, textureHeight = th, frames = 1 }, Program.Json));
         var project = new SkinDocument
         {
             Id = "skin-flow-test",
             Name = "Flow test",
             Target = new SkinTarget { Weapon = "auto_pistol" },
-            Materials = { new MaterialOverride { Material = "Front_UZI_2", Textures = { [TextureChannel.Albedo] = "front.png" } } },
+            Materials = { new MaterialOverride { Material = "Front_UZI_2", Textures = { [TextureChannel.Albedo] = Path.Combine(dir, "front.png") }, TextureSize = 1024,
+                Layers = { new DynamicLayer { Id = "sticker", Name = "Sticker", Kind = LayerKind.Image } } } },
             Attachments =
             {
-                new Attachment { Id = "bullet", Name = "Bullet", Part = "receiver", Mesh = "bullet.glb" },
+                new Attachment { Id = "bullet", Name = "Bullet", Part = "receiver", Mesh = Path.Combine(dir, "bullet.glb") },
                 new Attachment { Id = "counter", Name = "Ammo", Part = "receiver", Screen = new Screen { Digits = 3 } },
             },
         };
         var projectPath = Path.Combine(dir, "flow.forgeskinproj");
         Call("project.save", new { project, path = projectPath });
         var loaded = Call("project.load", new { path = projectPath });
-        var pack = (string)Call("pack.build", new { project = loaded, projectPath, @out = Path.Combine(dir, "out"), sizeMode = "1k" })["pack"]!;
+        var pack = (string)Call("pack.build", new { project = loaded, projectPath, @out = Path.Combine(dir, "out") })["pack"]!;
 
         using (var p = SkinPack.Open(pack))
         {
@@ -76,16 +89,48 @@ public class GameTests
             Assert.Equal(Screen.Glyphs.Length - 1, p.Manifest.Attachments[1].Screen!.GlyphMeshes!.Count(g => g != null)); // all but the blank
         }
 
+        // 搬到我的作品: the pack made a work again builds, unchanged, the same layer frames on the same pixels.
+        var adopted = Call("pack.adopt", new { pack, dir = Path.Combine(dir, "adopted") });
+        Assert.Contains("frames", adopted["lost"]!.AsArray().Select(n => (string)n!));
+        var adoptedPath = (string)adopted["path"]!;
+        Images.SavePng(GlyphMeshTests.Strip(), Path.Combine(dir, "adopted", ".frames", "counter-glyphs.png")); // the editor draws the screen font anew
+        var rebuilt = (string)Call("pack.build", new { project = Call("project.load", new { path = adoptedPath }), projectPath = adoptedPath, @out = Path.Combine(dir, "out2") })["pack"]!;
+        using (SkinPack p = SkinPack.Open(pack), again = SkinPack.Open(rebuilt))
+        {
+            LayerAtlas a = p.Manifest.Materials[0].Layers[0].Atlas!, b = again.Manifest.Materials[0].Layers[0].Atlas!;
+            Assert.Equal(a.TargetRect, b.TargetRect);
+            using SkiaSharp.SKBitmap x = Images.Decode(p.ReadBytes(a.Path), "atlas"), y = Images.Decode(again.ReadBytes(b.Path), "atlas");
+            Assert.Equal(x.Bytes, y.Bytes);
+        }
+
         var profile = Directory.CreateDirectory(Path.Combine(dir, "profile", "BepInEx")).Parent!.FullName;
-        Call("pack.install", new { pack, profile, activate = true, pick = true }); // as 应用到游戏 does
+        // Skins a 1.1.0 editor left in BepInEx/plugins/ForgeSkin/skins are the player's: installing moves them to the new folder.
+        var oldSkins = Directory.CreateDirectory(ForgeSkin.Format.OldSkinFolder.Of(Game.BepInEx(profile))).FullName;
+        File.Copy(pack, Path.Combine(oldSkins, "skin-flow-test" + SkinPack.Extension));
+        File.WriteAllText(Path.Combine(oldSkins, "active.json"), """{"targets":{"item:102":"old-medipack"},"global":[]}""");
+        File.WriteAllText(Path.Combine(Game.PluginDir(profile), "forgeskin.log"), "");
+        // The same skin put in by hand under another name: applying it again leaves one pack for the id (the other in the Recycle Bin).
+        var skins = SkinFolders.Skins(Game.BepInEx(profile));
+        var handCopy = Path.Combine(Directory.CreateDirectory(skins).FullName, "hand-copied" + SkinPack.Extension);
+        File.Copy(pack, handCopy);
+        var install = Call("pack.install", new { pack, profile, activate = true, pick = true }); // as 应用到游戏 does
+        Assert.Equal(["hand-copied" + SkinPack.Extension], install["dropped"]!.AsArray().Select(n => (string)n!));
+        Assert.False(File.Exists(handCopy));
         var installed = Call("pack.list", new { profile }).AsArray().Single()!;
         Assert.Equal("skin-flow-test", (string)installed["id"]!);
         Assert.True((bool)installed["active"]!);
-        var skins = Path.Combine(Game.PluginDir(profile), "skins");
-        Assert.Equal("skin-flow-test", (string)JsonNode.Parse(File.ReadAllText(Path.Combine(skins, "active.json")))!["targets"]!["gear:45"]!);
+        Assert.False(Directory.Exists(Game.PluginDir(profile)));
+        var active = JsonNode.Parse(File.ReadAllText(Path.Combine(skins, "active.json")))!["targets"]!;
+        Assert.Equal(("skin-flow-test", "old-medipack"), ((string)active["gear:45"]!, (string)active["item:102"]!));
         // The one-shot pick the plugin turns into the player's choice for that gear (contract with Native/Skins.ReadPicks).
         var pick = JsonNode.Parse(File.ReadAllText(Directory.GetFiles(skins, "*" + SkinPack.PickExtension).Single()))!;
         Assert.Equal(("gear:45", "skin-flow-test"), ((string)pick["target"]!, (string)pick["skin"]!));
+        // 应用 on the installed card picks it again; the pick it replaces (the plugin is not running here) is gone, so untaken
+        // picks do not pile up.
+        Call("pack.activate", new { profile, skinId = "skin-flow-test" });
+        var repick = JsonNode.Parse(File.ReadAllText(Directory.GetFiles(skins, "*" + SkinPack.PickExtension).Single()))!;
+        Assert.Equal(("gear:45", "skin-flow-test"), ((string)repick["target"]!, (string)repick["skin"]!));
+        Assert.True((bool)Call("pack.list", new { profile }).AsArray().Single()!["inUse"]!);
     }
 
     static void WriteJson(string path, object value)
@@ -194,7 +239,7 @@ public class GameTests
             Target = new SkinTarget { Weapon = "machine_pistol" },
             Materials = { new MaterialOverride { Material = "Receiver_UZI_1", Params = { Tint = [0, 0, 1, 1] } } }
         };
-        string Build(SkinDocument doc, string projectPath) => (string)Call("pack.build", new { project = doc, projectPath, @out = Path.Combine(dir, "packs"), sizeMode = "keep" })["pack"]!;
+        string Build(SkinDocument doc, string projectPath) => (string)Call("pack.build", new { project = doc, projectPath, @out = Path.Combine(dir, "packs") })["pack"]!;
         var medipack = catalog.Single(i => i.Id == "medipack");
         var itemSkin = new SkinDocument
         {

@@ -1,13 +1,16 @@
 using System.Globalization;
+using System.Text.Json;
 using System.Text.Json.Nodes;
 using ForgeSkin.Format;
+using SkiaSharp;
 
 namespace ForgeSkin.Backend;
 
-public sealed record ProjectEntry(string Path, string Id, string Name, DateTime Modified);
+// `Edited`: when the author last changed the work (the editor keeps it in editor.editedAt; a save without a change keeps it).
+public sealed record ProjectEntry(string Path, string Id, string Name, DateTime Modified, string? Edited = null);
 
 // Editor projects (.forgeskinproj = SkinDocument with paths relative to the file) and the old tool's project formats.
-// In the protocol every file reference is absolute.
+// In the protocol every file reference is absolute (Absolute); Load and Save convert.
 public static class Projects
 {
     static readonly JsonObject Legacy = JsonNode.Parse(typeof(Projects).Assembly.GetManifestResourceStream("naming.json")!)!["legacyMaterials"]!.AsObject();
@@ -43,8 +46,25 @@ public static class Projects
         {
             throw new SkinFormatException("schema", $"{path}: {e.Message}");
         }
-        MapPaths(doc, p => Path.GetFullPath(Path.Combine(dir, p)));
+        MapPaths(doc, p => Moved(Path.GetFullPath(Path.Combine(dir, p))));
         return doc;
+    }
+
+    static bool Under(string p, string root) =>
+        Path.GetFullPath(p).StartsWith(Path.GetFullPath(root).TrimEnd('\\', '/') + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase);
+
+    // A file that is gone but was in a former data folder is taken from the same place in the current one when it is
+    // there (the data folder moved); anything else stays as named, and a missing file is reported as before. The next
+    // save writes the new place.
+    static string Moved(string path)
+    {
+        if (File.Exists(path)) return path;
+        foreach (var former in Paths.FormerData.Where(f => Under(path, f)))
+        {
+            var now = Path.Combine(Paths.Data, Path.GetRelativePath(former, path));
+            if (File.Exists(now)) return now;
+        }
+        return path;
     }
 
     // The projects in a folder (one weapon's skins), newest first. A file that does not parse is listed under its file
@@ -54,7 +74,7 @@ public static class Projects
         var name = Path.GetFileNameWithoutExtension(file);
         JsonObject? json = null;
         try { json = JsonNode.Parse(File.ReadAllText(file)) as JsonObject; } catch (System.Text.Json.JsonException) { json = null; }
-        return new ProjectEntry(file, (string?)json?["id"] ?? name, (string?)json?["name"] ?? name, File.GetLastWriteTimeUtc(file));
+        return new ProjectEntry(file, (string?)json?["id"] ?? name, (string?)json?["name"] ?? name, File.GetLastWriteTimeUtc(file), (json?["editor"] as JsonObject)?["editedAt"]?.GetValue<string>());
     }).OrderByDescending(e => e.Modified).ToList();
 
     // Every item's skins under the autosave root (one folder per item id); items without skins are left out.
@@ -64,11 +84,152 @@ public static class Projects
     public static object Delete(string path)
     {
         if (!path.EndsWith(".forgeskinproj", StringComparison.OrdinalIgnoreCase)) throw new BackendException("bad-request", $"{path} is not a project file");
-        File.Delete(path);
-        // A skin's snapshots and the textures an import generated for it go with it.
-        foreach (var own in new[] { ".snapshots", ".textures" }.Select(e => Path.ChangeExtension(path, e)))
-            if (Directory.Exists(own)) Directory.Delete(own, true);
+        // To the Recycle Bin, so a deleted work can be put back; its snapshots, the textures an import generated for it and a
+        // character's converted model go with it. All or nothing: everything is first checked to be free (a folder another
+        // program holds open cannot be moved, and a half-deleted work would lose its project yet keep its files), then the
+        // folders go before the project, so a failure still leaves the work listed.
+        var folders = new[] { ".snapshots", ".textures", ".character" }.Select(e => Path.ChangeExtension(path, e)).Where(Directory.Exists).ToList();
+        // A file just written is often read for a moment by another program (a virus scan, the thumbnail cache): asked again a few
+        // times before the delete is refused.
+        string? held = null;
+        for (var attempt = 0; attempt < 5; attempt++)
+        {
+            held = folders.FirstOrDefault(InUse) ?? (File.Exists(path) && FileInUse(path) ? path : null);
+            if (held == null) break;
+            Thread.Sleep(200);
+        }
+        if (held != null) throw new BackendException("work-in-use", $"{held} is open in another program");
+        foreach (var folder in folders) RecycleBin.Send(folder);
+        RecycleBin.Send(path);
         return new { removed = path };
+    }
+
+    // An installed pack made into one of the author's works (「搬到我的作品」): its manifest saved as the project `<dir>/<id>.forgeskinproj`
+    // and its files unpacked into `<id>.textures/` beside it, a precompressed texture decoded back to PNG (the editor reads only
+    // pictures). `lost` names what a pack no longer holds, which the work comes back without: "editor" (the editor's own notes:
+    // livery settings, texture sizes, the scheme shown), "compressed" (textures decoded from the game's compressed copy),
+    // "frames" (a dynamic layer comes back as its baked frames, not its source video, GIF or text: RestoreLayer), "layers" (a
+    // dynamic layer the pack holds no frames for, left out so the work still applies), "meshes" (an attachment keeps only its game mesh, not the GLB),
+    // "screens" (a screen's font, so it shows in the default one), "missing" (a file the manifest names that is not in the pack). A character
+    // pack comes back with its converted model (the editor draws it from those files), its bone match, springs, colliders, hidden
+    // materials and height; "source": the model file it was made from is not in a pack, so the model itself cannot be imported again.
+    // `picture`: the pack's card picture as unpacked, null without one. A name among `taken` (the author's works of that gear) gets " 2",
+    // " 3", ... as a new work's does. `baseline`: the game texture size of a weapon's material channel, for a layer over a texture the
+    // pack does not replace.
+    public static object Adopt(string pack, string dir, IReadOnlyCollection<string> taken, Func<string?, string, TextureChannel, (int W, int H)?> baseline)
+    {
+        using var p = SkinPack.Open(pack);
+        var doc = SkinJson.Read(SkinJson.Write(p.Manifest));
+        var name = doc.Name;
+        for (var n = 2; taken.Contains(doc.Name); n++) doc.Name = $"{name} {n}";
+        var path = Path.GetFullPath(Path.Combine(dir, Preview.Safe(doc.Id) + ".forgeskinproj"));
+        if (File.Exists(path)) throw new BackendException("bad-request", $"{path} already exists");
+        var files = Path.ChangeExtension(path, ".textures");
+        var lost = new SortedSet<string> { doc.Character != null ? "source" : "editor" };
+        if (doc.Attachments.Any(a => a.Mesh != null)) lost.Add("meshes");
+        // A screen's font is not in a pack; the editor draws its glyphs again (default font) and the build traces them anew.
+        foreach (var s in doc.Attachments.Select(a => a.Screen).OfType<Screen>())
+        {
+            (s.GlyphMeshes, s.TextMesh, s.BorderMesh) = (null, null, null);
+            lost.Add("screens");
+        }
+        Unpack(p, doc, files, lost);
+        foreach (var m in doc.Materials)
+            foreach (var l in m.Layers.ToList())
+                if (RestoreLayer(l, m.Textures.TryGetValue(l.Channel, out var own) && File.Exists(own) ? Images.Size(own) : baseline(doc.Target.Weapon, m.Material, l.Channel), path))
+                    lost.Add("frames");
+                else
+                {
+                    m.Layers.Remove(l);
+                    lost.Add("layers");
+                }
+        Save(doc, path);
+        return new { path, weapon = doc.Target.Weapon, name = doc.Name, lost, picture = doc.Character?.Picture };
+    }
+
+    // Unpacks every file `doc` (read from `p`'s manifest) names into `files`, keeping the pack's folders, and points `doc` at the
+    // copies; a precompressed texture is decoded back to PNG ("compressed" in `lost`), a file the pack lacks is "missing".
+    internal static void Unpack(SkinPack p, SkinDocument doc, string files, ISet<string> lost)
+    {
+        var channels = new Dictionary<string, TextureChannel>();
+        foreach (var d in doc.Materials.SelectMany(m => (m.Wear ?? []).Select(w => w.Textures).Prepend(m.Textures)).Concat(doc.Attachments.Where(a => a.Material != null).Select(a => a.Material!.Textures)))
+            foreach (var (ch, file) in d) channels.TryAdd(file, ch);
+        var done = new Dictionary<string, string>();
+        MapPaths(doc, name =>
+        {
+            if (done.TryGetValue(name, out var to)) return to;
+            to = Path.Combine(files, name.Replace('/', Path.DirectorySeparatorChar));
+            byte[] bytes;
+            try { bytes = p.ReadBytes(name); }
+            catch (SkinFormatException) { lost.Add("missing"); return done[name] = to; }
+            Directory.CreateDirectory(Path.GetDirectoryName(to)!);
+            if (Dds.IsDds(bytes))
+            {
+                to = Path.ChangeExtension(to, ".png");
+                bytes = Precompress.Png(bytes, channels.GetValueOrDefault(name, TextureChannel.Albedo), name);
+                lost.Add("compressed");
+            }
+            File.WriteAllBytes(to, bytes);
+            return done[name] = to;
+        });
+    }
+    // A packed layer made editable again: its atlas cut into frames (final pixels of the target region, base texture included)
+    // that become the layer's sources, placed to cover exactly that region unrotated and uncropped, so the editor's bake
+    // gives back the same pixels; the frames also go to `.frames/<id>` (the bake contract in frames.ts) so the work builds
+    // before the editor bakes it. `texture`: the target texture's size (the pack's own texture, else the game's). False when
+    // the atlas or that size is missing: the layer cannot come back.
+    static bool RestoreLayer(DynamicLayer l, (int W, int H)? texture, string projectPath)
+    {
+        if (l.Atlas is not { } a || !File.Exists(a.Path) || texture is not var (tw, th) || a.TargetRect is not [var x, var y, var w, var h]) return false;
+        var sources = Path.Combine(Path.GetDirectoryName(a.Path)!, Preview.Safe(l.Id));
+        var baked = Path.Combine(Path.GetDirectoryName(projectPath)!, ".frames", l.Id);
+        using (var atlas = Images.Load(a.Path))
+            for (int i = 0; i < a.FrameCount; i++)
+            {
+                using var frame = new SKBitmap();
+                if (!atlas.ExtractSubset(frame, SKRectI.Create(i % a.Columns * a.FrameWidth, i / a.Columns * a.FrameHeight, a.FrameWidth, a.FrameHeight))) return false;
+                var file = Path.Combine(sources, $"{i:0000}.png");
+                Images.SavePng(frame, file);
+                l.Sources.Add(file);
+                using var full = Images.Resize(frame, w, h);
+                Images.SavePng(full, Path.Combine(baked, $"{i:0000}.png"));
+            }
+        File.WriteAllText(Path.Combine(baked, "rect.json"), JsonSerializer.Serialize(new { x, y, w, h, textureWidth = tw, textureHeight = th, frames = a.FrameCount }, Program.Json));
+        File.Delete(a.Path);
+        l.Kind = a.FrameCount > 1 ? LayerKind.Sequence : LayerKind.Image;
+        (l.Opacity, l.Crop, l.Rotation, l.Text, l.Atlas) = (1, [0, 0, 1, 1], 0, null, null);
+        l.UvCenter = [(x + w / 2f) / tw, 1 - (y + h / 2f) / th];
+        l.UvSize = [(float)w / tw, (float)h / th];
+        return true;
+    }
+
+    // A folder some program holds open (a watcher, a file opened in it) cannot be renamed; moving it away and back tells.
+    static bool InUse(string folder)
+    {
+        var probe = folder + ".deleting";
+        try
+        {
+            Directory.Move(folder, probe);
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+        {
+            return true;
+        }
+        Directory.Move(probe, folder);
+        return Directory.EnumerateFiles(folder, "*", SearchOption.AllDirectories).Any(FileInUse);
+    }
+
+    static bool FileInUse(string file)
+    {
+        try
+        {
+            using var _ = new FileStream(file, FileMode.Open, FileAccess.ReadWrite, FileShare.None);
+            return false;
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+        {
+            return true; // locked, or read-only (the Recycle Bin would refuse it too)
+        }
     }
 
     // The files a document names, in document order, each once.
@@ -86,6 +247,14 @@ public static class Projects
     // The files a document names that are not on disk, in document order.
     public static object Missing(SkinDocument doc) => new { files = Files(doc).Where(p => !File.Exists(p)).ToList() };
 
+    // A document in the protocol names every file by its absolute path: only the project file on disk holds relative ones,
+    // and Load and Save own that conversion. A relative one here is a project file's text that reached the editor without
+    // Load; resolving it against any folder would be a guess, so it is refused.
+    public static SkinDocument Absolute(SkinDocument doc) =>
+        Files(doc).FirstOrDefault(p => !Path.IsPathFullyQualified(p)) is { } relative
+            ? throw new BackendException("bad-request", $"{relative}: a file the skin names must be an absolute path (project.load gives a project file's paths absolute)")
+            : doc;
+
     public static object Save(SkinDocument doc, string path)
     {
         path = Path.GetFullPath(path);
@@ -94,9 +263,7 @@ public static class Projects
         var copy = SkinJson.Read(SkinJson.Write(doc));
         // Relative only what moves with the project (under its folder or the data folder); a file elsewhere stays absolute,
         // so a project file copied to another folder still finds it.
-        bool Under(string p, string root) => Path.GetFullPath(p).StartsWith(Path.GetFullPath(root).TrimEnd('\\', '/') + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase);
-        MapPaths(copy, p => Path.IsPathFullyQualified(p) && (Under(p, dir) || Under(p, Paths.Data))
-            ? Path.GetRelativePath(dir, p).Replace('\\', '/') : p);
+        MapPaths(copy, p => Under(p, dir) || Under(p, Paths.Data) ? Path.GetRelativePath(dir, p).Replace('\\', '/') : p);
         AtomicFile.WriteText(path, SkinJson.Write(copy));
         return new { path };
     }
@@ -124,7 +291,11 @@ public static class Projects
                 if (l.Text?.Font is { } font && FontFile(font)) l.Text.Font = map(font);
                 if (l.Atlas != null) l.Atlas.Path = map(l.Atlas.Path);
             }
-            foreach (var l in m.Livery ?? []) if (l.Image != null) l.Image = map(l.Image);
+            foreach (var l in m.Livery ?? [])
+            {
+                if (l.Image != null) l.Image = map(l.Image);
+                if (l.Text?.Font is { } font && FontFile(font)) l.Text.Font = map(font);
+            }
         }
         foreach (var a in doc.Attachments)
         {
@@ -134,6 +305,15 @@ public static class Projects
         }
         foreach (var t in doc.Parts.Where(t => t.Mesh != null)) t.Mesh = map(t.Mesh!);
         foreach (var s in doc.Sounds.Where(s => !string.IsNullOrEmpty(s.File))) s.File = map(s.File);
+        foreach (var m in new[] { doc.Character?.Model, doc.Character?.Arms?.Model })
+        {
+            if (m == null) continue;
+            if (m.Descriptor.Length > 0) m.Descriptor = map(m.Descriptor);
+            if (m.Mesh.Length > 0) m.Mesh = map(m.Mesh);
+            m.Textures = m.Textures.Select(map).ToList();
+        }
+        if (doc.Character?.Picture is { Length: > 0 } picture) doc.Character.Picture = map(picture);
+        if (doc.Picture is { Length: > 0 } own) doc.Picture = map(own);
     }
 
     static SkinDocument Start(string? itemId, string? name, List<CatalogItem> catalog)
@@ -180,8 +360,6 @@ public static class Projects
             if (m.Params.EmissiveEnabled == true && !m.Textures.ContainsKey(TextureChannel.Emissive) && (string?)e["mask_path"] is { Length: > 0 } mask)
                 m.Textures[TextureChannel.Emissive] = mask;
         }
-        doc.Editor = new() { ["sizeMode"] = (string?)j["resolution_mode"] == "source" ? "original" : (string?)j["resolution_mode"] ?? "keep" };
-        if ((string?)doc.Editor["sizeMode"] == "user") doc.Editor["sizeMode"] = "keep";
         return doc;
     }
 

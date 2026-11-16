@@ -1,4 +1,4 @@
-// A weapon's preview scene as the game draws it, shared by the 3D view and the weapon-list thumbnails: Unity node
+// A weapon's preview scene as the game draws it, for the 3D view (and the card window, which draws with the view's stage): Unity node
 // names, one editable material per game material, and each material's textures, parameters and blend mode.
 import {
   AdditiveBlending,
@@ -9,6 +9,7 @@ import {
   MeshStandardMaterial,
   PMREMGenerator,
   PropertyBinding,
+  SRGBColorSpace,
   type Material,
   type Object3D,
   type Texture,
@@ -138,23 +139,35 @@ export function paintMaterial(
       setSlot(mat, ch, null);
       continue;
     }
-    keep.add(textureKey(path, ch));
+    // The skin's own texture at the size it has in game; a game texture stays as the game has it.
+    const size = override?.textures?.[ch] === path ? override.textureSize : null;
+    keep.add(textureKey(path, ch, size));
+    // A picture of the skin's own that cannot be read shows the game's in its place (the caller marks it).
+    const vanilla = preview.textures[name]?.[ch];
     loads.push(
-      loadTexture(path, ch).then(
+      loadTexture(path, ch, size).then(
         (t) => !cancelled() && setSlot(mat, ch, t),
-        () => onError(path),
+        () => {
+          onError(path);
+          if (!vanilla || vanilla === path) return;
+          keep.add(textureKey(vanilla, ch));
+          return loadTexture(vanilla, ch).then(
+            (t) => !cancelled() && setSlot(mat, ch, t),
+            () => undefined,
+          );
+        },
       ),
     );
   }
   const tint = params.tint ?? [1, 1, 1, 1];
-  mat.color.setRGB(tint[0], tint[1], tint[2]);
+  mat.color.setRGB(tint[0], tint[1], tint[2], SRGBColorSpace); // a skin's colours are sRGB (ForgeCore ColourSpace)
   // With a MetallicSmoothness map the scalars multiply it; without one, fall back to a neutral finish.
   const hasMs = !!baseTexturePath(doc, preview, name, 'metallicSmoothness') || !!livery?.('metallicSmoothness');
   mat.metalness = params.metallic ?? (hasMs ? 1 : 0.4);
   mat.roughness = params.smoothness != null ? 1 - params.smoothness : hasMs ? 1 : 0.55;
   const on = params.emissiveEnabled ?? !!mat.emissiveMap;
   const glow = glowOf(info, own);
-  mat.emissive = new Color(glow.color[0], glow.color[1], glow.color[2]);
+  mat.emissive = new Color().setRGB(glow.color[0], glow.color[1], glow.color[2], SRGBColorSpace);
   mat.emissiveIntensity = on ? glow.intensity : 0;
   // Blend mode as the game draws it: lenses see-through with a slight reflection, cutouts alpha-tested.
   const glass = info?.kind === 'glass';

@@ -1,34 +1,34 @@
 // Fragment programs of the UV-space renderer (liveryGpu) for the livery kinds that are made from the model itself:
 // procedural patterns and wear. Both read the fragment's position and normal in the item's root space (metres), so they
 // run across UV seams, and the per-vertex curvature (positive on outer edges, negative in cavities).
-import type { Pattern } from "../protocol";
+import type { Pattern } from '../protocol';
 
 /** Pattern ids in the order the program's `pattern` uniform numbers them (SkinDocument Pattern). */
 export const PATTERNS: Pattern[] = [
-  "digital",
-  "woodland",
-  "tiger",
-  "splinter",
-  "flecktarn",
-  "multiTerrain",
-  "hydro",
-  "anodised",
-  "marble",
-  "damascus",
-  "honeycomb",
-  "hexGrid",
-  "contour",
-  "circuit",
-  "zebra",
-  "leopard",
-  "scales",
-  "stripes",
-  "plaid",
-  "dots",
-  "rust",
-  "flame",
-  "starfield",
-  "crackle",
+  'digital',
+  'woodland',
+  'tiger',
+  'splinter',
+  'flecktarn',
+  'multiTerrain',
+  'hydro',
+  'anodised',
+  'marble',
+  'damascus',
+  'honeycomb',
+  'hexGrid',
+  'contour',
+  'circuit',
+  'zebra',
+  'leopard',
+  'scales',
+  'stripes',
+  'plaid',
+  'dots',
+  'rust',
+  'flame',
+  'starfield',
+  'crackle',
 ];
 
 /** Hashes and noises shared by both programs; `p` in pattern units. */
@@ -278,5 +278,44 @@ export const WEAR_FRAGMENT = /* glsl */ `
     float t = 1.0 - amount;
     float a = amount <= 0.0 ? 0.0 : smoothstep(t - 0.04, t + 0.04, v);
     gl_FragColor = vec4(1.0, 1.0, 1.0, a);
+  }
+`;
+
+/** Gradient layers and gradient masks: up to four stops along Start -> End (linear) or out from Start (radial). */
+export const GRADIENT_FRAGMENT = /* glsl */ `
+  uniform vec3 start;
+  uniform vec3 end;
+  uniform int radial;
+  uniform int count;
+  uniform float at[4];
+  uniform vec4 colors[4];
+  ${VARYINGS}
+  void main() {
+    vec3 d = end - start;
+    float len2 = max(dot(d, d), 1e-10);
+    float t = radial == 1 ? length(vPos - start) / sqrt(len2) : dot(vPos - start, d) / len2;
+    t = clamp(t, 0.0, 1.0);
+    vec4 c = colors[0];
+    for (int i = 1; i < 4; i++) {
+      if (i >= count) break;
+      c = mix(c, colors[i], clamp((t - at[i - 1]) / max(at[i] - at[i - 1], 1e-5), 0.0, 1.0));
+    }
+    gl_FragColor = c;
+  }
+`;
+
+/** Tile layers: an image repeated every `scale` metres, seen from the three axes and blended by the normal (no UV seams). */
+export const TILE_FRAGMENT = /* glsl */ `
+  uniform sampler2D image;
+  uniform float scale;
+  uniform mat3 rot;
+  uniform vec4 tint;
+  ${VARYINGS}
+  void main() {
+    vec3 p = rot * vPos / max(scale, 1e-4);
+    vec3 w = pow(abs(rot * vNormal), vec3(4.0));
+    w /= max(w.x + w.y + w.z, 1e-5);
+    vec4 c = texture2D(image, p.zy) * w.x + texture2D(image, p.xz) * w.y + texture2D(image, p.xy) * w.z;
+    gl_FragColor = c * tint;
   }
 `;

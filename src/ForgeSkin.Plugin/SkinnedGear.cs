@@ -1,5 +1,4 @@
 using Gear;
-using HarmonyLib;
 using Il2CppInterop.Runtime.InteropTypes.Arrays;
 using Player;
 using ForgeSkin.Format;
@@ -9,8 +8,9 @@ using Object = UnityEngine.Object;
 
 namespace ForgeSkin.Plugin;
 
-// The skin applied to one gear of the local player (first or third person). Everything it creates is its own and is
-// destroyed on revert; the game's shared materials and textures are never written.
+// The skin applied to one gear instance: the local player's (first or third person, by their own choices) or a teammate's (third
+// person and their sentry, by their synced look, Looks). Everything it creates is its own and is destroyed on revert; the game's
+// shared materials and textures are never written.
 sealed partial class SkinnedGear
 {
     public static readonly int MainTex = Shader.PropertyToID("_MainTex"), BumpMap = Shader.PropertyToID("_BumpMap"),
@@ -21,7 +21,7 @@ sealed partial class SkinnedGear
         Smoothness = Shader.PropertyToID("_Smoothness"), Cutoff = Shader.PropertyToID("_Cutoff");
 
     static readonly List<SkinnedGear> Live = new();
-    static readonly List<(GearPartHolder Holder, ItemEquippable Item, float Since)> Pending = new();
+    static readonly List<(GearPartHolder Holder, ItemEquippable Item)> Pending = new();
     static readonly HashSet<IntPtr> Reported = new(); // holders whose decision was logged
     static float _nextPending, _nextRelease;
     static readonly HashSet<Skin> InUse = new();
@@ -51,6 +51,7 @@ sealed partial class SkinnedGear
     // The game's materials taken off renderers while ours show, kept from the unused-asset sweep until the revert puts them back.
     readonly List<Material> _held = new();
     readonly List<LayerTarget> _targets = new();
+    readonly HashSet<IntPtr> _pictureGlows = new(); // attachment surfaces that show their picture as their glow (unlit, hologram)
     readonly List<ITriggered> _animated = new(); // layers and effects, ticked every frame
     readonly List<CharmLook> _charms = new(); // first-person charms, moved while this gear is wielded
     List<(double[] Min, double[] Max)>? _body; // the gear's body boxes for charms, built with the first one
@@ -80,13 +81,34 @@ sealed partial class SkinnedGear
     int _unequipFrame = -1; // a base and an override unwield in the same frame are one Unequip
     Transform? _camera;
     FirstPersonItemHolder? _hands; // the 1P item's, kept for the AimEnd poll
-    static readonly IntPtr HandsWielded = Native.FieldInfo<FirstPersonItemHolder>(nameof(FirstPersonItemHolder.WieldedItem));
+    static readonly int HandsWielded = ForgeCore.NativeObjects.FieldOffset<FirstPersonItemHolder>(nameof(FirstPersonItemHolder.WieldedItem));
     PlayerAmmoStorage? _storage;
     AmmoType _ammoType;
     int _clipSize;
 
-    SkinnedGear(GearPartHolder? holder, ItemEquippable? item, uint itemId = 0, bool icon = false)
+    // Whose choices it wears: 0 for the local player's (their own gear, the lobby preview, icons, pickups lying around), else the
+    // teammate's SNet lookup, whose synced look (Looks) decides. A teammate's gear plays only what this machine sees of it.
+    readonly ulong _owner;
+    // A gear a replay stand-in holds (Dress): it wears what the stand-in's look says, as a teammate's gear wears their look.
+    readonly Looks.Worn? _dressed;
+    bool Remote => _owner != 0 || _dressed != null;
+    Looks.Worn? _mate; // what the teammate's look says this gear wears, as of the last apply
+    readonly PlayerAgent? _ownerAgent; // the teammate holding it
+    readonly IntPtr _ownerAgentPointer;
+    PlayerInventoryBase? _ownerInventory; // the teammate's, for whether this gear is in their hands
+    IntPtr _ownerWielded; // WieldedGetter resolved for _ownerInventory's class
+    // What a teammate's gear plays: what this machine sees of another player (their shots, their wield, their going down and up).
+    static readonly HashSet<Trigger> RemoteTriggers = new() { Trigger.Fire, Trigger.Equip, Trigger.Unequip, Trigger.Downed, Trigger.Revived };
+    // The item each teammate (by agent) held last (going down stows it): their Downed and Revived play on it.
+    static readonly Dictionary<IntPtr, IntPtr> LastHeld = new();
+    int _fireFrame = -1; // a teammate's shot reaches this gear once per frame, however many of the game's fire steps ran
+
+    SkinnedGear(GearPartHolder? holder, ItemEquippable? item, uint itemId = 0, bool icon = false, ulong owner = 0, PlayerAgent? ownerAgent = null, Looks.Worn? dressed = null)
     {
+        _owner = owner;
+        _dressed = dressed;
+        _ownerAgent = ownerAgent;
+        _ownerAgentPointer = ownerAgent?.Pointer ?? IntPtr.Zero;
         _icon = icon;
         _holder = holder;
         _root = (Component?)holder ?? item!;
@@ -97,7 +119,7 @@ sealed partial class SkinnedGear
         _clipSize = item?.ClipSize ?? 0;
         _gun = item != null && ForgeCore.NativeObjects.Is<BulletWeapon>(item);
         for (int i = 0; i < _on.Length; i++) _on[i] = new List<ITriggered>();
-        _label = item == null ? $"{holder!.GearIDRange?.PublicGearName} [menu]" : $"{item.PublicName} [{View(item)}{(holder == null ? " item" : "")}]";
+        _label = item == null ? $"{holder!.GearIDRange?.PublicGearName} [{(icon ? "icon" : "menu")}]" : $"{item.PublicName} [{View(item)}{(holder == null ? " item" : "")}{(owner != 0 ? " of player " + owner : dressed != null ? " of a stand-in" : "")}]";
     }
 
     SkinnedGear(Item world, string key, bool pickup)
@@ -126,10 +148,18 @@ sealed partial class SkinnedGear
             if (item == null && Readback.Directory != null) Readback.Write(holder, GearId(holder));
             if (item != null) Consider(holder, item);
             // A menu-mode holder (lobby loadout and gear pages) only ever shows this machine's own gear.
-            else if (holder.MenuMode) { Note(holder, $"{holder.GearIDRange?.PublicGearName} [menu]: considered"); Track(holder, null); }
-            else if (Icons.IsJob(holder)) { Note(holder, $"{holder.GearIDRange?.PublicGearName} [icon]: skinned for its icon"); Track(new SkinnedGear(holder, null, icon: true)); }
+            else if (holder.MenuMode)
+            {
+                if (Noting(holder)) ForgeSkinPlugin.Info($"{holder.GearIDRange?.PublicGearName} [menu]: considered");
+                Track(holder, null);
+            }
+            else if (Icons.IsJob(holder))
+            {
+                if (Noting(holder)) ForgeSkinPlugin.Info($"{holder.GearIDRange?.PublicGearName} [icon]: skinned for its icon");
+                Track(new SkinnedGear(holder, null, icon: true));
+            }
             // Icon renders, and items that only take their holder at OnGearSpawnComplete.
-            else Note(holder, $"{holder.GearIDRange?.PublicGearName}: parts spawned without an item and not in menu mode; waiting for the item");
+            else if (Noting(holder)) ForgeSkinPlugin.Info($"{holder.GearIDRange?.PublicGearName}: parts spawned without an item and not in menu mode; waiting for the item");
         }
         catch (Exception e) { ForgeSkinPlugin.Fail("skin-gear-spawn-failed", $"gear spawn: {e.Message}", e); }
     }
@@ -168,41 +198,47 @@ sealed partial class SkinnedGear
         // The icon renderer's gear is skinned now: it is rendered before the pending list is looked at again.
         if (Icons.IsJob(holder))
         {
-            Note(holder, $"{item.PublicName} [icon]: skinned for its icon");
+            if (Noting(holder)) ForgeSkinPlugin.Info($"{item.PublicName} [icon]: skinned for its icon");
             Track(new SkinnedGear(holder, item, icon: true));
             return;
         }
         // The gear id is looked up when the skin is applied (and logged with it), not here on the game's spawn path.
-        Note(holder, $"{item.PublicName} [{View(item)}]: considered");
-        Pending.Add((holder, item, Time.unscaledTime));
+        if (Noting(holder)) ForgeSkinPlugin.Info($"{item.PublicName} [{View(item)}]: considered");
+        Pending.Add((holder, item));
     }
 
-    // One line per gear and decision.
-    static void Note(GearPartHolder holder, string message)
-    {
-        if (Reported.Add(holder.Pointer)) ForgeSkinPlugin.Info(message);
-    }
+    // One line per gear and decision: true when this gear's line is to be written (the caller builds it only then).
+    static bool Noting(GearPartHolder holder) => ForgeSkinPlugin.Logging && Reported.Add(holder.Pointer);
 
     public static void Tick(float now, float time)
     {
         if (Skins.Poll(now))
         {
+            Looks.ResolveAll(refresh: false); // every gear is put on again just below
             Icons.SkinsChanged();
             Picker.Changed();
             foreach (var gear in Live) gear.Refresh(now);
             PickupsChanged();
+            Characters.Dirty();
         }
+        else if (Skins.Hashed()) Looks.ResolveAll();
+        Looks.Tick(now);
         Skins.Pump(now);
         if (Skins.Arrived())
+        {
+            Characters.Dirty();
             foreach (var gear in Live)
                 if (gear._waiting) gear.Refresh(now);
+        }
         if (now >= _nextRelease)
         {
             _nextRelease = now + 1f;
             InUse.Clear();
             foreach (var gear in Live) { InUse.UnionWith(gear._shown); InUse.UnionWith(gear._wanted); }
+            Characters.InUse(InUse);
             Skins.Release(now, InUse);
         }
+        Characters.Tick(now);
         if (Pending.Count > 0 && now >= _nextPending) ResolvePending(now);
         Icons.Tick();
         Wear.Save(now);
@@ -219,17 +255,16 @@ sealed partial class SkinnedGear
                 ForgeSkinPlugin.Fail("skin-gear-update-failed", $"{gear._label}: update failed: {e.Message}; left vanilla", e);
             }
         }
-        Previews.Tick(now);
+        Previews.Tick();
     }
-
-    static float _levelStart = -1; // unscaled time the current level reached InLevel; -1 outside a level
 
     // GameStateHook: a new level starts generating (everything of the last one is gone, and
     // pointers may be reused) or the level is entered.
     public static void StateChanged(eGameStateName state)
     {
-        _levelStart = state == eGameStateName.InLevel ? Time.unscaledTime : -1;
+        Characters.Dirty();
         if (state != eGameStateName.Generating) return;
+        LastHeld.Clear();
         Wear.Save(Time.unscaledTime, true);
         _wielded = _lastWielded = IntPtr.Zero;
         _inventory = null;
@@ -250,8 +285,8 @@ sealed partial class SkinnedGear
     public static float DamageAll, DamageTaken, Health, Infection;
     static Dam_PlayerDamageBase? _playerDamage; // the local player's, kept while it lives
     static float _lastHealth;
-    static readonly IntPtr HealthField = Native.FieldInfo<Dam_SyncedDamageBase>("<Health>k__BackingField"),
-        HealthMaxField = Native.FieldInfo<Dam_SyncedDamageBase>("<HealthMax>k__BackingField");
+    static readonly int HealthField = ForgeCore.NativeObjects.FieldOffset<Dam_SyncedDamageBase>("<Health>k__BackingField"),
+        HealthMaxField = ForgeCore.NativeObjects.FieldOffset<Dam_SyncedDamageBase>("<HealthMax>k__BackingField");
 
     // Health is read from its field each frame (the getter would box): a drop is damage taken; a rise (heal, revive) is not.
     static void PollPlayer()
@@ -265,39 +300,44 @@ sealed partial class SkinnedGear
     }
 
     // A first-person item only exists for the local player. A third-person one waits for its owner, which can be set
-    // long after the parts spawn (gear is built while the level generates); looked at a few times a second.
+    // long after the parts spawn (gear is built while the level generates); looked at a few times a second, for as long as
+    // it exists (icon renders and lobby previews never get one and are gone soon). The owner decides whose choices it wears:
+    // the local player's own, a teammate's synced look (their gear in hand and the sentry they placed), and a bot's none.
     static void ResolvePending(float now)
     {
         _nextPending = now + 0.25f;
         for (int i = Pending.Count - 1; i >= 0; i--)
         {
-            var (holder, item, since) = Pending[i];
+            var (holder, item) = Pending[i];
             if (holder == null || item == null) { Pending.RemoveAt(i); continue; }
+            ulong owner = 0;
+            PlayerAgent? agent = null;
             if (!item.m_isFirstPerson)
             {
-                var player = item.Owner?.Owner;
-                if (player == null)
-                {
-                    // Icon renders and lobby previews are built as third-person items that never get an owner. Gear built
-                    // while the level loads waits until 5 s into the level (at most two minutes outside one).
-                    if (_levelStart < 0 ? now - since < 120f : now - Math.Max(since, _levelStart) < 5f) continue;
-                    Pending.RemoveAt(i);
-                    Reported.Remove(holder.Pointer);
-                    Note(holder, $"{item.PublicName} [{View(item)}]: skipped, no owner (icon/preview)");
-                    continue;
-                }
-                if (!player.IsLocal || player.IsBot)
+                agent = item.Owner;
+                var player = agent?.Owner;
+                if (player == null) continue;
+                if (player.IsBot)
                 {
                     Pending.RemoveAt(i);
                     Reported.Remove(holder.Pointer);
-                    // Other players' and bots' gear (in hand or a sentry they placed) is never skinned: skins are local to their owner.
-                    Note(holder, $"{item.PublicName} [{View(item)}]: skipped, owner {player.NickName} is not the local player");
+                    if (Noting(holder)) ForgeSkinPlugin.Info($"{item.PublicName} [{View(item)}]: skipped, bot {player.NickName} wears the original look");
                     continue;
                 }
+                if (!player.IsLocal) owner = player.Lookup;
             }
             Pending.RemoveAt(i);
-            Track(holder, item);
+            Track(new SkinnedGear(holder, item, owner: owner, ownerAgent: owner != 0 ? agent : null));
         }
+    }
+
+    // A teammate's look arrived, changed or went: their gear puts on what it says now.
+    public static void OwnerChanged(ulong owner)
+    {
+        var now = ForgeCore.Frame.UnscaledTime;
+        foreach (var gear in Live)
+            if (gear._owner == owner) gear.Refresh(now);
+        Characters.Dirty();
     }
 
     // Every local gear is tracked, skinned or not, so a hot reload can skin it later.
@@ -306,9 +346,9 @@ sealed partial class SkinnedGear
     static SkinnedGear Track(SkinnedGear gear)
     {
         Live.Add(gear);
+        if (gear._holder != null && !gear._icon && !gear.Remote) Looks.GearSpawned();
         var now = ForgeCore.Frame.UnscaledTime;
         gear.Refresh(now);
-        if (gear._icon) Previews.Built(gear, now);
         return gear;
     }
 
@@ -320,19 +360,36 @@ sealed partial class SkinnedGear
     // carry item) is its Unequip. The same first-person object can later hold another item; that is a new target.
     static PlayerInventoryBase? _inventory; // the local player's, kept while it lives
     static IntPtr _local; // the local player agent the inventory belongs to
-    static readonly IntPtr WieldedGetter = Native.Method(AccessTools.PropertyGetter(typeof(PlayerInventoryBase), nameof(PlayerInventoryBase.WieldedItem)));
+    // Called, never patched (its native body is a field read folded with dozens of other getters).
+    static readonly IntPtr WieldedGetter = Native.Method(typeof(PlayerInventoryBase).GetProperty(nameof(PlayerInventoryBase.WieldedItem))!.GetMethod!);
+    static IntPtr _wieldedOverride; // WieldedGetter resolved for _inventory's class
+
+    // The pointer only: the property would allocate a wrapper every frame.
+    static IntPtr Wielded() => _inventory == null ? IntPtr.Zero : Native.Call(_inventory, _wieldedOverride);
+
+    // The item in a teammate's hands (their synced inventory), as a pointer; zero while unknown.
+    IntPtr OwnerWielded()
+    {
+        if (_ownerInventory == null)
+        {
+            if (_ownerAgent?.Inventory is not { } inventory) return IntPtr.Zero;
+            _ownerInventory = inventory;
+            _ownerWielded = Native.Virtual(inventory, WieldedGetter);
+        }
+        return Native.Call(_ownerInventory, _ownerWielded);
+    }
 
     static void PollWielded(float time)
     {
         if (_inventory == null && PlayerManager.GetLocalPlayerAgent() is { } local)
         {
             _inventory = local.Inventory;
+            if (_inventory != null) _wieldedOverride = Native.Virtual(_inventory, WieldedGetter);
             _local = local.Pointer;
             _playerDamage = local.Damage;
             _lastHealth = -1; // the first read is not a drop
         }
-        // The pointer only: the property would allocate a wrapper every frame.
-        var pointer = _inventory == null ? IntPtr.Zero : Native.Call(_inventory, WieldedGetter);
+        var pointer = Wielded();
         if (pointer == _wielded) return;
         try
         {
@@ -362,11 +419,12 @@ sealed partial class SkinnedGear
     // The gear's PlayerOfflineGearDataBlock persistentID: the game names offline gear "OfflineGear_ID_<id>" in
     // PlayfabItemInstanceId. A range rebuilt from a network packet or JSON keeps only the components, so it is matched
     // against the game's own gear list by components. 0 when unknown.
-    static uint GearId(GearPartHolder holder)
+    static uint GearId(GearPartHolder holder) => holder.GearIDRange is { } range ? GearIdOf(range) : 0;
+
+    internal static uint GearIdOf(GearIDRange range)
     {
-        var range = holder.GearIDRange;
-        if (range == null) return 0;
-        if (Offline(range.PlayfabItemInstanceId) is { } id) return id;
+        var instance = range.PlayfabItemInstanceId;
+        if (Offline(instance) is { } id) return id;
         foreach (var slot in GearSlots)
         {
             var all = GearManager.GetAllGearForSlot(slot);
@@ -410,8 +468,18 @@ sealed partial class SkinnedGear
         return false;
     }
 
+    // A replay stand-in's look (Characters) on an item the stand-in holds: it wears `worn` until Undress or until the item goes.
+    public static SkinnedGear Dress(ItemEquippable item, Looks.Worn worn) =>
+        Track(new SkinnedGear(item.GearPartHolder, item, item.ItemDataBlock?.persistentID ?? 0, dressed: worn));
+
+    public static void Undress(SkinnedGear gear)
+    {
+        gear.Revert();
+        Live.Remove(gear);
+    }
+
     // The key a gear's skin is chosen under: its gear id when built from parts, else its item id.
-    static string KeyOf(ItemEquippable item) =>
+    public static string KeyOf(ItemEquippable item) =>
         item.GearPartHolder is { } holder ? SkinTarget.GearKey(GearId(holder)) : SkinTarget.ItemKey(item.ItemDataBlock?.persistentID ?? 0);
 
     // dump.cs 568906 (MineDeployerFirstPerson.OnStickyMineSpawned): the game hands the mine it spawned to the placer's callback only.
@@ -474,7 +542,7 @@ sealed partial class SkinnedGear
     {
         if (_root == null) { Revert(); return; }
         _key = _fixedKey ?? (_holder != null ? SkinTarget.GearKey(GearId(_holder)) : SkinTarget.ItemKey(_itemId));
-        var wanted = ForgeVisual.GunMount.Of(_holder) != null ? new List<Skin>() : Skins.Wanted(_key);
+        var wanted = ForgeVisual.GunMount.Of(_holder) != null ? new List<Skin>() : _dressed != null ? new List<Skin> { _dressed.Skin } : Skins.Wanted(_key);
         if (!Skins.Ready(wanted, now))
         {
             if (!_waiting)
@@ -513,20 +581,23 @@ sealed partial class SkinnedGear
         }
         var key = _key; // Refresh's
         var overrides = new Dictionary<string, (Skin Skin, MaterialOverride Override)>();
-        foreach (var id in Skins.Globals)
-            if (Skins.ById.TryGetValue(id, out var global))
-                foreach (var m in Skins.Painted(global).Materials) overrides[m.Material] = (global, m);
+        // The local player's global skins are theirs: a teammate's gear wears only what their look names.
+        if (!Remote)
+            foreach (var id in Skins.Globals)
+                if (Skins.ById.TryGetValue(id, out var global))
+                    foreach (var m in Skins.Painted(global).Materials) overrides[m.Material] = (global, m);
         Skin? weapon = null;
-        SkinDocument? doc = null; // the weapon skin as the player coloured it
-        // A preview photographs the gear in another of its skins (or none) for a moment (Previews.Shoot).
-        var weaponId = _trying ? _try?.Doc.Id : Skins.Targets.GetValueOrDefault(key);
+        SkinDocument? doc = null; // the weapon skin as its owner coloured it
+        _mate = _dressed ?? (Remote ? Looks.WornBy(_owner, key) : null);
+        var weaponId = Remote ? _mate?.Skin.Doc.Id : Skins.Targets.GetValueOrDefault(key);
         if (weaponId != null)
         {
             if (!Skins.ById.TryGetValue(weaponId, out weapon)) throw new InvalidOperationException($"active skin {weaponId} is not installed");
             if (weapon.Doc.Target.Key() != key)
                 throw new InvalidOperationException($"skin {weaponId} targets {weapon.Doc.Target.Key()}, not {key}");
-            doc = Skins.Painted(weapon);
-            foreach (var m in doc.Materials) overrides[m.Material] = (weapon, m);
+            doc = _mate != null ? weapon.Painted(_dressed != null ? ulong.MaxValue : _owner, _mate.Picks, _mate.Version) : Skins.Painted(weapon); // stand-ins share one coloured copy
+            // An attachment's model takes its own override where the attachment is built (Attach).
+            foreach (var m in doc.Materials) if (m.Attached() == null) overrides[m.Material] = (weapon, m);
         }
         if (overrides.Count == 0 && (doc == null || doc.Attachments.Count == 0 && doc.Parts.Count == 0 && doc.Sounds.Count == 0))
         {
@@ -537,22 +608,24 @@ sealed partial class SkinnedGear
         ApplyMaterials(overrides);
         if (_world)
         {
-            ForgeSkinPlugin.Info($"{_label}: {key}, skin {weapon?.Doc.Id ?? "-"}, {_swaps.Count} renderers, materials only");
+            ForgeSkinPlugin.Note($"{_label}: {key}, skin {weapon?.Doc.Id ?? "-"}, {_swaps.Count} renderers, materials only");
             return;
         }
         SkinCasings(overrides);
         int attachments = 0;
         if (weapon != null)
             foreach (var a in doc!.Attachments)
-                if (a.Visible) { Attach(weapon, a); attachments++; }
-        // First-person gear only: the third-person copy of the same weapon would play every sound a second time.
+                if (a.Visible) { Attach(weapon, a, doc.Materials.Find(m => m.Attached() == a.Id)); attachments++; }
+        // The local player's first-person gear plays in their head; a teammate's gear at itself, only what this machine sees of
+        // it (RemoteTriggers). The local player's own third-person copy plays nothing: it would play every sound a second time.
         // The sounds of one trigger (for Kill, of one enemy) are one group that plays one of them per firing; a LowAmmo
         // group fires at the largest threshold among its sounds (the editor keeps them equal).
         int sounds = 0;
-        if (weapon != null && _item != null && _item.m_isFirstPerson)
+        if (weapon != null && _item != null && (_item.m_isFirstPerson || Remote))
             foreach (var group in doc!.Sounds.GroupBy(s => (s.Trigger, s.EnemyId)))
             {
-                var cue = new SoundGroup(group.Select(s => (weapon.Sound(s.File), s.Volume, s.Weight)).ToList());
+                if (Remote && !RemoteTriggers.Contains(group.Key.Trigger)) continue;
+                var cue = new SoundGroup(group.Select(s => (weapon.Sound(s.File), s.Volume, s.Weight)).ToList(), Remote ? _item.transform : null);
                 if (group.Key.Trigger != Trigger.Kill) On(group.Key.Trigger, cue, group.Max(s => s.LowAmmoFraction));
                 else if (group.Key.EnemyId is { } enemy) (_killSoundOf ??= new())[enemy] = cue;
                 else _killSound = cue;
@@ -580,7 +653,7 @@ sealed partial class SkinnedGear
                 if (p.Visible == false) hidden++;
             }
         int codeEffects = weapon != null ? AddCodeEffects(weapon, doc!) : 0;
-        ForgeSkinPlugin.Info($"{_label}: {key}, skin {weapon?.Doc.Id ?? "-"}, {_swaps.Count} renderers, " +
+        ForgeSkinPlugin.Note($"{_label}: {key}, skin {weapon?.Doc.Id ?? "-"}, {_swaps.Count} renderers, " +
                              $"{attachments} attachments, {_screens.Count} screens, {sounds} sounds, {_layerCount} layers, {_poses.Count} part poses ({hidden} hidden), {codeEffects} code effects");
         foreach (var screen in _screens) ForgeSkinPlugin.Info($"{_label}: screen after creation: {screen.Describe()}");
         LogAttachments();
@@ -678,6 +751,7 @@ sealed partial class SkinnedGear
         _worldLooks.Clear();
         _worn.Clear();
         _targets.Clear();
+        _pictureGlows.Clear();
         _animated.Clear();
         _charms.Clear();
         _body = null;
@@ -838,7 +912,13 @@ sealed partial class SkinnedGear
         }
         else look = Own(new Material(source) { name = name });
         var textures = o.Textures;
-        if (o.Wear is { Count: > 0 })
+        // A teammate's gear shows the stage their look names (their kills are counted on their machine).
+        if (o.Wear is { Count: > 0 } && Remote)
+        {
+            textures = o.Wear[Math.Min(_mate?.Wear ?? 0, o.Wear.Count - 1)].Textures;
+            ForgeSkinPlugin.Info($"{_label}: {o.Material} at the owner's wear stage {_mate?.Wear ?? 0}");
+        }
+        else if (o.Wear is { Count: > 0 })
         {
             var counter = $"{skin.Doc.Id}|{_key}";
             var stage = Wear.Stage(o.Wear, Wear.Count(counter));
@@ -849,17 +929,23 @@ sealed partial class SkinnedGear
         foreach (var (channel, path) in textures) look.SetTexture(Property(channel), skin.Texture(path, Skin.Linear(channel)));
         if (o.Textures.ContainsKey(TextureChannel.Emissive) && o.Params.EmissiveEnabled != false) SetEmissive(look, true);
         Params(skin, look, o.Params);
-        // One line per layer: where it went (AddLayer) or why it was left out; one bad layer leaves the others drawn.
-        foreach (var layer in o.Layers)
+        AddLayers(skin, look, o.Layers, source.name);
+        return look;
+    }
+
+    // A material's layers, a game material's look or an attachment's model. One line per layer: where it went (AddLayer) or why
+    // it was left out; one bad layer leaves the others drawn.
+    void AddLayers(Skin skin, Material look, List<DynamicLayer> layers, string on)
+    {
+        foreach (var layer in layers)
         {
-            if (!layer.Visible) { ForgeSkinPlugin.Info($"{_label}: layer {layer.Id} ({layer.Name}) on {source.name}: skipped, hidden"); continue; }
+            if (!layer.Visible) { ForgeSkinPlugin.Info($"{_label}: layer {layer.Id} ({layer.Name}) on {on}: skipped, hidden"); continue; }
             try { AddLayer(skin, look, layer); }
             catch (Exception e) when (e is InvalidOperationException or SkinFormatException)
             {
-                ForgeSkinPlugin.Fail("skin-layer-skipped", $"{_label}: layer {layer.Id} ({layer.Name}) on {source.name}: skipped, {e.Message}", e);
+                ForgeSkinPlugin.Fail("skin-layer-skipped", $"{_label}: layer {layer.Id} ({layer.Name}) on {on}: skipped, {e.Message}", e);
             }
         }
-        return look;
     }
 
     // Settings whose property the material's shader lacks, reported once per skin and material (the editor leaves them
@@ -876,8 +962,8 @@ sealed partial class SkinnedGear
             if (!m.HasProperty(EmissiveColor)) Missing("emissive colour");
             // The skin's colour is in "as itself" units (MaterialParams.EmissionUnit); without one the material's own glow
             // colour, already in the game's units, is scaled.
-            else Glow.SetColour(m, (p.EmissiveColor is { } e ? new Color(e[0], e[1], e[2]) * MaterialParams.EmissionUnit : m.GetColor(EmissiveColor))
-                * (p.EmissiveIntensity ?? 1f));
+            else Glow.SetColour(m, p.EmissiveColor is { } e ? Glow.Value(m, Glow.EmissiveColorName, new Color(e[0], e[1], e[2]), MaterialParams.EmissionUnit * (p.EmissiveIntensity ?? 1f))
+                : m.GetColor(EmissiveColor) * (p.EmissiveIntensity ?? 1f));
         }
         if (p.Metallic is float metal) { if (m.HasProperty(Metallic)) m.SetFloat(Metallic, metal); else Missing("metallic"); }
         if (p.Smoothness is float smooth)
@@ -900,10 +986,10 @@ sealed partial class SkinnedGear
 
     public const string EmissiveKeyword = "ENABLE_EMISSIVE";
 
-    // Lit in `color` through its own emission map (white when it has none).
-    public static void SetEmission(Material m, Color color)
+    // Lit in `colour` (a skin's sRGB) at `gain` through its own emission map (white when it has none).
+    public static void SetEmission(Material m, Color colour, float gain)
     {
-        if (m.HasProperty(EmissiveColor)) Glow.Write(m, color, m.GetTexture(EmissiveMap));
+        if (m.HasProperty(EmissiveColor)) Glow.Write(m, colour, gain, m.GetTexture(EmissiveMap));
     }
 
     static int Property(TextureChannel channel) => channel switch
@@ -971,7 +1057,8 @@ sealed partial class SkinnedGear
     // One GPU copy of the channel's texture per material; layers write into it.
     LayerTarget Target(Material material, TextureChannel channel)
     {
-        int property = Property(channel);
+        // An unlit or hologram attachment shows its picture as its glow: its albedo layers play there.
+        int property = channel == TextureChannel.Albedo && _pictureGlows.Contains(material.Pointer) ? EmissiveMap : Property(channel);
         foreach (var t in _targets)
             if (t.Material == material && t.Property == property) return t;
         var source = material.GetTexture(property);
@@ -995,7 +1082,8 @@ sealed partial class SkinnedGear
 
     // ---- attachments and screens ----
 
-    void Attach(Skin skin, Attachment a)
+    // `paint`: the override whose layers play on the attachment's model (its livery is baked into the model's pictures).
+    void Attach(Skin skin, Attachment a, MaterialOverride? paint)
     {
         var part = PartObject(a.Part) ?? throw new InvalidOperationException($"attachment {a.Id}: gear has no part {a.Part}");
         var anchor = a.Transform == null ? part.transform : part.transform.Find(a.Transform) ?? Find(part.transform, a.Transform)
@@ -1005,6 +1093,8 @@ sealed partial class SkinnedGear
 
         var root = Own(new GameObject("ForgeSkin " + a.Id));
         _roots.Add((root, a.Id, template));
+        // An icon is framed by the gun alone, as without the skin; the addition is drawn where that framing shows it.
+        if (_icon) ForgeUI.GearIcons.Unframed(root);
         root.layer = anchor.gameObject.layer;
         var t = root.transform;
         t.SetParent(anchor, false);
@@ -1025,13 +1115,14 @@ sealed partial class SkinnedGear
         Mesh? model = null;
         if (a.Mesh != null)
         {
-            var surface = Surface(skin, a.Material ?? new AttachmentMaterial(), template, a.Hologram != null);
+            var surface = Surface(skin, a.Material ?? new AttachmentMaterial(), template, a.Hologram);
             Child(body, "mesh", model = skin.Mesh(a.Mesh), surface, 0f);
             glowing.Add(surface);
+            if (paint != null) AddLayers(skin, surface, paint.Layers, a.Id);
         }
         if (a.Screen != null)
         {
-            var screen = new AmmoScreen(this, skin, a.Screen, template, body, a.Hologram != null);
+            var screen = new AmmoScreen(this, skin, a.Screen, template, body, a.Hologram);
             _screens.Add(screen);
             glowing.AddRange(screen.Surfaces);
         }
@@ -1047,7 +1138,7 @@ sealed partial class SkinnedGear
             {
                 // Flash needs an emission map to light; a surface without one glows over its whole area.
                 foreach (var m in glowing)
-                    if (m.GetTexture(EmissiveMap) == null) SetEmission(m, UnityEngine.Color.black);
+                    if (m.GetTexture(EmissiveMap) == null) SetEmission(m, UnityEngine.Color.black, 0f);
                 effect = new Flash(glowing.ToArray(), e);
             }
             _animated.Add(effect);
@@ -1079,7 +1170,7 @@ sealed partial class SkinnedGear
             Color = new[] { c.Color[0], c.Color[1], c.Color[2], 1f },
             Params = new MaterialParams { Metallic = (float)CharmRope.Metallic(c.Style), Smoothness = (float)CharmRope.Smoothness(c.Style) },
         };
-        Child(root, "rope", mesh, Surface(skin, spec, template, a.Hologram != null), 0f);
+        Child(root, "rope", mesh, Surface(skin, spec, template, a.Hologram), 0f);
         var look = new CharmLook(rope, at, anchor, pendant, mesh);
         // Vertices are in the root's space and move every frame: bounds that hold any pose, set once.
         float reach = (c.Length + 0.25f) * 2 / Math.Max(1e-3f, Math.Min(Math.Abs(a.Scale[0]), Math.Min(scale, Math.Abs(a.Scale[2]))));
@@ -1242,13 +1333,7 @@ sealed partial class SkinnedGear
     void SyncLayers()
     {
         foreach (var (root, _, _) in _roots)
-            if (root != null && root.transform.parent != null) SetLayer(root.transform, root.transform.parent.gameObject.layer);
-    }
-
-    static void SetLayer(Transform t, int layer)
-    {
-        t.gameObject.layer = layer;
-        for (int i = 0; i < t.childCount; i++) SetLayer(t.GetChild(i), layer);
+            if (root != null && root.transform.parent != null) Models.SetLayer(root.transform, root.transform.parent.gameObject.layer);
     }
 
     // Wield: re-sync layers, write the part poses again, and on the first one log what the game did to them.
@@ -1302,38 +1387,80 @@ sealed partial class SkinnedGear
         {
             float time = Time.time;
             for (int i = 0; i < Live.Count; i++)
-            {
-                var gear = Live[i];
-                if (gear._itemPointer != item) continue;
-                // An item without holder gets Equip and Unequip from the wielded-item poll only.
-                if (gear._holder == null && trigger is Trigger.Equip or Trigger.Unequip) continue;
-                if (trigger == Trigger.Kill)
-                {
-                    gear.Kills++;
-                    if (gear._worn.Count > 0) Worn(gear);
-                }
-                if (trigger is Trigger.Kill or Trigger.Hit)
-                {
-                    gear.Damage += damage;
-                    gear._hitFrame = Time.frameCount;
-                }
-                if (trigger == Trigger.Fire && gear._gun)
-                {
-                    if (gear._shotFrame >= 0) gear.ResolveShot(time);
-                    gear._shotFrame = Time.frameCount;
-                }
-                if (trigger == Trigger.Equip) gear.Equipped();
-                if (trigger == Trigger.Unequip)
-                {
-                    if (gear._unequipFrame == Time.frameCount) continue;
-                    gear._unequipFrame = Time.frameCount;
-                }
-                gear.Raise(trigger, gear._on[(int)trigger], time);
-                if (trigger == Trigger.Kill)
-                    (enemy is { } id && gear._killSoundOf != null && gear._killSoundOf.TryGetValue(id, out var of) ? of : gear._killSound)?.Start(time);
-            }
+                if (Live[i]._itemPointer == item) Live[i].Hear(trigger, time, damage, enemy);
         }
         catch (Exception e) { ForgeSkinPlugin.Fail("skin-event-failed", $"event {trigger}: {e.Message}", e); }
+    }
+
+    // A teammate's gun fired on this machine (the synced gun's own fire step): only their gear hears it, never the local player's.
+    public static void RemoteFire(IntPtr item) => RemoteEvent(item, Trigger.Fire);
+
+    // A teammate went down (their health reached 0 on this machine) or got up: raised for the item they hold, else the one held last.
+    // Only teammates' gear hears it (the local player's and bots' gear is no teammate gear), so the player's flags need no read.
+    public static void RemoteState(PlayerAgent? agent, Trigger trigger)
+    {
+        try
+        {
+            if (agent == null) return;
+            var pointer = agent.Pointer;
+            var item = IntPtr.Zero;
+            for (int i = 0; i < Live.Count && item == IntPtr.Zero; i++)
+                if (Live[i]._ownerAgentPointer == pointer) item = Live[i].OwnerWielded();
+            RemoteEvent(item != IntPtr.Zero ? item : LastHeld.GetValueOrDefault(pointer), trigger);
+        }
+        catch (Exception e) { ForgeSkinPlugin.Fail("skin-event-failed", $"teammate's {trigger}: {e.Message}", e); }
+    }
+
+    static void RemoteEvent(IntPtr item, Trigger trigger)
+    {
+        if (item == IntPtr.Zero) return;
+        try
+        {
+            for (int i = 0; i < Live.Count; i++)
+                if (Live[i].Remote && Live[i]._itemPointer == item) Live[i].Hear(trigger, ForgeCore.Frame.GameTime, 0, null);
+        }
+        catch (Exception e) { ForgeSkinPlugin.Fail("skin-event-failed", $"teammate's {trigger}: {e.Message}", e); }
+    }
+
+    void Hear(Trigger trigger, float time, float damage, uint? enemy)
+    {
+        // An item without holder gets Equip and Unequip from the wielded-item poll only.
+        if (_holder == null && trigger is Trigger.Equip or Trigger.Unequip) return;
+        int frame = Time.frameCount;
+        if (Remote)
+        {
+            if (!RemoteTriggers.Contains(trigger)) return;
+            if (trigger == Trigger.Fire)
+            {
+                if (_fireFrame == frame) return;
+                _fireFrame = frame;
+            }
+            if (trigger == Trigger.Equip) LastHeld[_ownerAgentPointer] = _itemPointer;
+        }
+        if (trigger == Trigger.Kill)
+        {
+            Kills++;
+            if (_worn.Count > 0) Worn(this);
+        }
+        if (trigger is Trigger.Kill or Trigger.Hit)
+        {
+            Damage += damage;
+            _hitFrame = frame;
+        }
+        if (trigger == Trigger.Fire && _gun && !Remote)
+        {
+            if (_shotFrame >= 0) ResolveShot(time);
+            _shotFrame = frame;
+        }
+        if (trigger == Trigger.Equip) Equipped();
+        if (trigger == Trigger.Unequip)
+        {
+            if (_unequipFrame == frame) return;
+            _unequipFrame = frame;
+        }
+        Raise(trigger, _on[(int)trigger], time);
+        if (trigger == Trigger.Kill)
+            (enemy is { } id && _killSoundOf != null && _killSoundOf.TryGetValue(id, out var of) ? of : _killSound)?.Start(time);
     }
 
     // A kill with a gear whose livery wears with kills: counted once per skin on it, and every live copy of that skin and
@@ -1368,7 +1495,7 @@ sealed partial class SkinnedGear
     public static void Damaged(bool killed, float damage, uint? enemy)
     {
         DamageAll += damage;
-        var wielded = _inventory == null ? IntPtr.Zero : Native.Call(_inventory, WieldedGetter);
+        var wielded = Wielded();
         if (wielded != IntPtr.Zero) Event(wielded, killed ? Trigger.Kill : Trigger.Hit, damage, enemy);
     }
 
@@ -1376,7 +1503,7 @@ sealed partial class SkinnedGear
     // item hears it (another gear in the backpack does not). Going down stows the item, so the one held last stands in then.
     public static void PlayerState(Trigger trigger)
     {
-        var item = _inventory == null ? IntPtr.Zero : Native.Call(_inventory, WieldedGetter);
+        var item = Wielded();
         if (item == IntPtr.Zero) item = _lastWielded;
         if (item != IntPtr.Zero) Event(item, trigger);
     }
@@ -1446,20 +1573,27 @@ sealed partial class SkinnedGear
     }
 
     // A copy of the anchor part's material keeps the gear shader and its first-person projection.
-    Material Surface(Skin skin, AttachmentMaterial spec, Material template, bool hologram)
+    Material Surface(Skin skin, AttachmentMaterial spec, Material template, Hologram? hologram)
     {
         Texture? Tex(TextureChannel c) => spec.Textures.TryGetValue(c, out var p) ? skin.Texture(p, Skin.Linear(c)) : null;
         var color = new Color(spec.Color[0], spec.Color[1], spec.Color[2], spec.Color[3]);
-        if (hologram) return Holograms.Surface(this, template, Tex(TextureChannel.Albedo), color, Holograms.Glow * (spec.Params.EmissiveIntensity ?? 1f));
+        if (hologram != null)
+        {
+            var holo = Holograms.Surface(this, template, Tex(TextureChannel.Albedo), color, Holograms.Glow * (spec.Params.EmissiveIntensity ?? 1f) * hologram.Opacity);
+            _pictureGlows.Add(holo.Pointer);
+            return holo;
+        }
         var m = Own(new Material(template) { name = "ForgeSkin attachment" });
         m.SetTexture(BumpMap, Tex(TextureChannel.Normal));
         m.SetTexture(MetallicGlossMap, Tex(TextureChannel.MetallicSmoothness) ?? Texture2D.blackTexture);
         if (spec.Unlit)
         {
-            // Unlit: black albedo, the picture as emission.
-            m.SetTexture(MainTex, Texture2D.blackTexture);
+            // Unlit: black albedo, the picture as emission. The icon renderer draws no emission, so in an icon (the game's and the
+            // picker's pictures) the picture is its surface instead, and the icon shows the colour the player gave it.
+            m.SetTexture(MainTex, _icon ? Tex(TextureChannel.Albedo) ?? Solid(color) : Texture2D.blackTexture);
             m.SetTexture(EmissiveMap, Tex(TextureChannel.Albedo) ?? Texture2D.whiteTexture);
-            SetEmission(m, color * MaterialParams.EmissionUnit);
+            SetEmission(m, color, MaterialParams.EmissionUnit);
+            if (!_icon) _pictureGlows.Add(m.Pointer);
             return m;
         }
         var albedo = Tex(TextureChannel.Albedo);
@@ -1503,7 +1637,7 @@ sealed partial class SkinnedGear
     {
         type = default;
         clipSize = 0;
-        if (_item == null || _icon) return null;
+        if (_item == null || _icon || Remote) return null;
         _storage ??= PlayerBackpackManager.LocalBackpack?.AmmoStorage;
         _ammoType = _item.AmmoType;
         _clipSize = _item.ClipSize;
@@ -1517,7 +1651,9 @@ sealed partial class SkinnedGear
     void Update(float time)
     {
         if (_shotFrame >= 0 && Time.frameCount > _shotFrame + 1) ResolveShot(time);
-        if (_item != null && !_icon && (_screens.Count > 0 || _lowAmmo.Count > 0 || _on[(int)Trigger.Empty].Count > 0))
+        // A teammate's gear is drawn as the menu preview is: no ammo, no counts, no aim of the local player's (their backpack and
+        // hands are not this machine's to read).
+        if (_item != null && !_icon && !Remote && (_screens.Count > 0 || _lowAmmo.Count > 0 || _on[(int)Trigger.Empty].Count > 0))
         {
             int clip = _item.GetCurrentClip();
             if (clip == 0 && _lastClip > 0) Raise(Trigger.Empty, _on[(int)Trigger.Empty], time);

@@ -1,15 +1,16 @@
 // Player colours (SkinDocument.playerColors): colours the author lets players change in game. Each drives one or more
 // colour slots (a material's tint or glow, an attachment's colour, a screen's colours, a flash). Every slot holds its
 // player colour's default, so the 3D view shows what the skin wears until a player picks; changing any linked colour
-// changes them all (store.edit runs syncPlayerColors after every edit).
+// changes them all (store.edit runs syncPlayerColors after every edit). Colour schemes (SkinDocument.colorSchemes) give player
+// colours other values; the one the author picks (editor.scheme) is what the slots show and what colour edits change, while
+// the defaults (the 原色 scheme) stay: a pack's builder writes the defaults into the slots again.
 import type { ColorSlot, PlayerColor, SkinDocument } from './protocol';
 import { ensureMaterial, uid, useStore } from './store';
 import { t } from './i18n';
 
 export type SlotKind = NonNullable<ColorSlot['kind']>;
 
-export const sameSlot = (a: ColorSlot, b: ColorSlot) =>
-  a.kind === b.kind && a.target === b.target && (a.kind !== 'effectColor' || (a.effect ?? 0) === (b.effect ?? 0));
+export const sameSlot = (a: ColorSlot, b: ColorSlot) => a.kind === b.kind && a.target === b.target && (a.kind !== 'effectColor' || (a.effect ?? 0) === (b.effect ?? 0));
 
 const sameRgb = (a: number[], b: number[]) => [0, 1, 2].every((i) => Math.abs((a[i] ?? 1) - (b[i] ?? 1)) < 1e-6);
 
@@ -45,12 +46,30 @@ export function colorOfSlot(d: SkinDocument, s: ColorSlot): PlayerColor | undefi
   return d.playerColors?.find((c) => c?.slots?.some((x) => x && sameSlot(x, s))) ?? undefined;
 }
 
-function paint(d: SkinDocument, c: PlayerColor, rgb: number[]) {
-  c.default = rgb.slice(0, 3);
+type Scheme = NonNullable<NonNullable<SkinDocument['colorSchemes']>[number]>;
+
+/** The colour scheme the editor shows, if one other than the defaults is picked. */
+export function activeScheme(d: SkinDocument): Scheme | undefined {
+  const id = (d.editor as { scheme?: string } | null | undefined)?.scheme;
+  return id ? (d.colorSchemes?.find((x) => x?.id === id) ?? undefined) : undefined;
+}
+
+/** What player colour `c` shows now: its value in the picked scheme, else its default. */
+export const shownColor = (d: SkinDocument, c: PlayerColor) => activeScheme(d)?.colors?.[c.id ?? ''] ?? c.default ?? [1, 1, 1];
+
+function fill(d: SkinDocument, c: PlayerColor, rgb: number[]) {
   for (const s of c.slots ?? []) {
     const v = s && slotColor(d, s);
     if (v && !sameRgb(v, rgb)) for (let i = 0; i < 3; i++) v[i] = rgb[i];
   }
+}
+
+/** Sets player colour `c` to `rgb` (in the picked scheme, else its default) and every slot it drives. */
+function paint(d: SkinDocument, c: PlayerColor, rgb: number[]) {
+  const scheme = activeScheme(d);
+  if (scheme) scheme.colors = { ...scheme.colors, [c.id ?? '']: rgb.slice(0, 3) };
+  else c.default = rgb.slice(0, 3);
+  fill(d, c, rgb);
 }
 
 /**
@@ -63,12 +82,56 @@ export function syncPlayerColors(d: SkinDocument) {
     if (!c) continue;
     const live = (c.slots ?? []).filter((s) => s && slotColor(d, s));
     if (live.length !== (c.slots ?? []).length) c.slots = live;
-    const moved = live.map((s) => slotColor(d, s!)!).find((v) => !sameRgb(v, c.default ?? [1, 1, 1]));
+    const moved = live.map((s) => slotColor(d, s!)!).find((v) => !sameRgb(v, shownColor(d, c)));
     if (moved) paint(d, c, moved);
   }
   if (d.playerColors.some((c) => !c?.slots?.length)) d.playerColors = d.playerColors.filter((c) => c?.slots?.length);
   if (!d.playerColors.length) d.playerColors = null;
+  // A scheme keeps colours only for player colours the skin still has.
+  const ids = new Set((d.playerColors ?? []).map((c) => c?.id));
+  for (const x of d.colorSchemes ?? []) if (x?.colors && Object.keys(x.colors).some((k) => !ids.has(k))) x.colors = Object.fromEntries(Object.entries(x.colors).filter(([k]) => ids.has(k)));
 }
+
+/** Shows scheme `id` (null: the defaults): every slot takes that scheme's colour. */
+export function selectScheme(id: string | null) {
+  useStore.getState().edit((d) => {
+    d.editor = { ...(d.editor ?? {}), scheme: id };
+    for (const c of d.playerColors ?? []) if (c) fill(d, c, shownColor(d, c));
+  });
+}
+
+/** A new scheme with the colours shown now, picked. */
+export function addScheme() {
+  const id = uid();
+  useStore.getState().edit((d) => {
+    const colors = Object.fromEntries((d.playerColors ?? []).filter((c): c is PlayerColor => !!c).map((c) => [c.id ?? '', shownColor(d, c).slice(0, 3)]));
+    d.colorSchemes = [...(d.colorSchemes ?? []), { id, name: t('schemes.newName', { v0: (d.colorSchemes?.length ?? 0) + 1 }), colors }];
+    d.editor = { ...(d.editor ?? {}), scheme: id };
+  });
+}
+
+export function renameScheme(id: string, name: string) {
+  useStore.getState().edit((d) => {
+    const x = d.colorSchemes?.find((s) => s?.id === id);
+    if (x) x.name = name;
+  }, `scheme-name-${id}`);
+}
+
+/** Removes scheme `id`; when it was the one shown, the defaults show again. */
+export function removeScheme(id: string) {
+  useStore.getState().edit((d) => {
+    const shown = activeScheme(d)?.id === id;
+    d.colorSchemes = (d.colorSchemes ?? []).filter((x) => x?.id !== id);
+    if (!d.colorSchemes.length) d.colorSchemes = null;
+    if (shown) {
+      d.editor = { ...(d.editor ?? {}), scheme: null };
+      for (const c of d.playerColors ?? []) if (c) fill(d, c, c.default ?? [1, 1, 1]);
+    }
+  });
+}
+
+/** Whether the game can change the colour at `s`: a gun's materials draw with the game's own shader, which has no tint. */
+export const slotWorksInGame = (d: SkinDocument, s: ColorSlot) => !(s.kind === 'tint' && !d.character);
 
 /** Writes `shown` (what the picker shows, maybe the game's own value) into the document, so the slot exists. */
 function ensureSlot(d: SkinDocument, s: ColorSlot, shown: number[]) {
@@ -81,8 +144,14 @@ function ensureSlot(d: SkinDocument, s: ColorSlot, shown: number[]) {
   else if (s.kind === 'attachmentColor' && a) a.material ??= { textures: {}, color: [...rgb, 1], unlit: false, params: {} };
 }
 
+/** At most this many player colours in one skin (SkinPack.MaxPlayerColors: each travels to teammates by its index). */
+export const MAX_PLAYER_COLORS = 8;
+
 /** Lets players change the colour at `s`: as a new player colour (`to` null), or as part of player colour `to` (it takes that colour). */
 export function linkSlot(s: ColorSlot, shown: number[], to: string | null) {
+  const { doc, toast } = useStore.getState();
+  const others = (doc.playerColors ?? []).filter((c) => c?.slots?.some((x) => x && !sameSlot(x, s)));
+  if (!(to && others.some((c) => c?.id === to)) && others.length >= MAX_PLAYER_COLORS) return toast('error', t('playerColors.tooMany', { v0: MAX_PLAYER_COLORS }));
   useStore.getState().edit((d) => {
     ensureSlot(d, s, shown);
     for (const c of d.playerColors ?? []) if (c?.slots) c.slots = c.slots.filter((x) => x && !sameSlot(x, s));
@@ -93,7 +162,7 @@ export function linkSlot(s: ColorSlot, shown: number[], to: string | null) {
       d.playerColors.push(c);
     }
     c.slots!.push({ ...s });
-    paint(d, c, c.default ?? shown);
+    paint(d, c, shownColor(d, c) ?? shown);
   });
 }
 
@@ -112,10 +181,13 @@ export function setPlayerColor(id: string, rgb: number[]) {
 }
 
 export function updatePlayerColor(id: string, fn: (c: PlayerColor) => void, key?: string) {
-  useStore.getState().edit((d) => {
-    const c = d.playerColors?.find((x) => x?.id === id);
-    if (c) fn(c);
-  }, key && `player-color-${id}-${key}`);
+  useStore.getState().edit(
+    (d) => {
+      const c = d.playerColors?.find((x) => x?.id === id);
+      if (c) fn(c);
+    },
+    key && `player-color-${id}-${key}`,
+  );
 }
 
 export function removePlayerColor(id: string) {

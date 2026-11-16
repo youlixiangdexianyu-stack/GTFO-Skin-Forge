@@ -36,6 +36,8 @@ public sealed class SkinPack : IDisposable
     public const string PickExtension = ".pick";
     /// <summary>The longest one sound may play; the editor's build and the plugin's load refuse a longer one (bad-audio).</summary>
     public const double MaxSoundSeconds = 10;
+    /// <summary>The most player colours one skin may declare (the editor stops there too).</summary>
+    public const int MaxPlayerColors = 8;
 
     readonly ZipArchive _zip;
     public SkinDocument Manifest { get; }
@@ -108,7 +110,11 @@ public sealed class SkinPack : IDisposable
             throw new SkinFormatException("schema", $"Unsupported schema {doc.Schema}");
         if (string.IsNullOrWhiteSpace(doc.Id))
             throw new SkinFormatException("no-id", "Skin id is empty");
-        if (doc.Target.Weapon != null && (doc.Target.GearId == null) == (doc.Target.ItemId == null))
+        bool character = doc.Target.Weapon == CharacterSkin.Target;
+        if (character != (doc.Character != null) || character && (doc.Target.GearId != null || doc.Target.ItemId != null
+            || doc.Materials.Count > 0 || doc.Attachments.Count > 0 || doc.Parts.Count > 0 || doc.Sounds.Count > 0 || doc.CodeEffects is { Count: > 0 }))
+            throw new SkinFormatException("bad-character-target", $"a character skin has the target {CharacterSkin.Target} and its character only, nothing of a gear");
+        if (!character && doc.Target.Weapon != null && (doc.Target.GearId == null) == (doc.Target.ItemId == null))
             throw new SkinFormatException("no-gear", $"Weapon {doc.Target.Weapon} needs exactly one of a gear id and an item id");
 
         // packed: a texture set straight on a material, which may be precompressed (Dds); a layer atlas may not.
@@ -142,6 +148,8 @@ public sealed class SkinPack : IDisposable
             if (string.IsNullOrWhiteSpace(m.Material)) throw new SkinFormatException("no-material", "Material override without a material name");
             // The plugin matches renderers by material name, so two overrides of one material would silently shadow each other.
             if (!names.Add(m.Material)) throw new SkinFormatException("duplicate-material", $"{m.Material}: more than one override");
+            if (m.Attached() is { } owner && (!doc.Attachments.Exists(a => a.Id == owner && a.Mesh != null) || m.Textures.Count > 0 || m.Wear != null))
+                throw new SkinFormatException("bad-material-target", $"{m.Material}: names no attachment with a model, or has textures of its own (they belong to the attachment's material)");
             foreach (var t in m.Textures.Values.Concat(m.Wear?.SelectMany(w => w.Textures.Values) ?? [])) File(t, m.Material, true, packed: true);
             Params(m.Params, m.Material);
             foreach (var l in m.Layers)
@@ -189,8 +197,12 @@ public sealed class SkinPack : IDisposable
                     throw new SkinFormatException("bad-trigger", $"{a.Id}: an effect needs an event trigger and seconds > 0");
                 Vec(e.Color ?? Array.Empty<float>(), 3, a.Id);
             }
-            if (a.Hologram != null && !Fraction(a.Hologram.Flicker))
-                throw new SkinFormatException("bad-vector", $"{a.Id}: hologram flicker 0 to 1");
+            if (a.Hologram is { } h)
+            {
+                if (!Fraction(h.Flicker) || !Fraction(h.Opacity) || !Fraction(h.Scanlines) || !Fraction(h.EdgeGlow))
+                    throw new SkinFormatException("bad-vector", $"{a.Id}: hologram flicker, opacity, scanlines and edge glow 0 to 1");
+                Vec(h.Color2, 3, a.Id);
+            }
             if (a.Charm is { } c)
             {
                 if (++charms > CharmRope.MaxPerGear)
@@ -232,9 +244,63 @@ public sealed class SkinPack : IDisposable
             }
         }
 
+        if (doc.Picture != null) File(doc.Picture, "picture", image: true);
+        if (doc.Character is { } person) Character(person);
+
+        // The character's fields and ranges (Character.cs); its skeleton is checked against the map when the model is read (CharacterRig.Check).
+        void Character(CharacterSkin c)
+        {
+            static void Bad(string code, string why) => throw new SkinFormatException(code, why);
+            void Model(CharacterModelFiles? m, string where)
+            {
+                if (m == null) return;
+                File(m.Descriptor, where);
+                File(m.Mesh, where);
+                if (head(m.Mesh) is { } mesh && !ForgeVisual.ImportedModelDescriptor.IsMeshFile(mesh)) Bad("bad-character-model", $"{where}: {m.Mesh} is not a Forge model mesh");
+                if (m.Textures.Count > ForgeVisual.ImportedModelDescriptor.MaxTextures) Bad("bad-character-model", $"{where}: more than {ForgeVisual.ImportedModelDescriptor.MaxTextures} textures");
+                foreach (var t in m.Textures) File(t, where, image: true);
+            }
+            Model(c.Model, "character model");
+            Model(c.Arms?.Model, "character arms");
+            if (c.Picture != null) File(c.Picture, "character picture", image: true);
+            var names = ForgeVisual.ClipRig.Names;
+            foreach (var (joint, bone) in c.Bones)
+                if (Array.IndexOf(names, joint) < 0 || string.IsNullOrWhiteSpace(bone)) Bad("bad-character-bones", $"{joint}: not a joint of the humanoid, or no bone");
+            if (c.Bones.Values.Distinct(StringComparer.Ordinal).Count() != c.Bones.Count) Bad("bad-character-bones", "one bone is mapped to two joints");
+            var missing = CharacterRig.Required.Where(j => !c.Bones.ContainsKey(j)).ToList();
+            if (missing.Count > 0) Bad("bad-character-bones", $"no bone for {string.Join(", ", missing)}");
+            var chains = c.Springs.Chains;
+            if (chains.Count > CharacterSkin.MaxChains) Bad("bad-character-spring", $"{chains.Count} spring chains; at most {CharacterSkin.MaxChains}");
+            var ids = new HashSet<string>();
+            foreach (var s in chains)
+            {
+                static bool In(float? v, float min, float max) => v is not { } x || x >= min && x <= max;
+                if (string.IsNullOrWhiteSpace(s.Id) || !ids.Add(s.Id) || string.IsNullOrWhiteSpace(s.Anchor) || !Enum.IsDefined(s.Kind))
+                    Bad("bad-character-spring", $"spring {s.Id}: an id of its own, an anchor bone and a kind");
+                if (s.Strands.Count is < 1 or > CharacterSkin.MaxStrands || s.Strands.Any(b => b.Count is < 2 or > CharacterSkin.MaxStrandBones || b.Any(string.IsNullOrWhiteSpace)))
+                    Bad("bad-character-spring", $"spring {s.Id}: 1 to {CharacterSkin.MaxStrands} strands of 2 to {CharacterSkin.MaxStrandBones} bones");
+                if (!In(s.Weight, 0.1f, 3) || !In(s.Damping, 0, 1) || !In(s.Stiffness, 0, 1) || !In(s.Gravity, 0, 3) || !In(s.Radius, 0, CharacterSkin.MaxRadius))
+                    Bad("bad-character-spring", $"spring {s.Id}: weight 0.1 to 3, damping and stiffness 0 to 1, gravity 0 to 3, radius 0 to {CharacterSkin.MaxRadius}");
+            }
+            if (c.Springs.Capsules.Count > CharacterSkin.MaxCapsules) Bad("bad-character-capsule", $"{c.Springs.Capsules.Count} capsules; at most {CharacterSkin.MaxCapsules}");
+            foreach (var k in c.Springs.Capsules)
+            {
+                if (!c.Bones.ContainsKey(k.Joint) || !(k.Radius is >= 0.005f and <= CharacterSkin.MaxRadius)) Bad("bad-character-capsule", $"capsule on {k.Joint}: a mapped joint and a radius 0.005 to {CharacterSkin.MaxRadius}");
+                Vec(k.A, 3, $"capsule on {k.Joint}");
+                Vec(k.B, 3, $"capsule on {k.Joint}");
+            }
+            if (c.Materials.Count > ForgeVisual.ImportedModelDescriptor.MaxMaterials) Bad("bad-character-material", $"more than {ForgeVisual.ImportedModelDescriptor.MaxMaterials} materials");
+            foreach (var m in c.Materials)
+                if (m.Shader is not (CharacterMaterial.Lit or CharacterMaterial.Toon) || (m.Params ?? new()).Values.Any(v => v.Length is < 1 or > 4 || !v.All(float.IsFinite)))
+                    Bad("bad-character-material", $"material {m.Name}: shader lit or toon, each parameter one to four finite numbers");
+        }
+
         CodeEffects.Validate(doc);
 
-        // Player colours: unique ids, each slot a colour this document has, no slot driven by two of them.
+        // Player colours: at most MaxPlayerColors (each travels in a teammate's look by its index), unique ids, each slot a colour this
+        // document has, no slot driven by two of them.
+        if (doc.PlayerColors is { Count: > MaxPlayerColors } many)
+            throw new SkinFormatException("too-many-player-colors", $"{many.Count} player colours; at most {MaxPlayerColors} in one skin");
         var colorIds = new HashSet<string>();
         var slots = new HashSet<(ColorSlotKind, string, int)>();
         foreach (var c in doc.PlayerColors ?? [])
@@ -243,9 +309,15 @@ public sealed class SkinPack : IDisposable
             if (string.IsNullOrWhiteSpace(c.Id) || !colorIds.Add(c.Id)) Bad("empty or repeated id");
             if (c.Slots.Count == 0) Bad("drives no colour");
             Vec(c.Default, 3, $"player colour {c.Id}");
-            foreach (var p in c.Palette ?? []) Vec(p, 3, $"player colour {c.Id}");
             foreach (var s in c.Slots)
             {
+                // A character's Tint and Emissive colours go to its materials by name.
+                if (doc.Character is { } who)
+                {
+                    if (s.Kind is not (ColorSlotKind.Tint or ColorSlotKind.Emissive) || !who.Materials.Exists(x => x.Name == s.Target)) Bad($"{s.Kind} of {s.Target} is not in this character");
+                    if (!slots.Add((s.Kind, s.Target, 0))) Bad($"{s.Kind} of {s.Target} is driven twice");
+                    continue;
+                }
                 var m = doc.Materials.Find(x => x.Material == s.Target);
                 var a = doc.Attachments.Find(x => x.Id == s.Target);
                 var exists = s.Kind switch
@@ -259,6 +331,18 @@ public sealed class SkinPack : IDisposable
                 };
                 if (!exists) Bad($"{s.Kind} of {s.Target} is not in this skin");
                 if (!slots.Add((s.Kind, s.Target, s.Kind == ColorSlotKind.EffectColor ? s.Effect : 0))) Bad($"{s.Kind} of {s.Target} is driven twice");
+            }
+        }
+
+        // Colour schemes: unique ids, each colour one of this skin's player colours.
+        var schemeIds = new HashSet<string>();
+        foreach (var x in doc.ColorSchemes ?? [])
+        {
+            if (string.IsNullOrWhiteSpace(x.Id) || !schemeIds.Add(x.Id)) throw new SkinFormatException("bad-color-scheme", $"colour scheme {x.Id}: empty or repeated id");
+            foreach (var (id, rgb) in x.Colors)
+            {
+                if (!colorIds.Contains(id)) throw new SkinFormatException("bad-color-scheme", $"colour scheme {x.Id}: {id} is not a player colour of this skin");
+                Vec(rgb, 3, $"colour scheme {x.Id}");
             }
         }
     }

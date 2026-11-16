@@ -1,11 +1,10 @@
-// Choosing the item to skin: the 3D view's title opens a gallery of every weapon, tool and item with thumbnails.
-import { Chip, Group, Popover, ScrollArea, Text, TextInput, UnstyledButton } from '@mantine/core';
-import { useHotkeys } from '@mantine/hooks';
-import { IconChevronDown, IconSearch } from '@tabler/icons-react';
+// Choosing the gear for a new skin: a gallery of every weapon, tool and item with thumbnails.
+import { Chip, Group, Loader, Modal, ScrollArea, Text, TextInput, UnstyledButton } from '@mantine/core';
+import { IconSearch } from '@tabler/icons-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { CatalogItem } from '../protocol';
 import { useItem, useStore } from '../store';
-import { galleryThumbOf, THUMB_EVENT } from '../viewport/thumbnails';
+import { requestItemThumbs, THUMB_EVENT, thumbComing, thumbOf } from '../viewport/thumbnails';
 import { lang, localCategory, localName, t, useLang } from '../i18n';
 
 /** Filter chips by slot, in this order (unknown slots last); a slot without a label here shows its id. */
@@ -33,15 +32,35 @@ export function useThumbs() {
   }, []);
 }
 
-function WeaponCard({ item, current, onPick }: { item: CatalogItem; current: boolean; onPick: () => void }) {
+function WeaponCard({ item, current, onPick }: { item: CatalogItem; current: boolean; onPick: (id: string) => void }) {
   const ref = useRef<HTMLButtonElement>(null);
   useEffect(() => {
     if (current) ref.current?.scrollIntoView({ block: 'nearest' });
   }, [current]);
-  const thumb = galleryThumbOf(item.id);
+  const thumb = thumbOf(item.id);
+  // A card scrolled into view is drawn before the others.
+  useEffect(() => {
+    if (thumb || !ref.current) return;
+    const seen = new IntersectionObserver((e) => e.some((x) => x.isIntersecting) && requestItemThumbs([item.id], true));
+    seen.observe(ref.current);
+    return () => seen.disconnect();
+  }, [item.id, thumb]);
   return (
-    <UnstyledButton ref={ref} className="weapon" aria-current={current} onClick={() => (void useStore.getState().selectWeapon(item.id), onPick())}>
-      <div className="thumb">{thumb ? <img src={thumb} alt="" /> : item.slot === 'ammo' ? 'AMMO' : ''}</div>
+    <UnstyledButton ref={ref} className="weapon" aria-current={current} onClick={() => onPick(item.id)}>
+      <div className="thumb">
+        {thumb ? (
+          <img src={thumb} alt="" />
+        ) : item.slot === 'ammo' ? (
+          'AMMO'
+        ) : (
+          thumbComing(item.id) && (
+            <span className="thumb-drawing">
+              <Loader size={12} color="gray" />
+              {t('gallery.drawing')}
+            </span>
+          )
+        )}
+      </div>
       <div style={{ minWidth: 0 }}>
         <div className="t1">
           {localName(item)}
@@ -55,13 +74,14 @@ function WeaponCard({ item, current, onPick }: { item: CatalogItem; current: boo
   );
 }
 
-function WeaponPicker({ onPick }: { onPick: () => void }) {
+function WeaponPicker({ onPick }: { onPick: (id: string) => void }) {
   const catalog = useStore((s) => s.catalog);
   const weaponId = useStore((s) => s.weaponId);
   const [q, setQ] = useState('');
   const [slot, setSlot] = useState<string>('all');
   const lang = useLang();
   useThumbs();
+  useEffect(() => requestItemThumbs(catalog.map((c) => c.id)), [catalog]);
   const slots = useMemo(() => {
     const order = Object.keys(SLOT_LABEL);
     const rank = (s: string) => (order.includes(s) ? order.indexOf(s) : order.length);
@@ -112,7 +132,9 @@ function WeaponPicker({ onPick }: { onPick: () => void }) {
         ))}
         {catalog.length > 0 && !groups.length && (
           <Text c="dimmed" size="sm" p="sm">
-            {t('leftRail.k8')}{q}{t('leftRail.k9')}
+            {t('leftRail.k8')}
+            {q}
+            {t('leftRail.k9')}
           </Text>
         )}
       </ScrollArea>
@@ -120,31 +142,27 @@ function WeaponPicker({ onPick }: { onPick: () => void }) {
   );
 }
 
-/** The current item's name; clicking it (or Ctrl+P) opens the gallery. */
+/** The gallery of every gear, opened from 「＋ 新建」: picking one makes a new skin for it. */
+export function GearGallery({ opened, onClose, onPick }: { opened: boolean; onClose: () => void; onPick: (id: string) => void }) {
+  return (
+    <Modal opened={opened} onClose={onClose} title={t('works.pickGear')} size={760} padding={0} classNames={{ body: 'gallery', header: 'gallery-head' }}>
+      <WeaponPicker onPick={(id) => (onClose(), onPick(id))} />
+    </Modal>
+  );
+}
+
+/** The open item's name over the 3D view. */
 export function WeaponTitle() {
   const item = useItem();
-  const [open, setOpen] = useState(false);
-  useHotkeys([['mod+p', () => setOpen((o) => !o)]]);
+  if (!item) return null;
   return (
-    <Popover opened={open} onChange={setOpen} position="bottom-start" width={720} shadow="xl" trapFocus>
-      <Popover.Target>
-        <UnstyledButton className="stage-title" aria-label={t('gallery.open')} onClick={() => setOpen((o) => !o)}>
-          <div className="name">
-            {item ? item.name : t('gallery.pick')}
-            <IconChevronDown size={22} className="chev" />
-          </div>
-          {item && (
-            <div className="sub">
-              {categoryOf(item)}
-              {lang() === 'zh' && item.nameZh ? ` · ${item.nameZh}` : ''}
-              {item.calibre ? ` · ${item.calibre}` : ''}
-            </div>
-          )}
-        </UnstyledButton>
-      </Popover.Target>
-      <Popover.Dropdown p={0} className="gallery">
-        <WeaponPicker onPick={() => setOpen(false)} />
-      </Popover.Dropdown>
-    </Popover>
+    <div className="stage-title">
+      <div className="name">{item.name}</div>
+      <div className="sub">
+        {categoryOf(item)}
+        {lang() === 'zh' && item.nameZh ? ` · ${item.nameZh}` : ''}
+        {item.calibre ? ` · ${item.calibre}` : ''}
+      </div>
+    </div>
   );
 }

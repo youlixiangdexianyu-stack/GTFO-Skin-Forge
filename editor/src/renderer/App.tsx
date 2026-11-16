@@ -1,38 +1,45 @@
 import { ActionIcon, Button, Drawer, Group, Progress, ScrollArea, Text, Tooltip } from '@mantine/core';
 import { Dropzone } from '@mantine/dropzone';
 import { useHotkeys } from '@mantine/hooks';
-import { IconArrowBackUp, IconArrowForwardUp, IconFileText, IconFolderDown } from '@tabler/icons-react';
+import { IconArrowBackUp, IconArrowForwardUp, IconFileText, IconFolderDown, IconListNumbers, IconListTree, IconStack2 } from '@tabler/icons-react';
 import { useEffect, useRef, useState } from 'react';
 import { Group as PanelGroup, Panel, Separator, useDefaultLayout } from 'react-resizable-panels';
-import { applyToGame, ensurePlugin, openProject } from './actions';
+import { applyToGame, ensurePlugin, importMesh, openProject } from './actions';
 import { useGameWarnings } from './gameLog';
+import { useProfile, useProfileSync } from './profile';
 import { baseName, call } from './protocol';
 import { forgetImage } from './frames';
 import { forgetTexture } from './viewport/textures';
-import { logText, useStore } from './store';
+import { logText, useStore, watchHeld } from './store';
 import { AttachInspector } from './ui/AttachInspector';
-import { RailHost } from './ui/InspectorTabs';
+import { InspectorTabs, RailHost } from './ui/InspectorTabs';
+import { CurrentWork, Library } from './ui/Library';
 import { LayerInspector, layerFromFiles } from './ui/DynamicInspector';
 import { CodeFxInspector } from './ui/CodeFxInspector';
 import { CheckDialog } from './ui/CheckDialog';
+import { Empty } from './ui/Features';
 import { StickerDialog } from './ui/StickerDialog';
 import { Welcome } from './ui/Welcome';
 import { HelpDocs } from './ui/HelpDocs';
 import { ExportModDialog } from './ui/ExportModDialog';
 import { SkinsReport } from './ui/SkinsReport';
-import { LeftPanel } from './ui/LeftRail';
+import { LeftRail } from './ui/LeftRail';
 import { LiveryInspector } from './ui/LiveryPanel';
-import { nativeFiles, SkinInspector, SoundInspector } from './ui/SkinInspector';
+import { droppedFolders, IMAGE_EXT, nativeFiles, SkinInspector, SoundInspector } from './ui/SkinInspector';
 import { Stage } from './ui/Stage';
 import { TopBar } from './ui/TopBar';
 import { focusSelection, setView, useViewStore } from './viewport/Viewport';
+import { liveryViewReady } from './viewport/liveryGpu';
+import { CharacterInspector, CharacterSteps } from './character/CharacterPanels';
+import { CharacterStage } from './character/CharacterStage';
+import { importModel, isCharacterModel } from './character/model';
+import { useCharacter } from './character/state';
 import { partLabel, t, useLang } from './i18n';
 
 function StatusBar({ onLog }: { onLog: () => void }) {
   const busy = useStore((s) => s.busy);
   // Backend progress only matters while the user waits on something (thumbnails load quietly in the background).
   const progress = useStore((s) => (s.busy || s.previewLoading ? s.progress : null));
-  const cache = useStore((s) => s.cache);
   const update = useStore((s) => s.update);
   const updateReady = useStore((s) => s.updateReady);
   const undo = useStore((s) => s.undo.length);
@@ -43,15 +50,19 @@ function StatusBar({ onLog }: { onLog: () => void }) {
   const saveError = useStore((s) => s.autosaveError);
   // Only plain status here; backend log lines stay in the log panel.
   const text = down ? t('app.k1') : (progress?.text ?? busy ?? t('app.k2'));
-  const developer = useStore((s) => s.prefs.developer);
+  const profile = useProfile();
+  const running = useStore((s) => !!s.game?.running);
   return (
     <footer className="status">
-      {developer && (
-        <Tooltip label={t('app.k3')}>
-          <ActionIcon variant="subtle" color="gray" size="sm" onClick={onLog} aria-label={t('app.k3')}>
-            <IconFileText size={14} />
-          </ActionIcon>
-        </Tooltip>
+      <Tooltip label={t('app.k3')}>
+        <ActionIcon variant="subtle" color="gray" size="sm" onClick={onLog} aria-label={t('app.k3')} data-tour="log">
+          <IconFileText size={14} />
+        </ActionIcon>
+      </Tooltip>
+      {profile?.pluginVersion && (
+        <span className={`hot ${running ? 'live' : ''}`} data-tour="hot-reload">
+          {running ? t('app.hotLive', { v0: profile.name }) : t('app.hotIdle', { v0: profile.name })}
+        </span>
       )}
       <span className="grow">{text}</span>
       {progress && <Progress w={120} size="xs" value={(progress.done / Math.max(1, progress.total)) * 100} />}
@@ -66,16 +77,6 @@ function StatusBar({ onLog }: { onLog: () => void }) {
           <Button size="compact-xs" color="flare" onClick={() => void window.forge.restartToUpdate()}>
             {t('app.restartUpdate')}
           </Button>
-        </Tooltip>
-      )}
-      {cache && (
-        <Tooltip label={t('app.k4')}>
-          <Group gap={6} wrap="nowrap">
-            <span>
-              {t('app.k5')} {cache.done}/{cache.total}
-            </span>
-            <Progress w={90} size="xs" color="gray" value={(cache.done / Math.max(1, cache.total)) * 100} />
-          </Group>
         </Tooltip>
       )}
       {saveError ? (
@@ -119,19 +120,39 @@ function LogDrawer({ opened, onClose }: { opened: boolean; onClose: () => void }
   );
 }
 
-/** Dropping a folder or files anywhere matches textures; a project file opens. */
+const IMAGE = new RegExp(`\\.(${IMAGE_EXT.join('|')})$`, 'i');
+
+/** Dropping anywhere: a project file opens, a model goes to the tab it belongs to, images and folders are matched to parts, and
+ *  any other file is refused by name. */
 function onGlobalDrop(files: File[]) {
-  const paths = files.map((f) => window.forge.pathOf(f)).filter(Boolean);
-  if (!paths.length) return;
+  const dropped = files.map((f) => ({ path: window.forge.pathOf(f), folder: droppedFolders.has(f) })).filter((d) => d.path);
+  if (!dropped.length) return;
+  const paths = dropped.map((d) => d.path);
   const s = useStore.getState();
   const project = paths.find((p) => /\.(forgeskinproj|gtfoskin|gtfdyn)$/i.test(p));
   if (project) return void s.loadProject(project);
-  if (paths.some((p) => /\.(glb|gltf)$/i.test(p))) return s.toast('info', t('app.k14'));
+  const model = paths.find((p) => /\.(glb|gltf|vrm)$/i.test(p));
+  if (model) return void dropModel(model);
   // A video or gif dropped while a part is selected becomes a dynamic layer on it (still images stay textures).
   const part = s.selection?.kind === 'part' ? s.catalog.find((c) => c.id === s.weaponId)?.parts.find((p) => p.id === s.selection!.id) : undefined;
   const moving = paths.filter((p) => /\.(mp4|webm|mov|m4v|gif)$/i.test(p));
   if (part?.materials[0] && moving.length && layerFromFiles(part.materials[0], part.id, moving)) return s.toast('ok', t('app.droppedLayer', { v0: partLabel(part) }));
-  void s.matchPaths(paths);
+  const textures = dropped.filter((d) => d.folder || IMAGE.test(d.path)).map((d) => d.path);
+  if (!textures.length) return s.toast('error', t('errors.unsupportedFile'));
+  void s.matchPaths(textures);
+}
+
+/** A dropped model opens in the tab it belongs to: a character (a .vrm, or a .glb/.gltf with VRM data or a whole humanoid skeleton) as
+ *  the character to import, anything else as an attachment on the weapon. A file that cannot be read stays with the open tab. */
+async function dropModel(path: string) {
+  const character = /\.vrm$/i.test(path) || (await isCharacterModel(path));
+  const mode = character === null ? useCharacter.getState().mode : character ? 'character' : 'weapon';
+  useCharacter.setState({ mode });
+  if (mode === 'character') return importModel(path);
+  if (!useStore.getState().weaponId) return useStore.getState().toast('info', t('app.modelNeedsWeapon'));
+  // Coming from the character tab the weapon view mounts again: the new attachment is selected only once the view is up.
+  await liveryViewReady().catch(() => undefined);
+  await importMesh(false, path);
 }
 
 function useShortcuts() {
@@ -195,9 +216,11 @@ function useAutoPlugin() {
   }, [due, profile?.path, running]);
 }
 
-/** The right panel shows whatever is selected; with nothing selected, the skin as a whole. */
+/** The right panel shows whatever is selected; with nothing selected, the skin as a whole; with no work open, only how to get one. */
 function Inspector() {
   const kind = useStore((s) => s.selection?.kind);
+  const open = useStore((s) => !!s.weaponId);
+  if (!open) return <Empty>{t('app.nothingOpen')}</Empty>;
   if (kind === 'attachment') return <AttachInspector />;
   if (kind === 'layer') return <LayerInspector />;
   if (kind === 'livery') return <LiveryInspector />;
@@ -206,17 +229,21 @@ function Inspector() {
   return <SkinInspector />;
 }
 
-/** 自动应用: while the game runs, re-apply two seconds after the last change. Asked during a build, it runs once that build
- * is done (applyToGame queues it); other busy steps end in an edit, which starts the wait again. */
+/** 自动应用 (a setting): while the game runs, the work in use in the chosen profile is applied again two seconds after the last
+ * change; a work not in use waits for its 应用. Asked during a build, it runs once that build is done (applyToGame queues it);
+ * other busy steps end in an edit, which starts the wait again. */
 function useAutoApply() {
   const doc = useStore((s) => s.doc);
   const fileEpoch = useStore((s) => s.fileEpoch);
-  const on = useStore((s) => s.prefs.autoApply && !!s.game?.running);
+  const on = useStore((s) => s.prefs.autoApply && !!s.game?.running && s.installed.some((p) => p.id === s.doc.id && p.inUse));
   const opened = useRef(doc.id);
+  const seen = useRef({ doc, fileEpoch });
   useEffect(() => {
-    // Opening another skin or item is not an edit.
+    // Only an edit (the document or a file it uses) applies: not opening another skin, nor the work coming into use (its 应用).
+    const edited = seen.current.doc !== doc || seen.current.fileEpoch !== fileEpoch;
+    seen.current = { doc, fileEpoch };
     if (opened.current !== doc.id) return void (opened.current = doc.id);
-    if (!on) return;
+    if (!on || !edited) return;
     const id = setTimeout(() => {
       if (!useStore.getState().previewLoading) void applyToGame(true);
     }, 2000);
@@ -233,13 +260,13 @@ function useWatchedFiles() {
         paths.forEach((p) => (forgetTexture(p), forgetImage(p)));
         const s = useStore.getState();
         s.log(t('app.filesChanged', { v0: paths.map(baseName).join(', ') }));
-        useStore.setState({ fileEpoch: s.fileEpoch + 1 });
+        useStore.setState({ fileEpoch: s.fileEpoch + 1, unreadable: s.unreadable.filter((p) => !paths.includes(p)) });
       }),
     [],
   );
   useEffect(() => {
     const id = setTimeout(() => {
-      if (useStore.getState().backendDown) return;
+      if (useStore.getState().backendDown || watchHeld) return;
       void call('project.files', { project: doc }).then(
         ({ files }) => window.forge.watchFiles(files),
         () => undefined,
@@ -249,64 +276,95 @@ function useWatchedFiles() {
   }, [doc]);
 }
 
+/** The left panel: two side tabs on the window's edge, the works (profile, category, list) and the open work's structure (parts, or a
+ * character's steps), each the panel's full height; the open work's name stays on top of both. */
+function LeftColumn({ character }: { character: boolean }) {
+  const [rail, setRail] = useState<HTMLElement | null>(null);
+  const count = useStore((s) => (s.weaponId ? (s.works[s.weaponId]?.length ?? 0) : 0));
+  const characters = useStore((s) => s.characters.length);
+  return (
+    <div className="inspector-pane">
+      <nav className="insp-rail left" ref={setRail} />
+      <div className="left-body">
+        <CurrentWork />
+        <RailHost.Provider value={rail}>
+          <InspectorTabs
+            id="left"
+            side="left"
+            tabs={[
+              { id: 'works', label: t('works.tab'), icon: IconStack2, count: character ? characters : count, content: <Library /> },
+              character
+                ? { id: 'parts', label: t('works.tabSteps'), icon: IconListNumbers, content: <CharacterSteps /> }
+                : { id: 'parts', label: t('works.tabParts'), icon: IconListTree, content: <LeftRail /> },
+            ]}
+          />
+        </RailHost.Provider>
+      </div>
+    </div>
+  );
+}
+
 export function App() {
   useLang(); // the whole tree re-renders in the new language
   const [log, setLog] = useState(false);
   const layout = useDefaultLayout({ id: 'sf.layout', storage: localStorage });
   const [rail, setRail] = useState<HTMLElement | null>(null);
-  const [leftRail, setLeftRail] = useState<HTMLElement | null>(null);
-  const developer = useStore((s) => s.prefs.developer);
+  const character = useCharacter((s) => s.mode === 'character');
   useShortcuts();
   useEffect(() => void useStore.getState().init(), []);
   useGameRunning();
   useAutoPlugin();
+  useProfileSync();
   useAutoApply();
   useWatchedFiles();
+  // The whole window takes dropped files; a target inside it (a texture slot) takes its own first. The veil only shows
+  // and never catches the drop, so the target under the pointer gets it.
   return (
-    <div className="shell">
-      <TopBar />
-      <PanelGroup className="panes" orientation="horizontal" {...layout}>
-        <Panel id="left" defaultSize={300} minSize={240} maxSize={460}>
-          <div className="inspector-pane">
-            <nav className="insp-rail left" ref={setLeftRail} />
-            <div className="left-body">
-              <RailHost.Provider value={leftRail}>
-                <LeftPanel />
-              </RailHost.Provider>
+    <Dropzone className="app-drop" unstyled onDrop={onGlobalDrop} getFilesFromEvent={nativeFiles} activateOnClick={false} activateOnKeyboard={false} enablePointerEvents>
+      <div className="shell">
+        <TopBar />
+        <PanelGroup className="panes" orientation="horizontal" {...layout}>
+          <Panel id="left" defaultSize={330} minSize={260} maxSize={520}>
+            <LeftColumn character={character} />
+            <ExportModDialog />
+            <SkinsReport />
+            <CheckDialog />
+            <StickerDialog />
+            <Welcome />
+            <HelpDocs />
+          </Panel>
+          <Separator className="sep-v" />
+          <Panel id="stage" minSize={400}>
+            {character ? <CharacterStage /> : <Stage />}
+          </Panel>
+          <Separator className="sep-v" />
+          <Panel id="right" defaultSize={360} minSize={320} maxSize={560}>
+            <div className="inspector-pane">
+              <aside className="inspector">
+                {character ? (
+                  <CharacterInspector />
+                ) : (
+                  <RailHost.Provider value={rail}>
+                    <Inspector />
+                  </RailHost.Provider>
+                )}
+              </aside>
+              <nav className="insp-rail" ref={setRail} />
             </div>
+          </Panel>
+        </PanelGroup>
+        <StatusBar onLog={() => setLog(!log)} />
+        <LogDrawer opened={log} onClose={() => setLog(false)} />
+      </div>
+      <Dropzone.Accept>
+        <div className="drop-host">
+          <div className="drop-veil">
+            <IconFolderDown size={44} stroke={1.3} color="var(--flare)" />
+            <b>{t('app.k15')}</b>
+            <Text c="dimmed">{t('app.k16')}</Text>
           </div>
-          <ExportModDialog />
-          <SkinsReport />
-          <CheckDialog />
-          <StickerDialog />
-          <Welcome />
-          <HelpDocs />
-        </Panel>
-        <Separator className="sep-v" />
-        <Panel id="stage" minSize={400}>
-          <Stage />
-        </Panel>
-        <Separator className="sep-v" />
-        <Panel id="right" defaultSize={360} minSize={300} maxSize={560}>
-          <div className="inspector-pane">
-            <aside className="inspector">
-              <RailHost.Provider value={rail}>
-                <Inspector />
-              </RailHost.Provider>
-            </aside>
-            <nav className="insp-rail" ref={setRail} />
-          </div>
-        </Panel>
-      </PanelGroup>
-      <StatusBar onLog={() => setLog(!log)} />
-      <LogDrawer opened={log && developer} onClose={() => setLog(false)} />
-      <Dropzone.FullScreen onDrop={onGlobalDrop} getFilesFromEvent={nativeFiles} activateOnClick={false} zIndex={300}>
-        <div className="drop-veil">
-          <IconFolderDown size={44} stroke={1.3} color="var(--flare)" />
-          <b>{t('app.k15')}</b>
-          <Text c="dimmed">{t('app.k16')}</Text>
         </div>
-      </Dropzone.FullScreen>
-    </div>
+      </Dropzone.Accept>
+    </Dropzone>
   );
 }

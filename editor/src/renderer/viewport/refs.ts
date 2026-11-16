@@ -1,7 +1,8 @@
 // Mutable handles shared by the viewport components (not React state: they change every frame or hold three objects).
 import type CameraControls from 'camera-controls';
-import { useEffect, useState } from 'react';
-import { Box3, Matrix4, Vector3, type Camera, type Group, type Mesh, type MeshStandardMaterial, type Object3D } from 'three';
+import type { RootState } from '@react-three/fiber';
+import { useEffect, useSyncExternalStore } from 'react';
+import { Box3, Matrix4, Raycaster, Vector2, Vector3, type Camera, type Group, type Intersection, type Material, type Mesh, type MeshStandardMaterial, type Object3D } from 'three';
 import type { PlayMode, Trigger } from '../protocol';
 import type { ThreeTRS } from '../space';
 
@@ -13,17 +14,23 @@ export const viewRefs = {
   transformKey: new Map<Object3D, { part: string; path: string | null }>(),
   nodeToPart: new Map<Object3D, string>(),
   attachments: new Map<string, Group>(),
-  /** The 3D view's material per game material name, with what it shows now (livery, layers); the skin thumbnail copies them. */
+  /** The 3D view's material per game material name, with what it shows now (livery, layers); code effects paint over them. */
   materials: null as Map<string, MeshStandardMaterial> | null,
   /** Vanilla local pose of every node of the weapon model, captured at load. */
   vanilla: new WeakMap<Object3D, ThreeTRS>(),
   /** Pose the preview starts from: vanilla plus the preview-only ammo display offset (a translation in parent space). */
   display: new WeakMap<Object3D, ThreeTRS>(),
   camera: null as Camera | null,
+  /** The 3D view's canvas state (react-three-fiber), for a render at another size. */
+  three: null as (() => RootState) | null,
   controls: null as CameraControls | null,
+  /** The transform gizmo: a handle under the pointer (`axis`) or being dragged keeps clicks from selecting. */
+  gizmo: null as { axis: string | null; dragging: boolean } | null,
   modalActive: false,
   /** Clicks right after a modal confirm must not change the selection. */
   quietUntil: 0,
+  /** Counts the mappings of the weapon's part nodes (sceneMapped). */
+  sceneVersion: 0,
 };
 
 /** Preview of game events: when each last happened (performance.now ms), and the kill count for kill screens. */
@@ -36,6 +43,28 @@ export const previewEvents = {
 
 export type CharmMotion = 'shake' | 'run' | 'turn';
 
+/** What the view is still loading (models, pictures, fonts, a charm's rest pose); the card window draws once nothing is left. */
+export const loading = { count: 0 };
+
+/** Counts `p` in `loading` until it settles, and returns it. */
+export function track<T>(p: Promise<T>): Promise<T> {
+  loading.count++;
+  p.then(
+    () => loading.count--,
+    () => loading.count--,
+  );
+  return p;
+}
+
+/** A Suspense fallback that counts as loading while it shows (a model still on its way). */
+export function Loading() {
+  useEffect(() => {
+    loading.count++;
+    return () => void loading.count--;
+  }, []);
+  return null;
+}
+
 /** Plays an event in the 3D view exactly as the game would trigger it. */
 export function simulate(t: Trigger) {
   previewEvents.at[t] = performance.now();
@@ -47,13 +76,7 @@ export function simulate(t: Trigger) {
  * `always` runs from `since`; an event-started clip shows the base until its event and restarts on a repeat event.
  * Play: loop forever, once (an `always` clip then holds its last frame), or loop for `seconds`.
  */
-export function playTime(
-  trigger: Trigger | null | undefined,
-  play: PlayMode | null | undefined,
-  seconds: number | null | undefined,
-  duration: number,
-  since: number,
-): number | null {
+export function playTime(trigger: Trigger | null | undefined, play: PlayMode | null | undefined, seconds: number | null | undefined, duration: number, since: number): number | null {
   const always = !trigger || trigger === 'always';
   const start = always ? since : previewEvents.at[trigger];
   if (start === undefined) return null;
@@ -74,16 +97,16 @@ const key = (part: string, path?: string | null) => `${part}|${path ?? ''}`;
 /** Fired when an attachment's 3D object is registered in `viewRefs.attachments` (after its model has loaded). */
 export const ATTACHMENT_EVENT = 'sf:attachment';
 
-/** Re-renders when the weapon's part nodes are mapped; the value changes with each mapping. */
-export function useSceneVersion(): number {
-  const [version, setVersion] = useState(0);
-  useEffect(() => {
-    const f = () => setVersion((v) => v + 1);
-    window.addEventListener(SCENE_EVENT, f);
-    return () => window.removeEventListener(SCENE_EVENT, f);
-  }, []);
-  return version;
+/** Marks the weapon's part nodes as mapped: bumps the scene version and fires SCENE_EVENT. */
+export function sceneMapped() {
+  viewRefs.sceneVersion++;
+  window.dispatchEvent(new Event(SCENE_EVENT));
 }
+
+const onScene = (f: () => void) => (window.addEventListener(SCENE_EVENT, f), () => window.removeEventListener(SCENE_EVENT, f));
+/** Re-renders when the weapon's part nodes are mapped; the value changes with each mapping. It reads the version, so a
+ * component that mounts in the same commit as the model (after its mapping) still sees it. */
+export const useSceneVersion = (): number => useSyncExternalStore(onScene, () => viewRefs.sceneVersion);
 
 /** Whether `o` starts another part than `part`: one of its nodes or its root transform. */
 function otherPart(part: string, o: Object3D): boolean {
@@ -114,10 +137,45 @@ export function ownMeshes(obj: Object3D): Mesh[] {
   return obj.children.filter((c): c is Mesh => (c as Mesh).isMesh && !viewRefs.transformKey.has(c) && !viewRefs.nodeToPart.has(c));
 }
 
-/** Whether `o` is drawn: it and every parent are visible. */
+/** Whether `o` is drawn: it and every parent are visible (a hologram's flicker drop-out still counts as drawn). */
 export function shown(o: Object3D): boolean {
-  for (let x: Object3D | null = o; x; x = x.parent) if (!x.visible) return false;
+  for (let x: Object3D | null = o; x; x = x.parent) if (!x.visible && !x.userData.sfFlicker) return false;
   return true;
+}
+
+/** The meshes of the gear and its attachments the 3D view draws now. */
+export function drawnMeshes(): Mesh[] {
+  const out: Mesh[] = [];
+  viewRefs.root?.traverse((o) => {
+    const m = o as Mesh;
+    if (m.isMesh && shown(m) && (m.material as Material).visible !== false) out.push(m);
+  });
+  return out;
+}
+
+const screenRay = new Raycaster();
+/** Hits on `objects` (not their children) under a client-space point of the 3D view's canvas, nearest first. */
+export function hitsAt(canvas: HTMLElement, x: number, y: number, objects: Object3D[], ray = screenRay): Intersection[] {
+  const cam = viewRefs.camera;
+  if (!cam) return [];
+  const r = canvas.getBoundingClientRect();
+  ray.setFromCamera(new Vector2(((x - r.left) / r.width) * 2 - 1, -((y - r.top) / r.height) * 2 + 1), cam);
+  return ray.intersectObjects(objects, false);
+}
+
+/** The gear's surface (attachments left out) under a client point of the canvas: the point and the part, with the world
+ * normal turned to the camera (a face seen from behind counts from the side it is seen from). */
+export function gearSurfaceAt(canvas: HTMLElement, x: number, y: number): { point: Vector3; normal: Vector3; part: string } | null {
+  const hit = hitsAt(
+    canvas,
+    x,
+    y,
+    drawnMeshes().filter((m) => pickOf(m)?.kind === 'part'),
+  )[0];
+  if (!hit?.face || !viewRefs.camera) return null;
+  const normal = hit.face.normal.clone().transformDirection(hit.object.matrixWorld);
+  if (normal.dot(viewRefs.camera.getWorldPosition(new Vector3()).sub(hit.point)) < 0) normal.negate();
+  return { point: hit.point.clone(), normal, part: pickOf(hit.object)!.id };
 }
 
 /** The transform a part layout entry or an attachment anchor names: (part, path) exactly as preview.weapon lists it. */
@@ -140,8 +198,10 @@ export function layoutTarget(part: string, path?: string | null): { part: string
   return null;
 }
 
-/** Anchor transform of an attachment: the transform at (part, path), else the part's layout target. */
+/** Anchor transform of an attachment: the transform at (part, path), else the part's layout target. The "part" of an
+ * attachment's model (store attachmentMaterial) is the model's own frame, which its paint is placed in. */
 export function anchorObject(part: string, path?: string | null): Object3D | null {
+  if (part.startsWith('attachment:')) return viewRefs.attachments.get(part.slice('attachment:'.length))?.children[0] ?? null;
   return partTarget(part, path) ?? layoutTarget(part)?.obj ?? null;
 }
 
@@ -176,11 +236,14 @@ export function walkGear(o: Object3D, fn: (o: Object3D) => void) {
 }
 
 /** The box in `frame`'s local space around `part`'s models, leaving out other parts' nodes, attachments and models the
- * game does not show; empty when the part has no model. */
-export function partBox(part: string, frame: Object3D): Box3 {
+ * game does not show; empty when the part has no model. With `keep`, only the vertices it keeps (in `frame`'s space) count:
+ * the box of a slice of the part. */
+export function partBox(part: string, frame: Object3D, keep?: (p: Vector3) => boolean): Box3 {
   frame.updateWorldMatrix(true, true);
   const inv = new Matrix4().copy(frame.matrixWorld).invert();
-  const m = new Matrix4(), p = new Vector3(), box = new Box3();
+  const m = new Matrix4(),
+    p = new Vector3(),
+    box = new Box3();
   const walk = (o: Object3D) => {
     if (o.name.startsWith('attachment:') || (viewRefs.nodeToPart.get(o) ?? part) !== part || o.userData.sfUnmapped || o.userData.sfExtraAmmo) return;
     const mesh = o as Mesh;
@@ -188,7 +251,10 @@ export function partBox(part: string, frame: Object3D): Box3 {
       if (!mesh.geometry.boundingBox) mesh.geometry.computeBoundingBox();
       const b = mesh.geometry.boundingBox!;
       m.multiplyMatrices(inv, mesh.matrixWorld);
-      for (let i = 0; i < 8; i++) box.expandByPoint(p.set(i & 1 ? b.max.x : b.min.x, i & 2 ? b.max.y : b.min.y, i & 4 ? b.max.z : b.min.z).applyMatrix4(m));
+      if (keep) {
+        const pos = mesh.geometry.getAttribute('position');
+        for (let i = 0; i < pos.count; i++) if (keep(p.fromBufferAttribute(pos, i).applyMatrix4(m))) box.expandByPoint(p);
+      } else for (let i = 0; i < 8; i++) box.expandByPoint(p.set(i & 1 ? b.max.x : b.min.x, i & 2 ? b.max.y : b.min.y, i & 4 ? b.max.z : b.min.z).applyMatrix4(m));
     }
     o.children.forEach(walk);
   };
@@ -222,4 +288,49 @@ export function partOf(obj: Object3D | null): string | null {
     if (p) return p;
   }
   return null;
+}
+
+export type Pick = { kind: 'attachment'; id: string } | { kind: 'part'; id: string };
+
+/** What a hit stands for: the attachment it belongs to (its model, screen, charm chain or hanging point), else the part. */
+export function pickOf(obj: Object3D): Pick | null {
+  for (let o: Object3D | null = obj; o; o = o.parent) if (o.name.startsWith('attachment:')) return { kind: 'attachment', id: o.name.slice('attachment:'.length) };
+  const part = partOf(obj);
+  return part ? { kind: 'part', id: part } : null;
+}
+
+const PICK_RADII = [4, 8]; // px
+
+/**
+ * What a click or hover at a client point of the canvas picks: the nearest drawn surface. Thin attachments (wire shapes,
+ * rings, a charm's chain) are hard to hit exactly, so one within a few pixels wins when nothing is in front of it there.
+ */
+export function pickAt(canvas: HTMLElement, x: number, y: number): { hit: Intersection; pick: Pick } | null {
+  const meshes = drawnMeshes();
+  const at = (px: number, py: number, list: Object3D[]) => {
+    const hit = hitsAt(canvas, px, py, list)[0];
+    const pick = hit && pickOf(hit.object);
+    return pick ? { hit, pick } : null;
+  };
+  const direct = at(x, y, meshes);
+  if (direct?.pick.kind === 'attachment') return direct;
+  const attached = meshes.filter((m) => pickOf(m)?.kind === 'attachment');
+  for (const r of PICK_RADII)
+    for (let i = 0; i < 8; i++) {
+      const px = x + r * Math.cos((i * Math.PI) / 4),
+        py = y + r * Math.sin((i * Math.PI) / 4);
+      if (!at(px, py, attached)) continue;
+      const near = at(px, py, meshes);
+      if (near?.pick.kind === 'attachment') return near;
+    }
+  return direct;
+}
+
+/** The meshes a selection or hover outlines: a part's own (not the attachments mounted on it), or an attachment's. */
+export function outlinedMeshes(s: { kind: 'part'; id: string; sub?: string | null } | { kind: 'attachment'; id: string } | null): Mesh[] {
+  const out: Mesh[] = [];
+  const add = (o: Object3D) => void ((o as Mesh).isMesh && shown(o) && !o.userData.sfFxShell && out.push(o as Mesh));
+  if (s?.kind === 'part') selectedObjects(s.id, s.sub).forEach((n) => walkGear(n, add));
+  if (s?.kind === 'attachment') viewRefs.attachments.get(s.id)?.traverse(add);
+  return out;
 }

@@ -7,12 +7,12 @@ using UnityEngine;
 
 namespace ForgeSkin.Plugin;
 
-// The skin picker, drawn by ForgeCore's UI in the lobby's loadout pop-up: the SKINS lobby button opens it.
-// One slot per gear that has a loaded skin (a gear with several installed skins lists them all; the choice is kept per gear, and the
-// skins for every gear stay on under it); the SKINS tab picks its skin (or the original look), with a picture of the gear in the
-// card in focus (Previews), the COLOURS tab the
-// player's colours of the skin it wears (the author's suggestions, a row of hues, and back to the skin's own colour), the ADJUST tab
-// the numbers and colours the skin's code effects let the player change.
+// The skin picker, drawn by ForgeCore's UI in the lobby's loadout pop-up: the SKINS lobby button opens it, one screen with no tabs.
+// Left, one slot per gear that has a loaded skin (and the character): which thing. Middle, a grid of its looks, the original look first,
+// each card with a picture of the thing in it (Previews): a press wears it (the choice is kept per gear, and the skins for every gear stay
+// on under it). Right, the details and panel of the card under the cursor, else of the look worn: its colour schemes (the author's
+// colours, each scheme the author added, and the player's own, which opens a row of swatches per colour) and what its code effects let
+// the player change. ForgeSkin's own switches sit behind the title bar's gear.
 sealed class Picker : PickerSource
 {
     static readonly Picker Instance = new();
@@ -21,8 +21,8 @@ sealed class Picker : PickerSource
 
     readonly List<string> _keys = new(); // the slots: target keys with a loaded skin, read when the picker opens
     readonly List<string> _tabs = new();
-    // The colours tab of the chosen slot: (player colour, its colour or null for the skin's own).
-    readonly List<(PlayerColor Colour, float[]? Rgb)> _colours = new();
+    // The skin whose own colours are open (its MINE scheme was pressed): a row of swatches per colour. Closed by another scheme or skin.
+    Skin? _mine;
 
     public static void Register()
     {
@@ -41,27 +41,32 @@ sealed class Picker : PickerSource
         if (!UIKit.IsShowing(this))
         {
             _keys.Clear();
-            _keys.AddRange(Skins.Candidates.Keys.OrderBy(Name, StringComparer.CurrentCultureIgnoreCase));
+            // The character first (only with a character pack installed), then the gear by name.
+            _keys.AddRange(Skins.Candidates.Keys.OrderBy(k => k != CharacterSkin.Target).ThenBy(Name, StringComparer.CurrentCultureIgnoreCase));
         }
         UIKit.TogglePicker(bar, this);
     }
 
     static string T(string key, params object[] args) => _ui.Text(key, args);
 
-    public override void Closed() => Previews.Cancel();
+    public override void Closed()
+    {
+        Previews.Drop();
+        _mine = _shown = null;
+    }
 
     public override string SlotsHeader => T("picker.slots");
     public override int SlotCount => _keys.Count;
     public override PickerCard? ClearCard => null;
+    public override PickerLayout Layout => PickerLayout.Grid;
+    public override bool NumberSlots => false;
 
     public override IReadOnlyList<string> Tabs
     {
         get
         {
             _tabs.Clear();
-            _tabs.Add(T("picker.skins"));
-            _tabs.Add(T("picker.colours"));
-            _tabs.Add(T("picker.adjust"));
+            _tabs.Add(T("picker.title"));
             return _tabs;
         }
     }
@@ -69,6 +74,7 @@ sealed class Picker : PickerSource
     // The game's own name of the gear behind a target key (its gear or item block), else the key.
     static string Name(string key)
     {
+        if (key == CharacterSkin.Target) return T("picker.character");
         if (SkinnedGear.RangeOf(key) is { } range) return range.PublicGearName;
         if (key.StartsWith("item:", StringComparison.Ordinal) && uint.TryParse(key.AsSpan(5), out var item) && ItemDataBlock.GetBlock(item) is { } block)
             return block.publicName;
@@ -80,20 +86,37 @@ sealed class Picker : PickerSource
     static Skin? Worn(string key) => Skins.Targets.TryGetValue(key, out var id) ? Skins.ById.GetValueOrDefault(id) : null;
     static string Title(Skin skin) => skin.Doc.Name.Length > 0 ? skin.Doc.Name : skin.Doc.Id;
 
-    // How many code-effect values the skin's author lets the player change (the ADJUST tab's rows).
-    static int Tweaks(Skin skin) => (skin.Doc.CodeEffects ?? new()).Sum(e => e.PlayerTweaks is { } tw ? tw.Params.Count + tw.Colors.Count + tw.Transform.Count : 0);
+    // A card's line under the name: the author.
+    static string Author(Skin skin) => skin.Doc.Author.Length > 0 ? T("picker.by", skin.Doc.Author) : "";
 
-    // The category line of a skin's card: its author, and that it can be adjusted.
-    static string Subtitle(Skin skin) =>
-        string.Join(" · ", new[] { skin.Doc.Author, Tweaks(skin) > 0 ? T("picker.adjustable") : "" }.Where(s => s.Length > 0));
-
-    // A slot shows the gear's own icon as the game drew it, in the skin it wears (ForgeSkin redraws it when that changes).
+    // A gear slot shows the game's own loadout icon of the gear (it wears what the gear wears); the CHARACTER slot shows the default
+    // avatar icon. A tick while it wears a skin.
     public override PickerCard SlotCard(int slot, bool chosen)
     {
         if (Key(slot) is not { } key) return new PickerCard();
-        UnityEngine.Sprite? icon = null;
-        if (SkinnedGear.RangeOf(key) is { } range && GearIconRendering.TryGetGearIconSprite(range.GetChecksum(), out var sprite)) icon = sprite;
-        return new PickerCard { Title = Name(key), Icon = icon };
+        var card = new PickerCard { Title = Name(key), Equipped = Worn(key) != null ? 1 : 0 };
+        if (key == CharacterSkin.Target)
+        {
+            card.Icon = CharacterIcon();
+            return card;
+        }
+        card.Icon = Previews.GameIcon(key);
+        return card;
+    }
+
+    // The CHARACTER slot's icon, carried in the assembly (rendered from Native/character-slot.svg); read once.
+    static byte[]? _characterIcon;
+
+    static UnityEngine.Sprite? CharacterIcon()
+    {
+        if (_characterIcon == null)
+        {
+            using var stream = typeof(Picker).Assembly.GetManifestResourceStream("ForgeSkin.character-slot.png")!;
+            using var bytes = new MemoryStream();
+            stream.CopyTo(bytes);
+            _characterIcon = bytes.ToArray();
+        }
+        return UIKit.LoadIcon(_characterIcon, "ForgeSkin.character-slot");
     }
 
     public override IReadOnlyList<PickerCard> Entries(int tab) => Array.Empty<PickerCard>();
@@ -102,54 +125,132 @@ sealed class Picker : PickerSource
     {
         if (Key(slot) is not { } key) return Array.Empty<PickerCard>();
         var worn = Worn(key);
-        if (tab == Adjust) return Array.Empty<PickerCard>();
-        if (tab == 0)
-        {
-            // Every card asks for its picture (Previews makes them one gear model at a time; the picker is refreshed as each arrives).
-            var cards = new List<PickerCard> { new() { Title = T("picker.original"), Equipped = worn == null ? 1 : 0, Icon = Previews.Ask(key, null, out _, out _) } };
-            foreach (var skin in SkinsOf(key))
-                cards.Add(new PickerCard { Title = Title(skin), Subtitle = Subtitle(skin), Equipped = skin == worn ? 1 : 0, Icon = Previews.Ask(key, skin, out _, out _) });
-            return cards;
-        }
-        Colours(worn);
-        var picks = worn == null ? null : Skins.ColoursOf(worn.Doc.Id);
-        return _colours.Select(c =>
-        {
-            var current = picks?.GetValueOrDefault(c.Colour.Id) ?? c.Colour.Default;
-            var shown = c.Rgb ?? c.Colour.Default;
-            return new PickerCard
-            {
-                Title = c.Colour.Name,
-                Subtitle = c.Rgb == null ? T("picker.default") : c.Colour.Palette?.Any(p => Same(p, c.Rgb)) == true ? T("picker.suggested") : T("picker.more"),
-                Accent = Display(shown),
-                Swatch = Display(shown),
-                Equipped = (c.Rgb == null ? picks?.ContainsKey(c.Colour.Id) != true : Same(current, c.Rgb)) ? 1 : 0,
-            };
-        }).ToList();
+        // Each skin's card shows its pack's picture (read in the background; the picker is refreshed as each arrives).
+        var cards = new List<PickerCard> { new() { Title = T("picker.original"), Equipped = worn == null ? 1 : 0, Icon = Picture(key, null) } };
+        foreach (var skin in SkinsOf(key))
+            cards.Add(new PickerCard { Title = Title(skin), Subtitle = Author(skin), Equipped = skin == worn ? 1 : 0, Icon = Picture(key, skin) });
+        return cards;
     }
 
-    // The colours tab of `worn`: per player colour its default, the author's palette, then a row of hues at the default's
-    // saturation and brightness when the author offered no palette.
-    void Colours(Skin? worn)
+    // The picture of skin (null: the original look): its pack's own; a pack without one, and the original person, the avatar icon; the
+    // original gear the game's own icon while it wears nothing of the picker's (else none: that icon shows the skin worn).
+    static UnityEngine.Sprite? Picture(string key, Skin? skin)
     {
-        _colours.Clear();
-        foreach (var c in worn?.Doc.PlayerColors ?? new())
+        if (skin != null && Previews.Of(skin, out _) is { } picture) return picture;
+        if (key == CharacterSkin.Target) return CharacterIcon();
+        return skin == null && Worn(key) == null ? Previews.GameIcon(key) : null;
+    }
+
+    // ---- the panel: colour schemes and what the skin's code effects let the player change ----
+
+    readonly List<PickerScheme> _schemes = new();
+    readonly List<UIControl> _colourRows = new(); // MINE open: one row of swatches per player colour, under the scheme cards
+    readonly List<UIControl> _controls = new();
+    readonly CodeEffectValues _values = new();
+
+    // The colour of `c` in the skin as the player wears it.
+    static float[] Current(PlayerColor c, IReadOnlyDictionary<string, float[]>? picks) => picks?.GetValueOrDefault(c.Id) ?? c.Default;
+
+    // The colour schemes of `worn`, in order: the author's own colours (every default), each scheme the author added (a colour it leaves
+    // out keeps its default), then MINE, the player's own: chosen when the colours worn match no other scheme. A character takes no
+    // player colours, so it has none.
+    List<ColorScheme> SchemesOf(Skin worn, string key)
+    {
+        var list = new List<ColorScheme>();
+        if (key == CharacterSkin.Target || worn.Doc.PlayerColors is not { Count: > 0 }) return list;
+        list.Add(new ColorScheme { Name = T("picker.schemeOriginal") });
+        list.AddRange(worn.Doc.ColorSchemes ?? new());
+        return list;
+    }
+
+    static float[] InScheme(ColorScheme scheme, PlayerColor c) => scheme.Colors.GetValueOrDefault(c.Id) is { Length: >= 3 } rgb ? rgb : c.Default;
+
+    // The skin whose panel was drawn last (the card under the cursor, else the look worn): scheme presses colour it.
+    Skin? _shown;
+
+    // The skin of card `entry` (0 the original look: none), or with -1 the look worn.
+    static Skin? Of(string key, int entry)
+    {
+        var skins = SkinsOf(key);
+        return entry > 0 && entry <= skins.Count ? skins[entry - 1] : entry == 0 ? null : Worn(key);
+    }
+
+    // The panel follows the details: the colour schemes of the card under the cursor (none for the original look), else of the look worn.
+    public override PickerPanel? Panel(int slot, int entry)
+    {
+        _shown = null;
+        if (Key(slot) is not { } key) return null;
+        _schemes.Clear();
+        _colourRows.Clear();
+        _controls.Clear();
+        var panel = new PickerPanel
         {
-            _colours.Add((c, null));
-            if (c.Palette is { Count: > 0 } palette) { foreach (var p in palette) _colours.Add((c, p)); continue; }
-            Color.RGBToHSV(Display(c.Default), out _, out var s, out var v);
-            for (int h = 0; h < Hues; h++)
-            {
-                var hue = Color.HSVToRGB(h / (float)Hues, Math.Max(s, 0.6f), Math.Max(v, 0.5f)).linear;
-                _colours.Add((c, new[] { hue.r, hue.g, hue.b }));
-            }
+            SchemesTitle = T("picker.colours"),
+            ControlsTitle = T("picker.adjust"),
+            Schemes = _schemes,
+            SchemeControls = _colourRows,
+            Controls = _controls,
+        };
+        if (Of(key, entry) is not { } skin) return panel;
+        _shown = skin;
+        var mine = _mine == skin;
+        var id = skin.Doc.Id;
+        var colours = skin.Doc.PlayerColors ?? new();
+        var picks = Skins.ColoursOf(id);
+        var any = false;
+        foreach (var scheme in SchemesOf(skin, key))
+        {
+            var chosen = colours.TrueForAll(c => Same(Current(c, picks), InScheme(scheme, c)));
+            any |= chosen;
+            _schemes.Add(new PickerScheme { Name = scheme.Name, Colours = colours.Select(c => Display(InScheme(scheme, c))).ToList(), Chosen = chosen && !mine });
         }
+        if (_schemes.Count > 0)
+        {
+            _schemes.Add(new PickerScheme { Name = T("picker.schemeMine"), Colours = colours.Select(c => Display(Current(c, picks))).ToList(), Chosen = mine || !any });
+            if (mine) foreach (var c in colours) _colourRows.Add(ColourRow(id, c));
+        }
+        Tweaks(skin, _controls);
+        return panel;
+    }
+
+    // One row of swatches for player colour `c`: its default, then hues at the default's saturation and brightness.
+    static UIControl ColourRow(string id, PlayerColor c)
+    {
+        Color.RGBToHSV(Display(c.Default), out _, out var s, out var v);
+        var swatches = new List<Color> { Display(c.Default) };
+        for (int h = 0; h < Hues - 1; h++) swatches.Add(Color.HSVToRGB(h / (float)(Hues - 1), Math.Max(s, 0.6f), Math.Max(v, 0.5f)));
+        return new UISwatches(c.Name, swatches, () =>
+        {
+            var now = Current(c, Skins.ColoursOf(id));
+            for (int i = 0; i < swatches.Count; i++)
+                if (Math.Abs(swatches[i].r - now[0]) < 1e-3f && Math.Abs(swatches[i].g - now[1]) < 1e-3f && Math.Abs(swatches[i].b - now[2]) < 1e-3f) return i;
+            return -1;
+        }, i => Skins.Colour(id, c.Id, i <= 0 ? null : new[] { swatches[i].r, swatches[i].g, swatches[i].b }));
+    }
+
+    public override string? PickScheme(int slot, int scheme)
+    {
+        if (!Skins.Enabled) return T("picker.off");
+        if (Key(slot) is not { } key || _shown is not { } skin) return null;
+        var schemes = SchemesOf(skin, key);
+        if (scheme >= schemes.Count) { _mine = skin; return null; }
+        if (scheme < 0) return null;
+        _mine = null;
+        foreach (var c in skin.Doc.PlayerColors ?? new())
+        {
+            var rgb = InScheme(schemes[scheme], c);
+            Skins.Colour(skin.Doc.Id, c.Id, Same(rgb, c.Default) ? null : rgb);
+        }
+        return null;
     }
 
     static bool Same(float[] a, float[] b) => Math.Abs(a[0] - b[0]) < 1e-4f && Math.Abs(a[1] - b[1]) < 1e-4f && Math.Abs(a[2] - b[2]) < 1e-4f;
 
-    // Linear RGB as the screen shows it.
-    static Color Display(float[] rgb) => new Color(rgb[0], rgb[1], rgb[2]).gamma;
+    // A skin colour (sRGB, as the screen shows it) as a UI colour.
+    static Color Display(float[] rgb) => new Color(rgb[0], rgb[1], rgb[2]);
+
+    // The old skins folder (ForgeSkin 1.1.0 and earlier) when skin packs are left in it, unloaded; set at launch. TEMPORARY with Core/OldSkinFolder.cs.
+    public static string? OldFolder;
 
     // What the player should know about all skins, under the skins tab's details: the game's texture quality below full draws every
     // mipmapped skin texture at half or a quarter, and the packs the last reload could not read.
@@ -159,100 +260,69 @@ sealed class Picker : PickerSource
         if (body.Length > 0) notes.Add(body);
         if (QualitySettings.masterTextureLimit > 0)
             notes.Add(MenuText.Tint(T("picker.quality", 1 << QualitySettings.masterTextureLimit), MenuTone.Warn));
-        foreach (var (file, reason) in Skins.Failed) notes.Add(MenuText.Tint(T("picker.failed", file, reason), MenuTone.Alert));
+        if (!Skins.Enabled) notes.Add(MenuText.Tint(T("picker.off"), MenuTone.Alert));
+        if (OldFolder != null) notes.Add(MenuText.Tint(T("picker.oldFolder", OldFolder), MenuTone.Warn));
+        foreach (var (file, reason) in Skins.Failed) notes.Add(MenuText.Tint(T("picker.failed", file, T(reason)), MenuTone.Alert));
+        // Teammates' gear shown in its original look here, and what to install to see it.
+        foreach (var (player, gear, pack, skin) in Looks.Unshown())
+        {
+            var install = pack.Length > 0 ? T("picker.teammateInstall", pack) : "";
+            notes.Add(MenuText.Tint(skin == null ? T("picker.teammateMissing", player, Name(gear), install) : T("picker.teammateMismatch", player, Name(gear), skin, install), MenuTone.Warn));
+        }
         return string.Join("\n\n", notes);
     }
 
+    // The details of the card under the cursor (or, with none, of the look worn): its picture, name and author over the panel, then what
+    // the player should know (Notes).
     public override PickerInfo Info(int slot, int tab, int entry)
     {
         if (Key(slot) is not { } key) return new PickerInfo { Body = WithNotes(T("picker.none")) };
-        var worn = Worn(key);
-        if (tab == 0)
+        var skin = Of(key, entry);
+        var picture = Picture(key, skin);
+        // A pack without a picture of its own was packed by an older editor. The picture is the author's: picked colours show in the lobby.
+        var coming = false;
+        var old = skin != null && Previews.Of(skin, out coming) == null && !coming;
+        var waiting = string.Join("\n", new[]
         {
-            var skins = SkinsOf(key);
-            var skin = entry > 0 && entry <= skins.Count ? skins[entry - 1] : entry == 0 ? null : worn;
-            // Until the picture is made the box says so (the picker is refreshed when it is); one that could not be made says why.
-            var picture = Previews.Ask(key, skin, out var coming, out var why);
-            var waiting = coming ? T("picker.previewLoading") : why.Length > 0 ? MenuText.Tint(T("picker.previewFailed", T(why)), MenuTone.Warn) : "";
-            if (skin == null)
-            {
-                // Skins for every gear (not chosen here) stay on under the original look.
-                var globals = Skins.Globals.Count(Skins.ById.ContainsKey);
-                return new PickerInfo
-                {
-                    Title = T("picker.original"),
-                    Subtitle = Name(key),
-                    Icon = picture,
-                    Body = WithNotes(string.Join("\n", new[] { T("picker.originalBody"), globals > 0 ? T("picker.globalsStay", globals) : "", waiting }.Where(l => l.Length > 0))),
-                };
-            }
-            var colours = skin.Doc.PlayerColors?.Count ?? 0;
-            var tweaks = Tweaks(skin);
+            coming ? T("picker.previewLoading") : old ? MenuText.Tint(T("picker.previewOld"), MenuTone.Warn) : "",
+            skin?.Doc.PlayerColors?.Count > 0 ? T("picker.coloursInLobby") : "",
+        }.Where(l => l.Length > 0));
+        if (skin == null)
+        {
+            // Skins for every gear (not chosen here) stay on under the original look.
+            var globals = Skins.Globals.Count(Skins.ById.ContainsKey);
             return new PickerInfo
             {
-                Title = Title(skin),
+                Title = T("picker.original"),
                 Subtitle = Name(key),
                 Icon = picture,
-                Body = WithNotes(string.Join("\n", new[]
-                {
-                    skin.Doc.Author.Length > 0 ? T("picker.by", skin.Doc.Author) : "", colours > 0 ? T("picker.colourCount", colours) : "",
-                    tweaks > 0 ? T("picker.tweakCount", tweaks) : "", waiting,
-                }.Where(l => l.Length > 0))),
+                Body = WithNotes(string.Join("\n", new[] { T(key == CharacterSkin.Target ? "picker.originalPerson" : "picker.originalBody"), globals > 0 ? T("picker.globalsStay", globals) : "", waiting }.Where(l => l.Length > 0))),
             };
         }
-        if (worn == null) return new PickerInfo { Subtitle = Name(key), Body = T("picker.pickSkinFirst") };
-        if (tab == Adjust) return AdjustInfo(worn, key, entry);
-        Colours(worn);
-        if (entry < 0 || entry >= _colours.Count)
-            return new PickerInfo { Title = Title(worn), Subtitle = Name(key), Body = _colours.Count == 0 ? T("picker.noColours") : T("picker.colourCount", worn.Doc.PlayerColors!.Count) };
-        var (colour, rgb) = _colours[entry];
-        // The colour large, under the picture of the gear in the skin it wears when one was made.
-        return new PickerInfo
-        {
-            Title = colour.Name,
-            Subtitle = Title(worn),
-            Accent = Display(rgb ?? colour.Default),
-            Swatch = Display(rgb ?? colour.Default),
-            Icon = Previews.Of(key, worn),
-            Body = T("picker.colourBody", colour.Name),
-        };
+        return new PickerInfo { Title = Title(skin), Subtitle = skin.Doc.Author.Length > 0 ? Author(skin) : Name(key), Icon = picture, Body = WithNotes(waiting) };
     }
 
     public override string? Pick(int slot, int tab, int entry)
     {
         if (Key(slot) is not { } key) return null;
-        if (tab == 0)
-        {
-            var skins = SkinsOf(key);
-            Skins.Choose(key, entry > 0 && entry <= skins.Count ? skins[entry - 1].Doc.Id : "");
-            return null;
-        }
-        if (Worn(key) is not { } worn) return T("picker.pickSkinFirst");
-        if (tab == Adjust) return null;
-        Colours(worn);
-        if (entry < 0 || entry >= _colours.Count) return null;
-        var (colour, rgb) = _colours[entry];
-        Skins.Colour(worn.Doc.Id, colour.Id, rgb);
+        if (!Skins.Enabled) return T("picker.off");
+        var skins = SkinsOf(key);
+        _mine = null;
+        Skins.Choose(key, entry > 0 && entry <= skins.Count ? skins[entry - 1].Doc.Id : "");
         return null;
     }
 
-    // ---- the ADJUST tab: what the skin's author lets the player change on its code effects (CodeEffect.PlayerTweaks) ----
-
-    const int Adjust = 2;
-    readonly List<UIControl> _controls = new();
-    readonly CodeEffectValues _values = new();
+    // ---- what the skin's author lets the player change on its code effects (CodeEffect.PlayerTweaks) ----
 
     // The setting first, then its effect: a row too narrow for both cuts the effect's name, not what the row changes.
     static string Label(CodeEffect e, ProceduralLabel l) => $"{Setting(l)} · {Effect(e)}";
     static string Setting(ProceduralLabel l) => UIKit.Language.StartsWith("zh", StringComparison.OrdinalIgnoreCase) ? l.Zh : l.En;
     static string Effect(CodeEffect e) => e.Name.Length > 0 ? e.Name : e.Id;
 
-    // One slider per number and one row of swatches per colour; every change goes to Skins.Tweak (kept per skin in
-    // ForgeSkin.colours.json, never in the pack), and the effect in hand follows at once.
-    public override IReadOnlyList<UIControl>? Controls(int slot, int tab)
+    // One slider per number and one row of swatches per colour of `worn`'s code effects, added to `controls`; every change goes to
+    // Skins.Tweak (kept per skin in ForgeSkin.colours.json, never in the pack), and the effect in hand follows at once.
+    void Tweaks(Skin worn, List<UIControl> controls)
     {
-        if (tab != Adjust || Key(slot) is not { } key || Worn(key) is not { } worn) return null;
-        _controls.Clear();
         var id = worn.Doc.Id;
         foreach (var e in worn.Doc.CodeEffects ?? new())
         {
@@ -264,11 +334,11 @@ sealed class Picker : PickerSource
             }
             foreach (var p in program.Params)
                 if (tw.Params.Contains(p.Name))
-                    _controls.Add(new UISlider(Label(e, p.Label), p.Min, p.Max, p.Step, () => Now(TweakKind.Param, p.Index),
+                    controls.Add(new UISlider(Label(e, p.Label), p.Min, p.Max, p.Step, () => Now(TweakKind.Param, p.Index),
                         v => Skins.Tweak(id, CodeEffects.TweakKey(e.Id, TweakKind.Param, p.Name), new[] { v })));
             foreach (var t in CodeEffects.Catalog.Transform)
                 if (tw.Transform.Contains(t.Name))
-                    _controls.Add(new UISlider(Label(e, t.Label), t.Min, t.Max, t.Step, () => Now(TweakKind.Transform, t.Index),
+                    controls.Add(new UISlider(Label(e, t.Label), t.Min, t.Max, t.Step, () => Now(TweakKind.Transform, t.Index),
                         v => Skins.Tweak(id, CodeEffects.TweakKey(e.Id, TweakKind.Transform, t.Name), new[] { v })));
             foreach (var c in program.Colours)
             {
@@ -279,7 +349,7 @@ sealed class Picker : PickerSource
                 var swatches = new List<Color> { new(own[0], own[1], own[2], 1) };
                 for (int h = 0; h < Hues - 1; h++) swatches.Add(Color.HSVToRGB(h / (float)(Hues - 1), Math.Max(s, 0.6f), Math.Max(v, 0.5f)));
                 var tweakKey = CodeEffects.TweakKey(e.Id, TweakKind.Color, c.Name);
-                _controls.Add(new UISwatches(Label(e, c.Label), swatches, () =>
+                controls.Add(new UISwatches(Label(e, c.Label), swatches, () =>
                 {
                     if (Skins.ColoursOf(id)?.GetValueOrDefault(tweakKey) is not { Length: 4 } now) return 0;
                     for (int i = 1; i < swatches.Count; i++)
@@ -288,20 +358,36 @@ sealed class Picker : PickerSource
                 }, i => Skins.Tweak(id, tweakKey, i <= 0 ? null : new[] { swatches[i].r, swatches[i].g, swatches[i].b, own[3] })));
             }
         }
-        return _controls.Count > 0 ? _controls : null;
     }
 
-    PickerInfo AdjustInfo(Skin worn, string key, int entry)
+    // ---- ForgeSkin's own switches, behind the title bar's gear: (lang key, its entry in ForgeSkin.cfg); Development is shown on no
+    // screen. Each change applies at once and is saved (ForgeSkinPlugin binds what it does). ----
+
+    static readonly (string Key, Func<BepInEx.Configuration.ConfigEntry<bool>> Entry)[] PluginSettings =
     {
-        // The rows Controls built last for this slot (the picker asks for them before their details).
-        var rows = _controls;
-        if (rows.Count == 0) return new PickerInfo { Title = Title(worn), Subtitle = Name(key), Body = T("picker.noTweaks") };
-        if (entry < 0 || entry >= rows.Count) return new PickerInfo { Title = Title(worn), Subtitle = Name(key), Body = T("picker.tweakBody") };
-        // The details title is the setting; the effect (and the skin) go on the category line above it (Label: "setting · effect").
-        var label = rows[entry].Label;
-        var cut = label.IndexOf(" · ", StringComparison.Ordinal);
-        return cut < 0
-            ? new PickerInfo { Title = label, Subtitle = Title(worn), Body = T("picker.tweakBody") }
-            : new PickerInfo { Title = label[..cut], Subtitle = label[(cut + 3)..] + " · " + Title(worn), Body = T("picker.tweakBody") };
+        ("settings.enabled", () => ForgeSkinPlugin.Enabled),
+        ("settings.hologram", () => ForgeSkinPlugin.HologramShader),
+    };
+
+    readonly List<UIControl> _settings = new();
+
+    public override IReadOnlyList<UIControl> Settings
+    {
+        get
+        {
+            _settings.Clear();
+            foreach (var (label, entry) in PluginSettings)
+                _settings.Add(new UIToggle(T(label), () => entry().Value, v => entry().Value = v));
+            _settings.Add(new UIChoice(T("settings.toon"), new[] { T("settings.toonForward"), T("settings.toonDeferred"), T("settings.toonOff") },
+                () => (int)ForgeSkinPlugin.Toon.Value, v => ForgeSkinPlugin.Toon.Value = (ToonMode)v));
+            return _settings;
+        }
     }
+
+    // What each switch does, under the settings' title; no picture, so the text has the room.
+    public override PickerInfo SettingsInfo => new()
+    {
+        Title = T("settings.all"),
+        Body = string.Join("\n\n", PluginSettings.Select(s => T(s.Key + "Body")).Append(T("settings.toonBody"))),
+    };
 }

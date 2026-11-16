@@ -1,33 +1,20 @@
-// Thumbnails: each catalog item's preview (the weapon gallery) and each skin (the skin strip), rendered offscreen with
-// the 3D view's materials, one at a time while the app is idle, and kept in localStorage (per viewer convenience). Each
-// image is stored with a hash of what it came from (preview, and the skin's document), so a change renders it again.
-// The skin open in the 3D view is drawn with the view's materials (livery and dynamic layers as shown); attachments are
-// left out. The weapon gallery shows each item's last edited skin.
-import {
-  AmbientLight,
-  Box3,
-  DirectionalLight,
-  Mesh,
-  PerspectiveCamera,
-  Scene,
-  SRGBColorSpace,
-  Vector3,
-  WebGLRenderer,
-  type MeshStandardMaterial,
-  type Object3D,
-  type Texture,
-} from 'three';
-import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
+// Thumbnails: each catalog item (the gear gallery, the work list) and each skin (its card), drawn one at a time while the app
+// is idle by the hidden card window (CardWindow.tsx) with the 3D view's own stage, so a card shows the work as the 3D view does.
+// Item images ship with the editor (../thumbs/<id>.webp, made at release by scripts/gallery-thumbs.mjs from the game); an item
+// without one (new in a game update, or a checkout that never made them) is drawn in the background and kept in the data folder's
+// cache. Skin images are kept in localStorage with a hash of everything their look comes from (preview, document, the files it
+// names), so a change draws them again. The weapon gallery shows each item's last edited skin.
 import { call, fileUrl, type SkinDocument, type WeaponPreview } from '../protocol';
 import { useStore } from '../store';
-import { unityDirToThree } from '../space';
-import { holdTextures, releaseTextures } from './textures';
-import { LiveryPreview } from './liveryPreview';
-import { viewRefs } from './refs';
-import { editableMaterials, paintMaterial, restoreUnityNames, roomReflection } from './weaponScene';
+import type { CardJob, CardPicture } from './CardWindow';
 
 export const THUMB_EVENT = 'sf:thumbs';
-const key = (id: string) => `sf.thumb.v3.${id}`;
+const BUNDLED = import.meta.glob<string>('../thumbs/*.webp', { eager: true, query: '?url', import: 'default' });
+/** Size an item or skin image is drawn at before its clear border is trimmed (the cards show it scaled to fit). */
+const ITEM_SIZE = [512, 256] as const;
+/** How cards are drawn (CardWindow.tsx): bumping it draws every kept image again. */
+const CARD = 5;
+const key = (id: string) => `sf.thumb.v${CARD}.${id}`;
 const read = (k: string) => {
   try {
     return localStorage.getItem(k);
@@ -35,159 +22,201 @@ const read = (k: string) => {
     return null;
   }
 };
-export const thumbOf = (id: string) => read(key(id));
-const hash = (text: string) => [...text].reduce((h, c) => Math.imul(h ^ c.charCodeAt(0), 16777619), 2166136261 >>> 0) >>> 0;
-
-let running = false;
-
-/** `live`: the 3D view's materials, copied as they are (livery and layers included) instead of painted from `doc`. */
-async function render(renderer: WebGLRenderer, env: Texture, preview: WeaponPreview, doc = {} as SkinDocument, live?: Map<string, MeshStandardMaterial>): Promise<string | null> {
-  const gltf = await new GLTFLoader().loadAsync(fileUrl(preview.glb));
-  restoreUnityNames(gltf);
-  const scene = new Scene();
-  scene.environment = env;
-  const sun = new DirectionalLight(0xffffff, 2.2);
-  sun.position.set(1, 2, -1);
-  scene.add(new AmbientLight(0xffffff, 1.2), sun);
-  scene.add(gltf.scene);
-  // Only what the 3D view draws: meshes that belong to a part.
-  const partNodes = new Set(preview.parts.flatMap((p) => p.nodes));
-  const inPart = (o: Object3D | null): boolean => !!o && (partNodes.has(o.name) || inPart(o.parent));
-  gltf.scene.traverse((o) => {
-    if ((o as Mesh).isMesh && !inPart(o)) o.visible = false;
-  });
-  const mats = new Map<string, MeshStandardMaterial>();
-  editableMaterials(gltf.scene, mats);
-  // The textures stay held until drawn, and are let go of after (the 3D view keeps those it shows itself).
-  const keep = new Set<string>();
-  holdTextures(keep);
-  try {
-    await Promise.allSettled(
-      [...mats].flatMap(([name, mat]) => {
-        const shown = live?.get(name);
-        if (shown) {
-          mat.copy(shown);
-          return [];
-        }
-        return paintMaterial(
-          mat,
-          name,
-          doc,
-          preview,
-          keep,
-          () => false,
-          () => undefined,
-        );
-      }),
-    );
-    gltf.scene.updateMatrixWorld(true);
-    const box = new Box3();
-    gltf.scene.traverse((o) => o.visible && (o as Mesh).isMesh && box.expandByObject(o));
-    if (box.isEmpty()) return null;
-    const center = box.getCenter(new Vector3());
-    const size = box.getSize(new Vector3());
-    const radius = size.length() / 2;
-    // Side view from the weapon's right, slightly above: reads best at list size.
-    const camera = new PerspectiveCamera(30, 2, radius / 100, radius * 20);
-    camera.position.copy(center).addScaledVector(unityDirToThree([1, 0.25, 0.15]).normalize(), radius / Math.tan((15 * Math.PI) / 180) / 1.6);
-    // Upright items (melee weapons) are turned to lie along the wide image, muzzle or head forward.
-    if (size.y > Math.max(size.x, size.z)) camera.up.set(0, 0, -1);
-    camera.lookAt(center);
-    renderer.render(scene, camera);
-    return renderer.domElement.toDataURL('image/webp', 0.85);
-  } finally {
-    gltf.scene.traverse((o) => (o as Mesh).geometry?.dispose());
-    mats.forEach((m) => m.dispose());
-    releaseTextures(keep);
-  }
-}
-
-let shared: { renderer: WebGLRenderer; env: Texture } | null = null;
-let queue: Promise<unknown> = Promise.resolve();
-
-/** Runs `job` with the offscreen renderer, after any render already queued. */
-function withRenderer<T>(job: (renderer: WebGLRenderer, env: Texture) => Promise<T>): Promise<T> {
-  const run = queue.then(() => {
-    if (!shared) {
-      const canvas = document.createElement('canvas');
-      canvas.width = 256;
-      canvas.height = 128;
-      const renderer = new WebGLRenderer({ canvas, alpha: true, antialias: true, preserveDrawingBuffer: true });
-      renderer.outputColorSpace = SRGBColorSpace;
-      shared = { renderer, env: roomReflection(renderer) };
-    }
-    return job(shared.renderer, shared.env);
-  });
-  queue = run.catch(() => undefined);
-  return run;
-}
+/** A 32-bit FNV-1a hash of `text`, for keys of what a picture was drawn from. */
+export const hash = (text: string) => [...text].reduce((h, c) => Math.imul(h ^ c.charCodeAt(0), 16777619), 2166136261 >>> 0) >>> 0;
 
 const idle = async () => {
   while (useStore.getState().previewLoading || useStore.getState().busy) await new Promise((r) => setTimeout(r, 1000));
 };
 
-/** Fill missing thumbnails in the background; yields to anything the user is doing. */
-export async function fillThumbnails(): Promise<void> {
-  if (running) return;
-  running = true;
+/** A card picture of `doc` on item `id` from the card window, at `size`; null when it could not be drawn. */
+const card = (id: string, preview: WeaponPreview, doc: SkinDocument, size: readonly [number, number]) =>
+  window.forge.drawCard({
+    item: useStore.getState().catalog.find((c) => c.id === id) ?? null,
+    preview,
+    doc,
+    width: size[0],
+    height: size[1],
+  } satisfies CardJob) as Promise<CardPicture | null>;
+
+/** Size a skin's pack picture is drawn at before its clear border is trimmed: twice the card image, for the game's big details picture. */
+const PICTURE_SIZE = [1024, 512] as const;
+
+/** A skin's pack picture (what the game's skin picker shows for it): drawn as its card, on a transparent canvas; null when it could not be drawn. */
+export async function skinPicture(id: string, preview: WeaponPreview, doc: SkinDocument): Promise<HTMLCanvasElement | null> {
+  const drawn = await card(id, preview, doc, PICTURE_SIZE);
+  if (!drawn) return null;
+  const image = new Image();
+  image.src = drawn.url;
+  await image.decode();
+  const canvas = document.createElement('canvas');
+  canvas.width = image.naturalWidth;
+  canvas.height = image.naturalHeight;
+  canvas.getContext('2d')!.drawImage(image, 0, 0);
+  return canvas;
+}
+
+/** An item's image from its preview (no skin) as WebP; scripts/gallery-thumbs.mjs makes the shipped ones with it. */
+export const itemImage = async (id: string, preview: WeaponPreview) => (await card(id, preview, { name: '', materials: [], attachments: [] } as SkinDocument, ITEM_SIZE))?.url ?? null;
+
+// Item images drawn here (a checkout without the shipped ones, an item new in a game update) are files in the data folder's
+// cache, listed in localStorage with the version they were drawn for: the catalog entry (it changes with the game's model data)
+// and the renderer's. The gallery asks for every item when it opens and for the ones scrolled to first; one is drawn at a time
+// while the editor is idle, and each shows as soon as it is drawn.
+const DRAWN = 'sf.itemThumbs.v1';
+const RENDER_VERSION = CARD;
+let drawn: Record<string, string> = (() => {
   try {
-    // Images from earlier thumbnail formats are never read again.
-    for (const k of Object.keys(localStorage)) if (k.startsWith('sf.thumb.') && !k.startsWith('sf.thumb.v3.')) localStorage.removeItem(k);
-    for (const item of useStore.getState().catalog) {
+    return JSON.parse(localStorage.getItem(DRAWN) ?? '{}') as Record<string, string>;
+  } catch {
+    return {};
+  }
+})();
+const itemFile = (id: string) => `${useStore.getState().dataDir}\\cache\\thumbs\\${id}.webp`;
+const versionOf = (id: string) => {
+  const item = useStore.getState().catalog.find((c) => c.id === id);
+  return item ? `${RENDER_VERSION}.${hash(JSON.stringify(item))}` : null;
+};
+
+/** An item's image: the shipped one, else the one drawn for its current version; null while there is none. */
+export const thumbOf = (id: string) => {
+  const shipped = BUNDLED[`../thumbs/${id}.webp`];
+  if (shipped) return shipped;
+  const v = drawn[id];
+  return v && v === versionOf(id) ? `${fileUrl(itemFile(id))}?v=${v}` : null;
+};
+
+async function saveItemImage(id: string, url: string) {
+  const v = versionOf(id);
+  if (!v) return;
+  await window.forge.writeFile(
+    itemFile(id),
+    Uint8Array.from(atob(url.split(',')[1]), (ch) => ch.charCodeAt(0)),
+  );
+  drawn = { ...drawn, [id]: v };
+  try {
+    localStorage.setItem(DRAWN, JSON.stringify(drawn));
+  } catch {
+    /* without storage the image is drawn again next time */
+  }
+  window.dispatchEvent(new Event(THUMB_EVENT));
+}
+
+/** Draws the image of an opened item that has none from the preview the 3D view loaded. */
+export async function itemThumbnail(id: string, preview: WeaponPreview): Promise<void> {
+  // Drawn from game files another mod changed, or a damaged one: left for a later opening.
+  if (thumbOf(id) || preview.damaged || preview.modified) return;
+  try {
+    const url = await itemImage(id, preview);
+    if (url) await saveItemImage(id, url);
+  } catch {
+    /* a missing thumbnail only shows the placeholder */
+  }
+}
+
+const wanted: string[] = [];
+const skipped = new Set<string>();
+/** Whether an item without an image still gets one this session (its card shows that it is being drawn). */
+export const thumbComing = (id: string) => !skipped.has(id);
+let drawing = false;
+
+/** Asks for the images of these items: `first` puts them before the ones already asked for (the gallery's visible cards). */
+export function requestItemThumbs(ids: string[], first = false) {
+  const missing = ids.filter((id) => !thumbOf(id) && !skipped.has(id));
+  if (!missing.length) return;
+  for (const id of missing) {
+    const at = wanted.indexOf(id);
+    if (at >= 0) wanted.splice(at, 1);
+  }
+  if (first) wanted.unshift(...missing);
+  else wanted.push(...missing);
+  if (!drawing) void drawWanted();
+}
+
+async function drawWanted() {
+  drawing = true;
+  const started = performance.now();
+  let count = 0;
+  try {
+    for (let id = wanted.shift(); id; id = wanted.shift()) {
+      if (thumbOf(id) || skipped.has(id)) continue;
       await idle();
       try {
-        const preview = await call('preview.weapon', { id: item.id });
-        const source = String(hash(JSON.stringify(preview)));
-        if (thumbOf(item.id) && read(`${key(item.id)}.src`) === source) continue;
-        const url = await withRenderer((renderer, env) => render(renderer, env, preview));
-        if (url) {
-          localStorage.setItem(key(item.id), url);
-          localStorage.setItem(`${key(item.id)}.src`, source);
-          window.dispatchEvent(new Event(THUMB_EVENT));
+        const preview = await call('preview.weapon', { id });
+        if (preview.damaged || preview.modified) {
+          skipped.add(id);
+          continue;
         }
+        const url = await itemImage(id, preview);
+        if (url) {
+          await saveItemImage(id, url);
+          count++;
+        } else skipped.add(id);
       } catch {
-        /* a missing thumbnail only shows the placeholder */
+        skipped.add(id); // tried again at the next start
       }
-      await new Promise((r) => setTimeout(r, 150));
     }
   } finally {
-    running = false;
+    drawing = false;
+    if (count) useStore.getState().log(`gallery images: ${count} drawn in ${((performance.now() - started) / 1000).toFixed(1)} s`);
   }
+}
+
+// Item images kept in localStorage by earlier versions, and those of earlier formats, are never read again.
+try {
+  for (const k of Object.keys(localStorage)) if (k.startsWith('sf.thumb.') && !k.startsWith(key('skin.'))) localStorage.removeItem(k);
+} catch {
+  /* no storage: nothing kept */
 }
 
 const skinKey = (skinId: string) => key(`skin.${skinId}`);
 export const skinThumbOf = (skinId: string) => read(skinKey(skinId));
-
-/** The weapon gallery's image of an item: its last edited skin (what the 3D view showed of it), else the plain item. */
-export const galleryThumbOf = (weaponId: string) => {
-  const skin = read(`sf.skin.${weaponId}`);
-  return (skin && skinThumbOf(skin)) || thumbOf(weaponId);
+/**
+ * The skin's own pictures its image was drawn without (the game's in their place), by file name: `gone` no longer exist, `unreadable`
+ * are there but are no picture the editor reads (another format, or damaged); null when it has them all.
+ */
+export const skinThumbMissing = (skinId: string): { gone: string[]; unreadable: string[] } | null => {
+  try {
+    const m = JSON.parse(read(`${skinKey(skinId)}.missing`) ?? 'null') as { gone?: unknown; unreadable?: unknown } | null;
+    return m && Array.isArray(m.gone) && Array.isArray(m.unreadable) ? (m as { gone: string[]; unreadable: string[] }) : null;
+  } catch {
+    return null;
+  }
 };
 
 /**
- * Renders one skin of `weaponId` (its document, or the file at `path`) unless the stored image is still current. The
- * skin open in the 3D view (`live`) is drawn with the view's own materials, so its livery and layers show; another skin
- * keeps such an image as long as its document is unchanged, else gets textures and material settings only.
+ * What a skin's card is drawn from, as a hash: the item's preview, the document (of the editor's own notes only what the view
+ * shows: the colour variant and the models of attachments and replaced parts) and the size and write time of every file it names.
  */
-export async function skinThumbnail(weaponId: string, skinId: string, source: { doc?: SkinDocument; path?: string; live?: boolean }): Promise<void> {
+async function lookOf(preview: WeaponPreview, doc: SkinDocument): Promise<string> {
+  const editor = (doc.editor ?? {}) as { variant?: string; meshPreviews?: Record<string, string>; partMeshPreviews?: Record<string, string> };
+  const models = [...Object.values(editor.meshPreviews ?? {}), ...Object.values(editor.partMeshPreviews ?? {})];
+  const { files } = await call('project.files', { project: doc });
+  const stats = await Promise.all([...files, ...models].map((f) => window.forge.stat(f)));
+  const shown = { variant: editor.variant ?? null, meshPreviews: editor.meshPreviews ?? null, partMeshPreviews: editor.partMeshPreviews ?? null };
+  return String(hash(JSON.stringify(preview) + JSON.stringify({ ...doc, editor: shown }) + JSON.stringify(stats)));
+}
+
+/** Draws the card of one skin of `weaponId` (its document, or the file at `path`) unless the stored one is still current. */
+export async function skinThumbnail(weaponId: string, skinId: string, source: { doc?: SkinDocument; path?: string }): Promise<void> {
   await idle();
   try {
     const doc = source.doc ?? (source.path ? await call('project.load', { path: source.path }) : null);
     if (!doc) return;
     const s = useStore.getState();
     const preview = s.weaponId === weaponId && s.preview ? s.preview : await call('preview.weapon', { id: weaponId });
-    // Editor state (pending matches, previews) does not change the look, except the colour variant the view shows.
-    const variant = (doc.editor as { variant?: string } | null | undefined)?.variant ?? null;
-    const src = String(hash(JSON.stringify(preview) + JSON.stringify({ ...doc, editor: variant })));
-    const stored = skinThumbOf(skinId) && read(`${skinKey(skinId)}.src`);
-    const live = source.live && s.weaponId === weaponId && s.preview === preview ? viewRefs.materials : null;
-    if (stored === `${src}|live` || (!live && stored === src)) return;
-    // The view's livery redraws (each a frame or two) finish first.
-    for (let i = 0; live && LiveryPreview.busy > 0 && i < 50; i++) await new Promise((r) => setTimeout(r, 100));
-    const url = await withRenderer((renderer, env) => render(renderer, env, preview, doc, live ?? undefined));
-    if (!url) return;
-    localStorage.setItem(skinKey(skinId), url);
-    localStorage.setItem(`${skinKey(skinId)}.src`, live ? `${src}|live` : src);
+    const src = await lookOf(preview, doc);
+    if (skinThumbOf(skinId) && read(`${skinKey(skinId)}.src`) === src) return;
+    const drawn = await card(weaponId, preview, doc, ITEM_SIZE);
+    if (!drawn) return;
+    localStorage.setItem(skinKey(skinId), drawn.url);
+    if (drawn.missing.length) {
+      const gone = new Set((await call('project.missing', { project: doc })).files);
+      const name = (p: string) => p.split(/[\\/]/).pop()!;
+      const missing = { gone: drawn.missing.filter((p) => gone.has(p)).map(name), unreadable: drawn.missing.filter((p) => !gone.has(p)).map(name) };
+      localStorage.setItem(`${skinKey(skinId)}.missing`, JSON.stringify(missing));
+    } else localStorage.removeItem(`${skinKey(skinId)}.missing`);
+    localStorage.setItem(`${skinKey(skinId)}.src`, src);
     window.dispatchEvent(new Event(THUMB_EVENT));
   } catch {
     /* a missing thumbnail only shows the weapon's own */

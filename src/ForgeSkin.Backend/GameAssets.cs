@@ -18,35 +18,56 @@ public sealed class GameAssets : IDisposable
 
     public readonly record struct AssetRef(string File, long PathId);
 
-    public readonly string BuildId;
+    public readonly string BuildId, Revision;
     bool _classDb;
+    // Game files this tool rewrote (AssetPatch) whose backup is intact, by file name: read from the backup, so previews
+    // and bakes always start from the game's own content.
+    readonly Dictionary<string, string> _originals;
 
     public GameAssets(string gameDir)
     {
         DataDir = Path.Combine(gameDir, "GTFO_Data");
+        Revision = ReadRevision(gameDir);
         BuildId = ReadBuildId(gameDir);
         Cache = CacheDir(BuildId);
+        _originals = AssetPatch.Originals(gameDir, BuildId);
     }
 
-    // Game build identity for cache keys, read without opening asset files: the game's revision.txt (else the Steam
-    // appmanifest build id) + the timestamp of resources.assets.
-    public static string ReadBuildId(string gameDir)
+    // The game's revision.txt, else the Steam appmanifest build id.
+    static string ReadRevision(string gameDir)
     {
         var revisionFile = Path.Combine(gameDir, "revision.txt");
         var revision = File.Exists(revisionFile) ? File.ReadAllText(revisionFile).Trim() : null;
         var manifest = Path.GetFullPath(Path.Combine(gameDir, "..", "..", "appmanifest_493520.acf"));
         if (string.IsNullOrEmpty(revision) && File.Exists(manifest))
             revision = System.Text.RegularExpressions.Regex.Match(File.ReadAllText(manifest), @"""buildid""\s+""(\d+)""").Groups[1].Value;
-        if (string.IsNullOrEmpty(revision)) revision = "unknown";
-        return $"{revision}-{File.GetLastWriteTimeUtc(Path.Combine(gameDir, "GTFO_Data", "resources.assets")).Ticks}";
+        return string.IsNullOrEmpty(revision) ? "unknown" : revision;
     }
 
-    // Cache folder of this game build; Catalog deletes the other builds' folders once this build's catalog is ready.
+    // Game build identity for cache keys, read without opening asset files: the revision + the timestamp of resources.assets.
+    public static string ReadBuildId(string gameDir) =>
+        $"{ReadRevision(gameDir)}-{File.GetLastWriteTimeUtc(Path.Combine(gameDir, "GTFO_Data", "resources.assets")).Ticks}";
+
+    // Cache folder of this game build (PreviewCache deletes the folders no running copy uses once this one is ready).
     public readonly string Cache;
     // Bump when the catalog or preview output changes, so caches written by older backends are rebuilt.
-    const int CacheVersion = 12;
+    const int CacheVersion = 14;
     public static string CacheDir(string buildId) => Path.Combine(Paths.GameCache, $"{buildId}-v{CacheVersion}");
-    public static string CacheSuffix => $"-v{CacheVersion}";
+
+    // The game's own textures per game revision a release was made against (tools/build-editor-release.ps1 writes the list
+    // with `--write-vanilla-textures`): the Preview.TextureKey of every texture a preview reads.
+    static readonly Dictionary<string, HashSet<string>> Vanilla = LoadVanilla();
+    static Dictionary<string, HashSet<string>> LoadVanilla()
+    {
+        using var s = typeof(GameAssets).Assembly.GetManifestResourceStream("vanilla-textures.json");
+        return s == null ? new() : JsonSerializer.Deserialize<Dictionary<string, HashSet<string>>>(s)!;
+    }
+
+    // Whether a texture is the game's own; null when this game revision is not on the list (a newer game: not checked).
+    public bool? IsVanilla(string textureKey) => Vanilla.TryGetValue(Revision, out var keys) ? keys.Contains(textureKey) : null;
+
+    // Where a file's .resS streams are: beside the game file, also when the file itself is read from a backup.
+    public string StreamRoot(AssetsFileInstance inst) => _originals.ContainsKey(Path.GetFileName(inst.path)) ? DataDir : Path.GetDirectoryName(inst.path)!;
 
     public AssetsFileInstance Load(string name)
     {
@@ -60,15 +81,20 @@ public sealed class GameAssets : IDisposable
         }
         if (!_files.TryGetValue(name, out var inst))
         {
-            var path = Path.Combine(DataDir, name);
+            var path = _originals.TryGetValue(name, out var original) ? original : Path.Combine(DataDir, name);
             if (!File.Exists(path)) path = Path.Combine(DataDir, "Resources", name); // "unity default resources", "unity_builtin_extra"
             _files[name] = inst = _am.LoadAssetsFile(path, false);
         }
         return inst;
     }
 
-    public AssetTypeValueField Field(AssetsFileInstance inst, long pathId) =>
-        _am.GetBaseField(inst, inst.file.GetAssetInfo(pathId));
+    public AssetTypeValueField Field(AssetsFileInstance inst, long pathId) => _am.GetBaseField(inst, Info(inst, pathId));
+
+    // An object a reference names. Missing only when a game file was rewritten outside the game (an older way of
+    // skinning edits the .assets files): every reader stops with this code, never a null reference.
+    public const string Damaged = "damaged-game-file";
+    public static AssetFileInfo Info(AssetsFileInstance inst, long pathId) => inst.file.GetAssetInfo(pathId)
+        ?? throw new BackendException(Damaged, $"{Path.GetFileName(inst.path)}: object {pathId} is missing (the file was changed outside the game)");
 
     // Follows a PPtr from an object in `from`.
     public (AssetsFileInstance File, long PathId) Resolve(AssetsFileInstance from, AssetTypeValueField pptr)
@@ -121,7 +147,9 @@ public sealed class GameAssets : IDisposable
     }
 
     // Prefab path (e.g. "Assets/AssetPrefabs/Items/Gear/Parts/Fronts/Front_UZI_2.prefab") -> GameObject.
-    // Built from every AssetShardManifest in the asset-shard scenes; cached per game build.
+    // Built from every AssetShardManifest in the asset-shard scenes; cached per game build. Every build scene has its
+    // sharedassets file, and the cache is shared by every game folder of the build, so a missing file stops the read
+    // instead of leaving an index without that shard's prefabs (children skipped by TryPrefab) for every reader after it.
     public AssetRef Prefab(string path)
     {
         _prefabs ??= LoadPrefabIndex();
@@ -149,7 +177,6 @@ public sealed class GameAssets : IDisposable
         for (int i = 0; i < scenes.Count; i++)
         {
             var name = $"sharedassets{i}.assets";
-            if (!File.Exists(Path.Combine(DataDir, name))) continue;
             var inst = Load(name);
             if (scenes[i].StartsWith("Assets/AssetShards/Scenes/"))
             {

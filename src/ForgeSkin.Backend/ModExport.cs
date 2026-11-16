@@ -8,16 +8,15 @@ namespace ForgeSkin.Backend;
 
 // A Thunderstore skin mod: the built packs plus the `forgeskin.forge` marker the plugin looks for in each mod folder, and
 // the files Thunderstore itself requires (manifest.json, icon.png 256x256, README.md). r2modman unpacks it into
-// BepInEx/plugins/<Team>-<Name>/, where the plugin finds the marker. The mod depends on the base library.
+// BepInEx/plugins/<Team>-<Name>/, where the plugin finds the marker and the packs beside it. The mod depends on the base library.
 // In the Skins format (SkinsFormat) the packs are skin groups under Assets/Skins/, which the mod manager unpacks into
 // BepInEx/Assets/Skins/ where the Skins library looks; the mod depends on that library instead. A gun pack is one group
 // for all the packs (one skin per gear); otherwise each pack is its own group, so a gear may get several to pick from.
 public static class ModExport
 {
     // Thunderstore ids of the libraries the skin mods depend on; the base library is this release of the ForgeSkin plugin.
-    const string BaseVersion = "1.1.0"; // package-version: NAinfini-ForgeSkin
+    const string BaseVersion = "1.1.1"; // package-version: NAinfini-ForgeSkin
     const string BaseLibrary = "NAinfini-ForgeSkin-" + BaseVersion, SkinsLibrary = "food-Skins-0.12.0";
-    const string Marker = "forgeskin.forge";
 
     public static object Export(string[] packs, string output, string name, string version, string description, string icon,
         string format, bool gunPack, Func<List<CatalogItem>> catalog, Func<CatalogItem, Dictionary<string, GameMaterial>> materials)
@@ -52,12 +51,22 @@ public static class ModExport
             }
             else
             {
-                var files = packs.Select(p => "skins/" + Path.GetFileName(p)).ToList();
-                Text(zip, Marker, "# ForgeSkin skin packs in this mod, one per line\n" + string.Join("\n", files) + "\n");
+                // Beside the marker: a mod manager flattens every folder that is not one of its routes into the mod folder.
+                var files = packs.Select(p => Path.GetFileName(p)).ToList();
+                Text(zip, SkinFolders.ModMarker, "# ForgeSkin skin packs in this mod, one per line\n" + string.Join("\n", files) + "\n");
                 for (int i = 0; i < packs.Length; i++) zip.CreateEntryFromFile(packs[i], files[i], CompressionLevel.NoCompression);
             }
+            // The credits character models' licences ask for (each pack's CREDITS.txt).
+            var credits = packs.Select(p =>
+            {
+                using var pack = ZipFile.OpenRead(p);
+                if (pack.GetEntry(PackBuilder.CreditsName) is not { } entry) return null;
+                using var r = new StreamReader(entry.Open());
+                return r.ReadToEnd().Trim();
+            }).Where(c => !string.IsNullOrEmpty(c)).Distinct().ToList();
             Text(zip, "README.md", $"# {name.Replace('_', ' ')}\n\n{description}\n\nSkins for GTFO, applied by {(skins ? "the Skins library" : "ForgeSkin")} (installed automatically as a dependency).\n\n"
-                + string.Join("\n", docs.Select(d => $"- {d.Name}")) + "\n");
+                + string.Join("\n", docs.Select(d => $"- {d.Name}")) + "\n"
+                + (credits.Count > 0 ? "\n## Credits\n\n" + string.Join("\n", credits.Select(c => $"- {c}")) + "\n" : ""));
         }
         temp.Commit();
         return new { mod = output, dropped };

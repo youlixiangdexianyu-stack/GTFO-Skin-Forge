@@ -94,7 +94,7 @@ sealed class Flash : ITriggered
     readonly Material[] _materials;
     readonly Color[] _rest;
     readonly bool[] _emissive;
-    readonly Color _peak;
+    readonly Color[] _peak; // per material: what its _EmissiveColor takes depends on its shader (Glow.Value)
     readonly float _seconds;
     float _start = -1;
 
@@ -103,12 +103,13 @@ sealed class Flash : ITriggered
         _materials = materials;
         _rest = new Color[materials.Length];
         _emissive = new bool[materials.Length];
+        _peak = new Color[materials.Length];
         for (int i = 0; i < materials.Length; i++)
         {
             _rest[i] = materials[i].GetColor(SkinnedGear.EmissiveColor);
             _emissive[i] = materials[i].IsKeywordEnabled(SkinnedGear.EmissiveKeyword);
+            _peak[i] = ForgeVisual.Glow.Value(materials[i], ForgeVisual.Glow.EmissiveColorName, new Color(e.Color[0], e.Color[1], e.Color[2]), e.Intensity * MaterialParams.EmissionUnit);
         }
-        _peak = new Color(e.Color[0], e.Color[1], e.Color[2]) * (e.Intensity * MaterialParams.EmissionUnit);
         _seconds = Math.Max(e.Seconds, 0.01f);
     }
 
@@ -127,7 +128,7 @@ sealed class Flash : ITriggered
         float k = t >= 1 ? 0 : 1 - Math.Abs(2 * t - 1);
         for (int i = 0; i < _materials.Length; i++)
         {
-            ForgeVisual.Glow.SetColour(_materials[i], Color.Lerp(_rest[i], _peak, k));
+            ForgeVisual.Glow.SetColour(_materials[i], Color.Lerp(_rest[i], _peak[i], k));
             if (t >= 1 && !_emissive[i]) SkinnedGear.SetEmissive(_materials[i], false);
         }
         if (t >= 1) _start = -1;

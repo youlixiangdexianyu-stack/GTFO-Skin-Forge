@@ -8,7 +8,7 @@ namespace ForgeSkin.Plugin;
 // seconds while it changes, and when a level starts generating.
 static class Wear
 {
-    static readonly string File = Path.Combine(Paths.BepInExRootPath, "ForgeSkin", "wear.json");
+    static readonly string File = Path.Combine(SkinFolders.Root(Paths.BepInExRootPath), "wear.json");
     static Dictionary<string, int>? _kills;
     static bool _dirty;
     static float _savedAt;
@@ -25,7 +25,11 @@ static class Wear
     {
         Kills()[key] = Count(key) + 1;
         _dirty = true;
+        Version++;
     }
+
+    // Counts kills counted here: the local player's look (its wear stages) is looked at again when it moves.
+    public static int Version { get; private set; }
 
     /// <summary>The stage the kills reached: the last whose kill count is at most `kills` (stages lowest first).</summary>
     public static WearStage Stage(List<WearStage> stages, int kills) => stages.LastOrDefault(s => s.Kills <= kills) ?? stages[0];

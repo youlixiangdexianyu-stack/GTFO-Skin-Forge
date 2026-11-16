@@ -1,42 +1,30 @@
 namespace ForgeSkin.Backend;
 
-// Reading the game is a one-time cost per game build: once the catalog of a build is ready, other builds' cache folders
-// are deleted and every item's preview is built in the background (sequential, below-normal priority, `cache-progress`
-// events). Requests waiting for the game reader go first: the worker yields between items while any are queued.
+// The game cache of a build: an item's preview is built when it is first asked for. Each backend holds `in-use` open in the
+// cache folder it uses; once this build's catalog is ready, every other folder (another game build, another format version)
+// that no running copy holds is deleted.
 public static class PreviewCache
 {
-    static int _generation;
+    static FileStream? _inUse;
 
     public static string Dir(GameAssets g, string itemId) => Path.Combine(g.Cache, "preview", itemId);
 
-    static bool Done(GameAssets g, string itemId) => File.Exists(Path.Combine(Dir(g, itemId), "preview.json"));
+    // Game textures as PNG, shared by every item and named by content (Preview.TextureKey).
+    public static string Textures(GameAssets g) => Path.Combine(g.Cache, "tex");
 
-    public static void Ready(GameAssets g, List<CatalogItem> items)
+    public static void Ready(GameAssets g)
     {
-        // Other builds of the game are gone for good; a cache of another format version may belong to another copy of the
-        // app (an older install next to a newer checkout) and goes only once nothing has written it for a month.
-        foreach (var dir in Directory.EnumerateDirectories(Path.GetDirectoryName(g.Cache)!).Where(d => d != g.Cache))
+        _inUse?.Dispose();
+        Directory.CreateDirectory(g.Cache);
+        _inUse = new FileStream(InUse(g.Cache), FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.ReadWrite);
+        foreach (var dir in Directory.EnumerateDirectories(Paths.GameCache).Where(d => d != g.Cache))
             try
             {
-                if (dir.EndsWith(GameAssets.CacheSuffix, StringComparison.Ordinal) || DateTime.UtcNow - Directory.GetLastWriteTimeUtc(dir) > TimeSpan.FromDays(30))
-                    Directory.Delete(dir, true);
+                if (File.Exists(InUse(dir))) using (new FileStream(InUse(dir), FileMode.Open, FileAccess.ReadWrite, FileShare.None)) { }
+                Directory.Delete(dir, true);
             }
-            catch (IOException e) { Log.Write($"cache: could not delete {dir}: {e.Message}"); }
-
-        int generation = Interlocked.Increment(ref _generation);
-        var ids = items.Select(i => i.Id).Where(id => !Done(g, id)).ToList();
-        if (ids.Count == 0) return;
-        new Thread(() => Warm(ids, generation)) { IsBackground = true, Priority = ThreadPriority.BelowNormal, Name = "preview-cache" }.Start();
+            catch (IOException e) { Log.Write($"cache: kept {dir}: {e.Message}"); } // in use by another copy, or a file held open
     }
 
-    static void Warm(List<string> ids, int generation)
-    {
-        for (int i = 0; i < ids.Count && generation == Volatile.Read(ref _generation); i++)
-        {
-            while (Methods.Waiting > 0) Thread.Sleep(20);
-            try { Methods.WithGame(g => Preview.Weapon(g, ids[i], -1), background: true); }
-            catch (Exception e) { Log.Write($"cache: preview {ids[i]} failed: {e.Message}"); }
-            Program.Send(new { @event = "cache-progress", data = new { done = i + 1, total = ids.Count, text = ids[i] } });
-        }
-    }
+    static string InUse(string dir) => Path.Combine(dir, "in-use");
 }

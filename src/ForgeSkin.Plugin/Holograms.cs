@@ -59,7 +59,8 @@ static class Holograms
         if (source != null)
         {
             m = gear.Own(new Material(source) { name = Name });
-            if (picture != null) m.SetTexture(SkinnedGear.MainTex, picture);
+            // The shader reads its picture from _EmissiveMap (no _MainTex, see the properties Source logs).
+            if (picture != null) m.SetTexture(m.HasProperty(SkinnedGear.EmissiveMap) ? SkinnedGear.EmissiveMap : SkinnedGear.MainTex, picture);
         }
         else
         {
@@ -80,11 +81,11 @@ static class Holograms
     {
         if (m.shader.name != ShaderName)
         {
-            SkinnedGear.SetEmission(m, colour * gain);
+            SkinnedGear.SetEmission(m, colour, gain);
             return;
         }
         foreach (var p in ColourProperties) if (m.HasProperty(p)) m.SetColor(p, colour);
-        ForgeVisual.Glow.SetColour(m, colour * gain);
+        ForgeVisual.Glow.SetColour(m, ForgeVisual.Glow.Value(m, ForgeVisual.Glow.EmissiveColorName, colour, gain));
     }
 }
 

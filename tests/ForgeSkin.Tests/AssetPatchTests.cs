@@ -4,6 +4,7 @@ using System.Text.Json.Nodes;
 using System.Text.RegularExpressions;
 using AssetsTools.NET;
 using AssetsTools.NET.Extra;
+using AssetsTools.NET.Texture;
 using SkiaSharp;
 using ForgeSkin.Backend;
 using ForgeSkin.Format;
@@ -12,7 +13,8 @@ using Xunit;
 namespace ForgeSkin.Tests;
 
 // Local-resource layer. Asset replacement runs on a copy of the game files the HEL needs (copied on first use under the test
-// data dir and refreshed when the game's file differs); the real install is only read.
+// data dir and refreshed when the game's file differs); the real install is only read. The copy has the real build id, so
+// it reads the catalog and prefab index the real install wrote (preview.weapon and project.load run first).
 public class AssetPatchTests
 {
     static JsonNode Call(string method, object? args = null) =>
@@ -59,18 +61,22 @@ public class AssetPatchTests
             Id = "skin-assets-test",
             Name = "Assets test",
             Target = new SkinTarget { Weapon = "auto_pistol" },
-            Materials = { new MaterialOverride { Material = "Front_UZI_2", Textures = { [TextureChannel.Albedo] = "front.png" } } },
+            Materials = { new MaterialOverride { Material = "Front_UZI_2", Textures = { [TextureChannel.Albedo] = Path.Combine(dir, "front.png") } } },
         };
         var projectPath = Path.Combine(dir, "assets.forgeskinproj");
         Call("project.save", new { project, path = projectPath });
         var pack = (string)Call("pack.build", new { project = Call("project.load", new { path = projectPath }), projectPath, @out = Path.Combine(dir, "out") })["pack"]!;
 
         var file = (string)OnCopy("assets.apply", new { pack, gameDir = copy })["files"]![0]!;
+        // Applying again (as after an edit) reads the patched file from its backup and rebuilds it, never stacking edits.
+        Assert.Equal(file, (string)Call("assets.apply", new { pack, gameDir = copy })["files"]![0]!);
         var target = Path.Combine(copy, "GTFO_Data", file);
         var original = Path.Combine(real, "GTFO_Data", file);
         Assert.Equal("patched", (string)Call("assets.status", new { gameDir = copy })["files"]![0]!["state"]!);
 
         long added;
+        (int, int, byte[], string) decoded;
+        string addedKey;
         AssetsManager Manager() => new();
         var (am, bm) = (Manager(), Manager());
         try
@@ -80,6 +86,11 @@ public class AssetPatchTests
             var changed = a.file.AssetInfos.Where(i => b.file.GetAssetInfo(i.PathId) is not { } j || !Raw(a, i).AsSpan().SequenceEqual(Raw(b, j))).ToList();
             Assert.Equal([(int)AssetClassID.Material], changed.Select(i => i.TypeId));
             added = b.file.AssetInfos.Single(j => a.file.GetAssetInfo(j.PathId) == null && j.TypeId == (int)AssetClassID.Texture2D).PathId;
+            using (var tpk = typeof(GameAssets).Assembly.GetManifestResourceStream("classdata.tpk")!) bm.LoadClassPackage(tpk);
+            bm.LoadClassDatabaseFromPackage(b.file.Metadata.UnityVersion);
+            var tex = TextureFile.ReadTextureFile(bm.GetBaseField(b, b.file.GetAssetInfo(added)));
+            var loaded = (tex, tex.FillPictureData(b));
+            (decoded, addedKey) = (Unity.DecodeTexture(loaded), Preview.TextureKey(loaded));
         }
         finally
         {
@@ -88,7 +99,11 @@ public class AssetPatchTests
         }
         using (var g = new GameAssets(copy))
         {
-            var (w, h, rgba, _) = Unity.ReadTexture(g, new TexRef(g.Load(file), added, [1, 1], [0, 0]));
+            // Readers take the intact backup of a file this tool rewrote, so they see the game's own content; a texture that
+            // is not the game's own (here the one the patch added) is caught by the vanilla list.
+            Assert.Null(g.Load(file).file.GetAssetInfo(added));
+            Assert.False(g.IsVanilla(addedKey));
+            var (w, h, rgba, _) = decoded;
             using var expected = Images.Load(Path.Combine(dir, "front.png"));
             Assert.Equal((expected.Width, expected.Height), (w, h));
             var want = expected.Bytes;

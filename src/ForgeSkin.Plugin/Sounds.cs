@@ -5,8 +5,9 @@ using ForgeSkin.Format;
 namespace ForgeSkin.Plugin;
 
 // Skin sounds through ForgeCore's audio part: the pack's Ogg Vorbis bytes become one audio library per loaded pack, in the
-// shared mix (the weapon category, the kit's and the game's volumes), 2D, heard by the local player only; nothing goes
-// over the network. A pack loaded again gets a new library; the old one is disposed with its skin.
+// shared mix (the weapon category, the kit's and the game's volumes): the local player's own gear in their head (2D), a teammate's
+// gear at that gear (3D, following it). Nothing goes over the network: each machine plays what it sees of each gear. A pack loaded
+// again gets a new library; the old one is disposed with its skin.
 static class SkinSounds
 {
     static int _loads;
@@ -26,7 +27,7 @@ static class SkinSounds
             if (AudioKit.CheckClip(bytes, SkinPack.MaxSoundSeconds) is { } bad)
                 throw new SkinFormatException("bad-audio", $"sound {(s.Name.Length > 0 ? s.Name : Path.GetFileNameWithoutExtension(s.File))}: {bad.Detail} Convert it to Ogg Vorbis (adding it in the ForgeSkin editor does) and build the pack again");
             clips[cue + ".ogg"] = bytes;
-            settingCues[cue] = new { bus = "skin", place = "2d" };
+            settingCues[cue] = new { bus = "skin", place = new { self = "2d", other = "follow" } };
             cues[s.File] = cue;
         }
         var library = AudioKit.Load("ForgeSkin.pack" + ++_loads, JsonSerializer.Serialize(new { buses = new { skin = new { category = "weapon" } }, cues = settingCues }), clips, SkinPack.MaxSoundSeconds);
@@ -47,17 +48,20 @@ sealed class SoundGroup : ITriggered
     readonly PlayOptions[] _options;
     readonly float[] _weights;
     readonly float _total;
+    readonly UnityEngine.Transform? _at;
     int _last = -1;
 
-    public SoundGroup(IReadOnlyList<(AudioCue Cue, float Volume, float Weight)> sounds)
+    // `at`: a teammate's gear the sounds follow; null: the local player's own, in their head.
+    public SoundGroup(IReadOnlyList<(AudioCue Cue, float Volume, float Weight)> sounds, UnityEngine.Transform? at = null)
     {
+        _at = at;
         _cues = new AudioCue[sounds.Count];
         _options = new PlayOptions[sounds.Count];
         _weights = new float[sounds.Count];
         for (int i = 0; i < sounds.Count; i++)
         {
             _cues[i] = sounds[i].Cue;
-            _options[i] = new PlayOptions { Gain = Math.Clamp(sounds[i].Volume, 0, 1) };
+            _options[i] = new PlayOptions { Gain = Math.Clamp(sounds[i].Volume, 0, 1), IsSelf = at == null };
             _weights[i] = sounds[i].Weight;
             _total += _weights[i];
         }
@@ -75,7 +79,9 @@ sealed class SoundGroup : ITriggered
             if ((roll -= _weights[i]) < 0) break;
         }
         _last = pick;
-        if (pick >= 0 && _cues[pick].IsReady) _cues[pick].Play(_options[pick]);
+        if (pick < 0 || !_cues[pick].IsReady) return;
+        if (_at is null) _cues[pick].Play(_options[pick]);
+        else if (_at != null) _cues[pick].Play(_at, _options[pick]); // not a destroyed gear's
     }
 
     public void Update(float time) { }

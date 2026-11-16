@@ -35,17 +35,23 @@ static class Icons
 
     static readonly HashSet<string> Early = new(); // target keys whose icon was rendered while their skins were still loading
 
+    // Its skins are loaded now (else they are asked for): its icon is due again.
+    static bool Loaded(string key)
+    {
+        if (!Skins.Ready(Skins.Own(key), ForgeCore.Frame.UnscaledTime)) return false;
+        Due.Add(key);
+        return true;
+    }
+
     /// <summary>The icon of this target was rendered before its skins were loaded: it is rendered again once they are.</summary>
     public static void RenderedWithout(string key) => Early.Add(key);
 
-    /// <summary>Re-renders the icons noted, once the game has its gear and icon renderer.</summary>
+    /// <summary>Re-renders the icons noted, once the game has its gear (its icon renderer, gone whenever idle, is made by the redraw).</summary>
     public static void Tick()
     {
-        if (Early.Count > 0)
-            foreach (var key in Early.ToList())
-                if (Skins.Ready(Skins.Wanted(key), ForgeCore.Frame.UnscaledTime)) { Early.Remove(key); Due.Add(key); }
+        if (Early.Count > 0) Early.RemoveWhere(Loaded);
         if (Due.Count == 0 && !_globalsChanged) return;
-        if (GearManager.Current == null || GearIconRendering.Current == null) return;
+        if (GearManager.Current == null) return;
         int rendered = 0;
         foreach (var slot in SkinnedGear.GearSlots)
         {

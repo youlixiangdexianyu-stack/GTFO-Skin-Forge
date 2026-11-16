@@ -35,25 +35,128 @@ export type CodeEffect = NonNullable<NonNullable<SkinDocument['codeEffects']>[nu
 
 /** Game events in the order the UI lists them; `simulate` ones get a preview button in the 3D view. */
 export const TRIGGERS: { value: Trigger; label: string; simulate?: boolean }[] = [
-  { value: 'always', get label() { return t('trigger.always'); } },
-  { value: 'kill', get label() { return t('trigger.kill'); }, simulate: true },
-  { value: 'hit', get label() { return t('trigger.hit'); }, simulate: true },
-  { value: 'miss', get label() { return t('trigger.miss'); }, simulate: true },
-  { value: 'fire', get label() { return t('trigger.fire'); }, simulate: true },
-  { value: 'dryFire', get label() { return t('trigger.dryFire'); } },
-  { value: 'reloadStart', get label() { return t('trigger.reloadStart'); }, simulate: true },
-  { value: 'reloadEnd', get label() { return t('trigger.reloadEnd'); } },
-  { value: 'equip', get label() { return t('trigger.equip'); }, simulate: true },
-  { value: 'unequip', get label() { return t('trigger.unequip'); } },
-  { value: 'aim', get label() { return t('trigger.aim'); }, simulate: true },
-  { value: 'aimEnd', get label() { return t('trigger.aimEnd'); } },
-  { value: 'lowAmmo', get label() { return t('trigger.lowAmmo'); }, simulate: true },
-  { value: 'empty', get label() { return t('trigger.empty'); } },
-  { value: 'ammoPickup', get label() { return t('trigger.ammoPickup'); } },
-  { value: 'flashlightOn', get label() { return t('trigger.flashlightOn'); } },
-  { value: 'flashlightOff', get label() { return t('trigger.flashlightOff'); } },
-  { value: 'downed', get label() { return t('trigger.downed'); } },
-  { value: 'revived', get label() { return t('trigger.revived'); } },
+  {
+    value: 'always',
+    get label() {
+      return t('trigger.always');
+    },
+  },
+  {
+    value: 'kill',
+    get label() {
+      return t('trigger.kill');
+    },
+    simulate: true,
+  },
+  {
+    value: 'hit',
+    get label() {
+      return t('trigger.hit');
+    },
+    simulate: true,
+  },
+  {
+    value: 'miss',
+    get label() {
+      return t('trigger.miss');
+    },
+    simulate: true,
+  },
+  {
+    value: 'fire',
+    get label() {
+      return t('trigger.fire');
+    },
+    simulate: true,
+  },
+  {
+    value: 'dryFire',
+    get label() {
+      return t('trigger.dryFire');
+    },
+  },
+  {
+    value: 'reloadStart',
+    get label() {
+      return t('trigger.reloadStart');
+    },
+    simulate: true,
+  },
+  {
+    value: 'reloadEnd',
+    get label() {
+      return t('trigger.reloadEnd');
+    },
+  },
+  {
+    value: 'equip',
+    get label() {
+      return t('trigger.equip');
+    },
+    simulate: true,
+  },
+  {
+    value: 'unequip',
+    get label() {
+      return t('trigger.unequip');
+    },
+  },
+  {
+    value: 'aim',
+    get label() {
+      return t('trigger.aim');
+    },
+    simulate: true,
+  },
+  {
+    value: 'aimEnd',
+    get label() {
+      return t('trigger.aimEnd');
+    },
+  },
+  {
+    value: 'lowAmmo',
+    get label() {
+      return t('trigger.lowAmmo');
+    },
+    simulate: true,
+  },
+  {
+    value: 'empty',
+    get label() {
+      return t('trigger.empty');
+    },
+  },
+  {
+    value: 'ammoPickup',
+    get label() {
+      return t('trigger.ammoPickup');
+    },
+  },
+  {
+    value: 'flashlightOn',
+    get label() {
+      return t('trigger.flashlightOn');
+    },
+  },
+  {
+    value: 'flashlightOff',
+    get label() {
+      return t('trigger.flashlightOff');
+    },
+  },
+  {
+    value: 'downed',
+    get label() {
+      return t('trigger.downed');
+    },
+  },
+  {
+    value: 'revived',
+    get label() {
+      return t('trigger.revived');
+    },
+  },
 ];
 
 /** Events a melee weapon raises in the game. */
@@ -63,12 +166,45 @@ const NO_SHOT = new Set<Trigger>(['fire', 'dryFire', 'reloadStart', 'reloadEnd',
 
 /** Items (packs, consumables, objective items): used (applied, thrown, placed, inserted), taken out, put away or dropped. */
 const ITEM_TRIGGERS: { value: Trigger; label: string; simulate?: boolean }[] = [
-  { value: 'always', get label() { return t('trigger.always'); } },
-  { value: 'fire', get label() { return t('trigger.use'); }, simulate: true },
-  { value: 'equip', get label() { return t('trigger.takeOut'); }, simulate: true },
-  { value: 'unequip', get label() { return t('trigger.putAway'); }, simulate: true },
-  { value: 'downed', get label() { return t('trigger.downed'); } },
-  { value: 'revived', get label() { return t('trigger.revived'); } },
+  {
+    value: 'always',
+    get label() {
+      return t('trigger.always');
+    },
+  },
+  {
+    value: 'fire',
+    get label() {
+      return t('trigger.use');
+    },
+    simulate: true,
+  },
+  {
+    value: 'equip',
+    get label() {
+      return t('trigger.takeOut');
+    },
+    simulate: true,
+  },
+  {
+    value: 'unequip',
+    get label() {
+      return t('trigger.putAway');
+    },
+    simulate: true,
+  },
+  {
+    value: 'downed',
+    get label() {
+      return t('trigger.downed');
+    },
+  },
+  {
+    value: 'revived',
+    get label() {
+      return t('trigger.revived');
+    },
+  },
 ];
 
 /** One enemy of the installed game, for kill sounds that play only for it: `id` its data block's persistent id (what the
@@ -107,12 +243,14 @@ export interface Profile {
   pluginVersion: string | null;
   /** False when the installed plugin differs from the one this app ships (an update is due). */
   pluginCurrent?: boolean;
-  /** The plugin's development switch: skins reload in game on every apply; off, they load once at game start. */
-  development?: boolean;
+  /** The plugin version this app ships, which the profile's is held to; null without a plugin build. */
+  pluginShipped?: string | null;
   /** Added by the player with 「选择文件夹…」; can be removed again. */
   custom?: boolean;
   /** Last change of the profile (ISO time), used to pick the most recently used one. */
   modified?: string | null;
+  /** Packs in its skins folder. */
+  packs?: number;
 }
 
 export interface CatalogPart {
@@ -177,6 +315,10 @@ export interface WeaponPreview {
   parts: { id: string; nodes: string[]; transforms: PreviewTransform[]; ammo: { node: string; offset: [number, number, number]; hidden: string[] } | null }[];
   textures: Record<string, Partial<Record<TextureChannel, string>>>;
   params: Record<string, PreviewMaterial>;
+  /** Some game textures could not be read (a game file was rewritten outside the game); those show as untextured. */
+  damaged: boolean;
+  /** Some game textures are not the game's own (another mod rewrote the game files); they show and bake as rewritten. */
+  modified: boolean;
 }
 
 export interface MatchCell {
@@ -196,6 +338,13 @@ export interface MeshImport {
   forgeskinmesh: string;
   glb: string;
   bounds: { min: number[]; max: number[] };
+  /** The model's own pictures as PNGs for the attachment's material (at most 2048 on the longest side). */
+  textures: Partial<Record<TextureChannel, string>>;
+  /** Its base colour factor when not white; its glow (factor, strength) when it has an emissive picture. */
+  color: number[] | null;
+  emissive: { color: number[]; intensity: number } | null;
+  /** Sizes of the pictures kept, and what was left out. */
+  notes: string[];
 }
 
 /** A skin project on disk (`project.list`). */
@@ -204,6 +353,8 @@ export interface ProjectEntry {
   id: string;
   name: string;
   modified: string;
+  /** When the author last changed it (ISO; editor.editedAt), null for a work not changed since this was kept. */
+  edited?: string | null;
 }
 
 /** Something a Skins import or export left out or changed; worded by `skinsNote.<kind>` (ui/SkinsReport). */
@@ -262,6 +413,17 @@ export interface InstalledPack {
   file: string;
   weapon?: string | null;
   active: boolean;
+  /** Other copies of this skin the listing just moved to the Recycle Bin (file names). */
+  dropped?: string[] | null;
+  /** editor: the editor's own install; hand: put in the skins folder another way; mod: a skin mod in the plugins folder (read only). */
+  source: 'editor' | 'hand' | 'mod';
+  /** The skin mod's folder for a mod's pack. */
+  mod?: string | null;
+  /** The skin the game shows for its target (a pending apply, else the in-game picker's choice, else active.json, else a mod's). */
+  inUse: boolean;
+  /** The pack file's last write (ISO). */
+  modified?: string | null;
+  error?: string | null;
 }
 
 export interface BackendError {
@@ -275,8 +437,6 @@ export interface Progress {
   total: number;
   text: string;
 }
-
-export type SizeMode = 'keep' | 'original' | '1k' | '2k' | '4k';
 
 /** Skins written into the game's own files (直接改游戏文件), per game build. */
 export interface StaleAssets {
@@ -298,6 +458,7 @@ export interface Methods {
   'game.locate': [Record<string, never>, GameInfo];
   'game.setDir': [{ dir: string }, GameInfo];
   'profiles.list': [Record<string, never>, Profile[]];
+  'profiles.get': [{ path: string }, Profile];
   'profiles.add': [{ path: string }, Profile];
   'profiles.remove': [{ path: string }, unknown];
   'catalog.get': [Record<string, never>, { items: CatalogItem[] }];
@@ -315,14 +476,90 @@ export interface Methods {
   'project.missing': [{ project: SkinDocument }, { files: string[] }];
   'project.files': [{ project: SkinDocument }, { files: string[] }];
   'mesh.import': [{ glb: string }, MeshImport];
-  'pack.build': [{ project: SkinDocument; projectPath: string; out: string; sizeMode: SizeMode }, { pack: string; warnings: string[]; memory: number }];
+  /** A charm moved by the game's own rope along the hanging point's path, one result frame per input frame; vertices and normals
+   * are base64 little-endian float32 in the hanging point's frame, the pendant a world pose (xyz, quaternion xyzw). */
+  'charm.simulate': [
+    {
+      charm: NonNullable<Attachment['charm']>;
+      arm: number;
+      gear?: number[];
+      boxes?: { min: number[]; max: number[] }[];
+      frames: { time: number; m: number[]; body: number[] }[];
+    },
+    { triangles: number[]; metallic: number; smoothness: number; frames: { pendant: number[]; vertices: string; normals: string }[] },
+  ];
+  /** The values each spring-bone preset starts from (ForgeCore ChainSpec). */
+  'springs.presets': [Record<string, never>, Record<'longHair' | 'shortHair' | 'skirt' | 'tail', { stiffness: number; damping: number; weight: number; gravity: number; radius: number }>];
+  /** One spring-bone set moved by ForgeCore's chain physics along the anchor bone's path: nodes at rest in the anchor's frame (roots
+   * first in each strand), one result frame per input frame of node world positions, base64 little-endian float32. */
+  'springs.simulate': [
+    {
+      /** The set as the character document holds it (Core/Character.cs SpringChain). */
+      chain: {
+        id: string;
+        kind: 'longHair' | 'shortHair' | 'skirt' | 'tail';
+        anchor: string;
+        strands: string[][];
+        linkSide: boolean;
+        loop: boolean;
+        stiffness?: number;
+        damping?: number;
+        weight?: number;
+        gravity?: number;
+        radius?: number;
+      };
+      nodes: { parent: number; at: number[] }[];
+      strands?: number[][];
+      frames: { time: number; m: number[]; body: number[]; capsules: number[][] }[];
+    },
+    { frames: string[] },
+  ];
+  /** A bone match held to ForgeCore's rig check: `joints` is canonical name to rest position in the game's axes, root space. */
+  'character.check': [
+    { joints: Record<string, number[]> },
+    {
+      required: string[];
+      missing: string[];
+      issues: { kind: 'samePoint' | 'standing' | 'sides' | 'other'; joints: string[]; degrees?: number | null; text: string }[];
+      backwards: boolean;
+      fingers: { left: boolean; right: boolean };
+    },
+  ];
+  /** The game's pose copy for a bone match (ForgeCore HumanRig): per canonical joint its link and whether the copy leaves it out;
+   * `fingers`: the playing body has finger joints. `reach`: upper, lower, end and anchor joint of each limb that reaches. */
+  'character.links': [{ bones: Record<string, string>; fingers: boolean }, { links: { joint: string; toward: number; from: number; skip: boolean }[]; reach: [number, number, number, number][] }];
+  /** The first-person arms the game cuts from the model for a bone match (ForgeCore HumanRig.ArmWear and MeshCut), the materials in
+   * `hide` left out: the kept vertices in Unity's axes (base64 little-endian: positions, normals float32 ×3, uvs ×2, bone indices
+   * uint16 ×4 into `bones`, weights float32 ×4) and per submesh its material and triangles (uint32). */
+  'character.arms': [
+    { descriptor: string; mesh: string; bones: Record<string, string>; hide: number[] },
+    { vertices: number; bones: string[]; positions: string; normals: string; uvs: string; index: string; weight: string; submeshes: { material: number; triangles: string }[] },
+  ];
+  'pack.build': [{ project: SkinDocument; projectPath: string; out: string }, { pack: string; warnings: string[]; memory: number }];
   /** `pick`: 应用到游戏 — the skin also goes before the player's in-game picker choice for its gear. */
-  'pack.install': [{ pack: string; profile: string; activate: boolean; pick?: boolean }, unknown];
-  'pack.list': [{ profile: string }, InstalledPack[]];
+  'pack.install': [{ pack: string; profile: string; activate: boolean; pick?: boolean }, { installed: string; active: boolean; dropped: string[] }];
+  /** `tidy`: the installed-skins window — extra copies of one skin are moved to the Recycle Bin first (each row's `dropped`). */
+  'pack.list': [{ profile: string; tidy?: boolean }, InstalledPack[]];
   'assembly.verify': [{ profile: string }, VerifyResult[]];
   'pack.remove': [{ profile: string; skinId: string }, unknown];
-  'pack.activate': [{ profile: string; skinId: string; active: boolean }, unknown];
-  'pack.exportMod': [{ packs: string[]; out: string; name: string; version: string; description: string; icon: string; format: 'forgeskin' | 'skins'; gunPack: boolean },
+  /** A character pack's card picture (base64 PNG), null without one. */
+  'pack.picture': [{ pack: string; cache: string }, { png: string | null; character: SkinDocument['character'] | null }];
+  /** An installed pack made into one of the author's works under `dir`; `lost`: what the pack no longer holds (Backend Projects.Adopt). */
+  /** `taken`: names of the author's works of that gear; a pack named the same comes back as "<name> 2" and so on (`name`). */
+  'pack.adopt': [
+    { pack: string; dir: string; taken?: string[] },
+    {
+      path: string;
+      weapon?: string | null;
+      name: string;
+      lost: ('editor' | 'source' | 'compressed' | 'frames' | 'layers' | 'meshes' | 'screens' | 'missing')[];
+      /** A character pack's card picture as unpacked. */
+      picture?: string | null;
+    },
+  ];
+  'pack.activate': [{ profile: string; skinId: string }, unknown];
+  'pack.exportMod': [
+    { packs: string[]; out: string; name: string; version: string; description: string; icon: string; format: 'forgeskin' | 'skins'; gunPack: boolean },
     { mod: string; dropped: SkinsNote[] },
   ];
   'assets.apply': [{ pack: string }, { skin: string; buildId: string; files: string[]; materials: string[]; warnings: string[] }];
@@ -330,12 +567,8 @@ export interface Methods {
   'assets.status': [Record<string, never>, AssetStatus];
   'assets.export': [{ pack: string; out: string }, { zip: string; buildId: string; files: string[]; warnings: string[] }];
   'plugin.install': [{ profile: string }, unknown];
-  'plugin.log': [
-    { profile: string; since?: string; from?: number; head?: string },
-    { lines: { time: string; level: 'info' | 'warn'; message: string }[]; next: number; head: string; reset: boolean },
-  ];
+  'plugin.log': [{ profile: string; since?: string; from?: number; head?: string }, { lines: { time: string; level: 'info' | 'warn'; message: string }[]; next: number; head: string; reset: boolean }];
   'plugin.uninstall': [{ profile: string }, unknown];
-  'plugin.setDevelopment': [{ profile: string; on: boolean }, { development: boolean; restartNeeded: boolean }];
   'export.obj': [{ weaponId: string; parts: string[]; mode: 'separate' | 'merged'; outDir: string }, { dir: string; files: string[] }];
 }
 
@@ -356,3 +589,9 @@ export function dirName(path: string): string {
   const i = Math.max(path.lastIndexOf('/'), path.lastIndexOf('\\'));
   return i < 0 ? '' : path.slice(0, i);
 }
+
+/** The material name of an attachment's model (Core MaterialOverride.ForAttachment): its paint and animated layers go on an
+ * override of this name, as on a game material. */
+export const attachmentMaterial = (id: string) => `attachment:${id}`;
+/** The attachment whose model `material` names, or null for a game material. */
+export const attachedOf = (material: string | null | undefined) => (material?.startsWith('attachment:') ? material.slice('attachment:'.length) : null);

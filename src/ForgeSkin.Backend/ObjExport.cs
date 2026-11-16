@@ -100,7 +100,7 @@ public static class ObjExport
             $"newmtl {m}\nKa 1.000000 1.000000 1.000000\nKd 1.000000 1.000000 1.000000\nKs 0.000000 0.000000 0.000000\nd 1.000000\nillum 2\n\n")));
         var manifest = Write(Path.Combine(dir, "obj-export-manifest.json"), JsonSerializer.Serialize(new
         {
-            schemaVersion = 1,
+            schemaVersion = "1.0.0",
             application = "ForgeSkin",
             createdAt = DateTimeOffset.UtcNow,
             item = item.Id,

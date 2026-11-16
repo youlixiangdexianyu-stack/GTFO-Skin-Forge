@@ -1,9 +1,9 @@
 // The skin's colour variants in its overview: pick the one the 3D view shows and colour edits change, add, rename, delete.
 import { ActionIcon, Button, Group, TextInput, Tooltip, UnstyledButton } from '@mantine/core';
-import { IconPlus, IconTrash } from '@tabler/icons-react';
+import { IconPlus, IconSwitchHorizontal, IconTrash } from '@tabler/icons-react';
 import { useStore } from '../store';
 import { activeVariant, addVariant, removeVariant, renameVariant, selectVariant } from '../variants';
-import { Info } from './Features';
+import { Section } from './Features';
 import { t } from '../i18n';
 
 export function Variants() {
@@ -11,11 +11,7 @@ export function Variants() {
   const active = useStore((s) => activeVariant(s.doc));
   const list = (variants ?? []).filter((v) => !!v);
   return (
-    <div className="section">
-      <Group gap={6} mb={6}>
-        <h3 style={{ margin: 0 }}>{t('variants.title')}</h3>
-        <Info label={t('variants.info')} />
-      </Group>
+    <Section id="variants" title={t('variants.title')} icon={IconSwitchHorizontal} color="var(--paint)" info={t('variants.info')}>
       <div className="variant-list">
         <UnstyledButton className="variant" aria-selected={!active} onClick={() => selectVariant(null)}>
           {t('variants.own')}
@@ -39,6 +35,6 @@ export function Variants() {
           </Tooltip>
         </Group>
       )}
-    </div>
+    </Section>
   );
 }

@@ -1,7 +1,7 @@
 // The only Unity <-> three.js conversion (PLAN §2).
 // Stored poses are Unity weapon space: left-handed, Y up, metres, Euler degrees applied as Quaternion.Euler
 // (Z, then X, then Y). The preview GLB already mirrors the scene by negating Z, so a pose maps by mirroring Z too.
-import { Euler, MathUtils, Matrix4, Quaternion, Vector3 } from 'three';
+import { Euler, MathUtils, Quaternion, Vector3 } from 'three';
 
 export type Vec3 = [number, number, number];
 
@@ -48,14 +48,6 @@ export function threeToUnity(position: Vector3, quaternion: Quaternion, scale: V
 /** Unity local direction (e.g. part-local X axis) expressed in three local space. */
 export function unityDirToThree(d: Vec3): Vector3 {
   return new Vector3(d[0], d[1], -d[2]);
-}
-
-/** Rotation in three local space that makes a screen's visible face (Unity local -Z) look along `normal` (three space). */
-export function quaternionFacing(normal: Vector3): Quaternion {
-  // Unity -Z maps to three +Z, so align three +Z with the outward normal.
-  const m = new Matrix4().lookAt(new Vector3(), normal.clone().negate(), new Vector3(0, 1, 0));
-  if (Math.abs(normal.y) > 0.999) m.lookAt(new Vector3(), normal.clone().negate(), new Vector3(0, 0, 1));
-  return new Quaternion().setFromRotationMatrix(m);
 }
 
 /** A local pose in three.js space. */

@@ -77,17 +77,9 @@ public static class Precompress
         return data.ToArray();
     }
 
-    static readonly float[] ToLinear = Enumerable.Range(0, 256).Select(i =>
-    {
-        double c = i / 255.0;
-        return (float)(c <= 0.04045 ? c / 12.92 : Math.Pow((c + 0.055) / 1.055, 2.4));
-    }).ToArray();
+    static readonly float[] ToLinear = Enumerable.Range(0, 256).Select(i => ForgeVisual.ColourSpace.ToLinear(i / 255f)).ToArray();
 
-    static byte ToSrgb(float l)
-    {
-        double c = l <= 0.0031308 ? l * 12.92 : 1.055 * Math.Pow(l, 1 / 2.4) - 0.055;
-        return (byte)Math.Clamp((int)Math.Round(c * 255), 0, 255);
-    }
+    static byte ToSrgb(float l) => (byte)Math.Clamp((int)Math.Round(ForgeVisual.ColourSpace.ToSrgb(l) * 255), 0, 255);
 
     // The next mip: each pixel the average of a 2 x 2 square (a side already 1 stays 1); alpha and linear data as numbers.
     static (byte[], int, int) Half(byte[] src, int w, int h, bool srgb)

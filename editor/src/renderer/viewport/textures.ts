@@ -5,18 +5,18 @@ import { fileUrl, type TextureChannel } from '../protocol';
 
 const cache = new Map<string, Promise<Texture>>();
 
-/** Preview textures are at most this size; the pack is always built from the original files. */
+/** Preview textures are at most this size unless their material sets its size in game (textureSize). */
 const MAX = 2048;
 
-/** Decodes an image file to a bitmap no larger than MAX on its longest side, with its pixels left as they are. */
-async function decode(path: string, premultiply = false): Promise<ImageBitmap> {
+/** Decodes an image file to a bitmap no larger than max on its longest side, with its pixels left as they are. */
+async function decode(path: string, premultiply = false, max = MAX): Promise<ImageBitmap> {
   const blob = await (await fetch(fileUrl(path))).blob();
   const opts: ImageBitmapOptions = {
     premultiplyAlpha: premultiply ? 'premultiply' : 'none',
     colorSpaceConversion: 'none',
   };
   const full = await createImageBitmap(blob, opts);
-  const k = MAX / Math.max(full.width, full.height);
+  const k = max / Math.max(full.width, full.height);
   if (k >= 1) return full;
   const small = await createImageBitmap(full, {
     ...opts,
@@ -65,19 +65,20 @@ export function repackMetallicSmoothness(c: HTMLCanvasElement) {
   ctx.putImageData(data, 0, 0);
 }
 
-export function textureKey(path: string, channel: TextureChannel | 'reticle'): string {
-  return `${channel}|${path}`;
+export function textureKey(path: string, channel: TextureChannel | 'reticle', size?: number | null): string {
+  return `${channel}${size ? `@${size}` : ''}|${path}`;
 }
 
 /**
  * A sight reticle is added onto the view by colour, so its transparent pixels must be black: it is decoded with the
- * colour multiplied by alpha (`reticle` key in the same cache).
+ * colour multiplied by alpha (`reticle` key in the same cache). `size`: the longest side the texture has in game (its
+ * material's textureSize), shown no larger than that.
  */
-export function loadTexture(path: string, channel: TextureChannel | 'reticle'): Promise<Texture> {
-  const key = textureKey(path, channel);
+export function loadTexture(path: string, channel: TextureChannel | 'reticle', size?: number | null): Promise<Texture> {
+  const key = textureKey(path, channel, size);
   let p = cache.get(key);
   if (!p) {
-    p = decode(path, channel === 'reticle').then((img) => {
+    p = decode(path, channel === 'reticle', size ?? MAX).then((img) => {
       if (channel === 'reticle') {
         const t = new Texture(img);
         t.addEventListener('dispose', () => img.close());

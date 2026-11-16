@@ -1,0 +1,26 @@
+{
+  "game": [
+    { "id": "idle", "action": "Idle_1", "loop": true },
+    { "id": "walk", "action": "WalkFwdLoop", "loop": true },
+    { "id": "run", "action": "RunFwdLoop", "loop": true },
+    { "id": "crouch", "action": "Crouch_Idle", "loop": true },
+    { "id": "crouchWalk", "action": "Crouch_WalkFwd_new", "loop": true },
+    { "id": "jump", "action": "Rifle_Jump", "loop": false },
+    { "id": "aim", "action": "Rifle_Idle", "loop": true },
+    { "id": "fire", "action": "Rifle_Recoil", "loop": true },
+    { "id": "reload", "action": "Rifle1_Reload", "loop": false },
+    { "id": "melee", "action": "Sledgehammer_Stand_SwingLeft_Charge_Release", "loop": false },
+    { "id": "downed", "action": "Die", "loop": false },
+    { "id": "revived", "action": "Revive", "loop": false }
+  ],
+  "mixamo": [
+    { "id": "hip-hop-dancing", "loop": true },
+    { "id": "dancing-twerk", "loop": true },
+    { "id": "zombie-stumbling", "loop": false },
+    { "id": "backflip", "loop": false },
+    { "id": "praying", "loop": false },
+    { "id": "handshake", "loop": false },
+    { "id": "laying-shrugging", "loop": false },
+    { "id": "laying-seizure", "loop": false }
+  ]
+}

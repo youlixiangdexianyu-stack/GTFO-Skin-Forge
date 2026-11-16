@@ -1,13 +1,19 @@
 // Multi-step user actions: apply to game, export pack, export OBJ.
-import { bakeGlyphs, bakeLayers, baseTexturePath, loadImage, writePng } from './frames';
-import { bakeLivery, hasLivery } from './livery';
+import { bakeGlyphs, bakeLayers, baseTexturePath, layerName, loadImage, writePng } from './frames';
+import { bakeLivery, hasLivery, liveryName, paintTint, tintedPicture } from './livery';
+import { bakeHolograms, tooManyEffects } from './hologram';
+import { MAX_CODE_EFFECTS } from './codeFx';
 import { drawUvWireframe, liveryViewReady, meshesOf, uvRenderer } from './viewport/liveryGpu';
-import { call, type CatalogItem, type Profile, type SkinDocument, type SkinsImport, type SkinsNote, type WeaponPreview } from './protocol';
-import { autosavePath, autosaveRoot, currentItem, editorOf, hangAsCharm, useStore, type Selection } from './store';
+import { LiveryPreview } from './viewport/liveryPreview';
+import { skinPicture } from './viewport/thumbnails';
+import { attachedOf, attachmentMaterial, call, dirName, type CatalogItem, type Profile, type SkinDocument, type SkinsImport, type SkinsNote, type WeaponPreview } from './protocol';
+import { autosavePath, autosaveRoot, currentItem, DATA_NOTICE, attachmentName, editorOf, hangAsCharm, persistAutosave, useStore, type Selection } from './store';
 import { lang, localName, partLabel, t } from './i18n';
 import { confirmInGame } from './gameLog';
 import { detail, friendly } from './errors';
 import { shownDoc, variantDocs } from './variants';
+import { buildCharacterPack } from './character/model';
+import { matchReady, useCharacter } from './character/state';
 
 const st = () => useStore.getState();
 
@@ -75,7 +81,7 @@ function badVectors(doc: SkinDocument): Problem[] {
   }
   for (const a of doc.attachments ?? [])
     if (a && !(ok(a.position, 3, false) && ok(a.rotation, 3, false) && ok(a.scale, 3, false) && (a.effects ?? []).every((e) => !e || ok(e.color, 3, false))))
-      out.push(bad(t('actions.badVectorAttachment', { v0: a.name || a.id || '' }), { kind: 'attachment', id: a.id ?? '' }));
+      out.push(bad(t('actions.badVectorAttachment', { v0: attachmentName(doc, a) }), { kind: 'attachment', id: a.id ?? '' }));
   return out;
 }
 
@@ -87,9 +93,10 @@ export function problems(doc = st().doc, item = currentItem()): Problem[] {
   const pending = Object.keys(editorOf(doc).pending);
   if (pending.length) out.push({ text: t('actions.k1', { v0: pending.length }), select: partOf(pending[0].slice(0, pending[0].lastIndexOf('|'))) });
   out.push(...badVectors(doc));
-  const hasContent = (doc.materials ?? []).some((m) => m && (Object.keys(m.textures ?? {}).length || m.layers?.length || hasLivery(m) || Object.values(m.params ?? {}).some((v) => v != null)));
-  // Part layout, attachments and sounds are changes too, not only textures.
-  if (!hasContent && !(doc.attachments ?? []).length && !(doc.parts ?? []).length && !(doc.sounds ?? []).length) out.push({ text: t('actions.k3') });
+  if (tooManyEffects(doc)) out.push({ text: t('hologram.tooManyEffects', { v0: MAX_CODE_EFFECTS }) });
+  const hasContent = (doc.materials ?? []).some(
+    (m) => m && !attachedOf(m.material) && (Object.keys(m.textures ?? {}).length || m.layers?.length || hasLivery(m) || Object.values(m.params ?? {}).some((v) => v != null)),
+  );
   // The "every channel of every part" check only applies to a skin that replaces textures.
   if (!prefs.allowMissing && hasContent) {
     const ed = editorOf(doc);
@@ -116,13 +123,13 @@ function referrer(doc: SkinDocument, file: string): { name: string; select: Sele
   for (const m of doc.materials ?? []) {
     if (!m) continue;
     const l = m.layers?.find(names);
-    if (l) return { name: l.name ?? '', select: { kind: 'layer', material: m.material ?? '', id: l.id ?? '' } };
+    if (l) return { name: layerName(l), select: { kind: 'layer', material: m.material ?? '', id: l.id ?? '' } };
     const d = m.livery?.find(names);
-    if (d) return { name: d.name ?? '', select: { kind: 'livery', material: m.material ?? '', id: d.id ?? '' } };
+    if (d) return { name: liveryName(d), select: { kind: 'livery', material: m.material ?? '', id: d.id ?? '' } };
     if (names(m)) return { name: m.material ?? '', select: partOf(m.material) };
   }
   const a = doc.attachments?.find(names);
-  if (a) return { name: a.name || (a.id ?? ''), select: { kind: 'attachment', id: a.id ?? '' } };
+  if (a) return { name: attachmentName(doc, a), select: { kind: 'attachment', id: a.id ?? '' } };
   const p = doc.parts?.find(names);
   if (p) return { name: p.part ?? '', select: { kind: 'part', id: p.part ?? '', sub: p.path } };
   const snd = doc.sounds?.find(names);
@@ -165,17 +172,54 @@ async function build(out: string, skin?: { doc: SkinDocument; path: string; item
   const preview = skin?.preview ?? s.preview;
   const doc = packDoc(skin?.doc, skin?.item ?? currentItem(), preview);
   useStore.setState({ busy: t('actions.k5') });
+  // Each step's milliseconds go to app.log (backend.log has the pack's own steps), so a slow apply shows where it waits.
+  const laps: string[] = [];
+  let since = performance.now();
+  const lap = (step: string) => {
+    const now = performance.now();
+    laps.push(`${step} ${Math.round(now - since)} ms`);
+    since = now;
+  };
   await missingSource(doc);
+  // The pack's picture, drawn as the skin's card before anything is baked: the game's skin picker shows it and loads nothing else.
+  const item = skin?.item ?? currentItem();
+  const picture = item && preview ? await skinPicture(item.id, preview, doc) : null;
+  if (picture) {
+    doc.picture = `${dirName(projectPath)}\\.frames\\${doc.id}-picture.png`;
+    await writePng(doc.picture, picture);
+  } else window.forge.appLog('build', `${doc.id}: no picture could be drawn; the pack goes without one`);
   // A livery is drawn on the model in the 3D view: right after a weapon is opened its model may still be loading.
   if (doc.materials?.some((m) => m && hasLivery(m))) await liveryViewReady();
-  // The livery first: it becomes the base the dynamic layers play over. Its animated decals' frames are written already,
-  // so their layers join the material only after its own layers are baked.
-  const animated = await bakeLivery(doc, preview, projectPath, (m) => uvRenderer(m.material ?? '', m.part), (t) => useStore.setState({ busy: t }));
-  await bakeLayers(doc, preview, projectPath, (t) => useStore.setState({ busy: t }));
-  for (const { m, layers } of animated) m.layers = [...layers, ...(m.layers ?? [])];
-  await bakeGlyphs(doc, projectPath);
-  useStore.setState({ busy: t('actions.k6') });
-  const r = await call('pack.build', { project: doc, projectPath, out, sizeMode: s.prefs.sizeMode });
+  lap('check');
+  LiveryPreview.held++;
+  let r;
+  try {
+    // Attachments' own pictures first: the paint on a model sits over its picture as the game shows it.
+    await bakeHolograms(doc, projectPath);
+    await bakeTints(doc, projectPath);
+    // The livery next: it becomes the base the dynamic layers play over. Its animated decals' frames are written already,
+    // so their layers join the material only after its own layers are baked.
+    const animated = await bakeLivery(
+      doc,
+      preview,
+      projectPath,
+      (m) => uvRenderer(m.material ?? '', m.part),
+      (t) => useStore.setState({ busy: t }),
+    );
+    lap('livery');
+    await bakeLayers(doc, preview, projectPath, (t) => useStore.setState({ busy: t }));
+    lap('layers');
+    for (const { m, layers } of animated) m.layers = [...layers, ...(m.layers ?? [])];
+    foldAttachmentPaint(doc);
+    await bakeGlyphs(doc, projectPath);
+    lap('screens');
+    useStore.setState({ busy: t('actions.k6') });
+    r = await call('pack.build', { project: doc, projectPath, out });
+    lap('pack');
+  } finally {
+    LiveryPreview.held--;
+  }
+  window.forge.appLog('build', `${doc.id}: ${laps.join(', ')}`);
   for (const w of r.warnings ?? []) {
     const m = w.match(/^(.+): (\d+) frames of (\d+x\d+) scaled to (\d+x\d+) to fit/);
     s.log(m ? t('actions.framesScaled', { v0: m[1], v1: m[2], v2: m[3], v3: m[4] }) : t('actions.k7', { v0: w }));
@@ -186,6 +230,43 @@ async function build(out: string, skin?: { doc: SkinDocument; path: string; item
   useStore.setState({ skinMemory: { id, bytes: r.memory } });
   if (r.memory > MEMORY_HEAVY && (prev?.id !== id || prev.bytes <= MEMORY_HEAVY)) s.toast('error', t('actions.memoryHeavy', { v0: mb(r.memory) }));
   return r.pack;
+}
+
+/**
+ * The game's gear shader has no colour property, so a lit model with its own picture would lose its colour in game
+ * (Native SkinnedGear.Surface): the packed copy gets the colour multiplied into the picture and white instead, as the 3D
+ * view shows it. Holograms and unlit models take the colour as their glow and keep it.
+ */
+async function bakeTints(doc: SkinDocument, projectPath: string) {
+  for (const a of doc.attachments ?? []) {
+    if (!a?.mesh) continue;
+    const m = a.material;
+    const material = attachmentMaterial(a.id ?? '');
+    const tint = paintTint(doc, material)!;
+    const painted = !!doc.materials?.some((o) => o?.material === material && (hasLivery(o) || !!o.layers?.length));
+    // A model with paint needs a picture to paint on (paintTint); otherwise only a lit model in a colour needs one.
+    if (m?.textures?.albedo ? tint.every((v) => v === 1) : !painted) continue;
+    const img = m?.textures?.albedo ? await loadImage(m.textures.albedo) : null;
+    const path = `${dirName(projectPath)}\\.frames\\${a.id}-tint.png`;
+    await writePng(path, tintedPicture(img, tint));
+    const lit = !a.hologram && !m?.unlit;
+    a.material = { ...m, textures: { ...m?.textures, albedo: path }, color: lit ? [1, 1, 1, m?.color?.[3] ?? 1] : m?.color };
+  }
+}
+
+/** An attachment's model wears its baked paint in its own pictures; its override keeps only the layers that play over them
+ * (Core MaterialOverride.ForAttachment). An override whose attachment is gone or has no model goes. */
+function foldAttachmentPaint(doc: SkinDocument) {
+  doc.materials = (doc.materials ?? []).filter((m) => {
+    const id = attachedOf(m?.material);
+    if (!m || !id) return true;
+    const a = doc.attachments?.find((x) => x?.id === id);
+    if (!a?.mesh) return false;
+    const params = Object.fromEntries(Object.entries(m.params ?? {}).filter(([, v]) => v != null));
+    a.material = { ...a.material, textures: { ...a.material?.textures, ...m.textures }, params: { ...a.material?.params, ...params } };
+    Object.assign(m, { textures: {}, params: {}, wear: null, textureSize: null });
+    return !!m.layers?.length;
+  });
 }
 
 /** Builds the current skin's pack at `out` after the usual checks; null (with a toast) when something must be fixed first.
@@ -235,13 +316,18 @@ export function profileProblem(profile: Profile | undefined): string | null {
  * game is closed. Returns false when the plugin is still not the current one.
  */
 export async function ensurePlugin(quiet = false): Promise<boolean> {
-  // Read the profile fresh: the plugin files may have changed on disk since the list was last loaded.
-  await st().refreshProfiles();
+  // Read the chosen profile fresh (the plugin files may have changed on disk since the list was last loaded), and only that
+  // one: reading every mod manager profile takes seconds, before every apply.
   const s = st();
-  const profile = s.profiles.find((p) => p.path === s.prefs.profilePath);
+  const known = s.profiles.find((p) => p.path === s.prefs.profilePath);
+  const fresh = known ? await call('profiles.get', { path: known.path }).catch(() => null) : null;
+  const profile = fresh ? { ...fresh, name: known!.name } : known;
+  if (fresh) useStore.setState({ profiles: st().profiles.map((p) => (p.path === profile!.path ? profile! : p)) });
   if (!profile?.hasBepInEx || profile.pluginCurrent !== false) return true;
   // Say which problem this is before fixing it; not an error, the install follows by itself.
-  const why = t(profile.pluginVersion ? 'actions.pluginWrong' : 'actions.pluginMissing');
+  const why = profile.pluginVersion
+    ? t('actions.pluginWrong', { v0: profile.name, v1: profile.pluginVersion, v2: profile.pluginShipped ?? '' })
+    : t('actions.pluginMissing', { v0: profile.name, v1: profile.pluginShipped ?? '' });
   try {
     if (!quiet) s.toast('info', why);
     await call('plugin.install', { profile: profile.path });
@@ -265,7 +351,40 @@ export async function applyToGame(quiet = false): Promise<void> {
   await exclusive(() => apply(quiet), quiet);
 }
 
-async function apply(quiet: boolean): Promise<void> {
+/** 「装进档案」: the open work built and installed like 应用, but the game's choice for its gear left as it is. */
+export async function installToProfile(): Promise<void> {
+  await exclusive(() => apply(false, false));
+}
+
+/** 应用到游戏 on the 人物模型 tab: the character skin, built and installed for try-on by the same install as a weapon skin; never
+ * the weapon skin behind the tab. */
+async function applyCharacter(wear = true): Promise<void> {
+  const s = st();
+  if (!useCharacter.getState().skinId || !matchReady(useCharacter.getState().check)) return s.toast('error', t('character.applyNotReady'));
+  const profile = s.profiles.find((p) => p.path === s.prefs.profilePath);
+  const blocked = profileProblem(profile);
+  if (blocked || !profile) return s.toast('error', blocked ?? '');
+  let step = t('actions.stepPlugin');
+  try {
+    useStore.setState({ busy: t('actions.k10') });
+    if (!(await ensurePlugin())) return;
+    step = t('actions.stepBuild');
+    const pack = await buildCharacterPack(`${s.dataDir}\\packs\\${useCharacter.getState().skinId}.forgeskin`);
+    step = t('actions.stepInstall');
+    useStore.setState({ busy: t('actions.k11') });
+    logDropped(useCharacter.getState().name, await call('pack.install', { pack, profile: profile.path, activate: wear, pick: wear }));
+    void s.refreshInstalled();
+    s.toast('ok', wear ? t('character.applied', { v0: profile.name }) : t('works.installedOnly', { v0: useCharacter.getState().name, v1: profile.name }));
+    s.log(t('actions.k14', { v0: pack, v1: profile.path }));
+  } catch (e) {
+    failedAt(e, step);
+  }
+}
+
+/** `wear` false (「装进档案」): installed without becoming the game's choice for its gear. */
+async function apply(quiet: boolean, wear = true): Promise<void> {
+  // Automatic applies follow weapon edits; on the 人物模型 tab only the button installs, and then the character.
+  if (useCharacter.getState().mode === 'character') return quiet ? undefined : applyCharacter(wear);
   const s = st();
   const problem = preflight();
   if (problem) return quiet ? undefined : s.toast('error', problem, openCheck());
@@ -277,52 +396,47 @@ async function apply(quiet: boolean): Promise<void> {
   try {
     useStore.setState({ busy: t('actions.k10') });
     if (!(await ensurePlugin())) return;
-    // The author's own profile refreshes live: turn the plugin's hot reload on (players who only install skin mods keep
-    // its default, off). A running game read the old setting at launch and picks it up next time.
-    let devRestart = false;
-    if (!profile.development) {
-      devRestart = (await call('plugin.setDevelopment', { profile: profile.path, on: true })).restartNeeded;
-      await s.refreshProfiles();
-    }
     step = t('actions.stepBuild');
     const pack = await build(`${s.dataDir}\\packs\\${s.weaponId}.forgeskin`);
     step = t('actions.stepInstall');
     useStore.setState({ busy: t('actions.k11') });
     const since = new Date().toISOString();
     // The author's apply goes before a choice made in the game's picker for this gear (PLAN §4.8).
-    await call('pack.install', { pack, profile: profile.path, activate: true, pick: true });
+    logDropped(shownDoc(s.doc).name ?? '', await call('pack.install', { pack, profile: profile.path, activate: wear, pick: wear }));
     void s.refreshInstalled();
-    const now = st().profiles.find((p) => p.path === profile.path) ?? profile;
-    const live = (await call('game.locate', {}).catch(() => null))?.running && now.development && !devRestart;
-    // In a running game the plugin's log says whether the skin really loaded.
+    if (!wear) return s.toast('ok', t('works.installedOnly', { v0: shownDoc(s.doc).name ?? '', v1: profile.name }));
+    // The plugin follows its skins folder, so a running game shows the skin in seconds; its log says whether it really loaded.
     const item = currentItem();
     const shown = shownDoc(s.doc);
-    if (live) void confirmInGame(profile.path, since, shown.id ?? '', `${shown.name} → ${item ? localName(item) : ''}`, quiet);
-    else if (!quiet) s.toast('ok', await whenSeen(now, devRestart));
+    if (await gameRunning()) void confirmInGame(profile.path, since, shown.id ?? '', `${shown.name} → ${item ? localName(item) : ''}`, quiet);
+    else if (!quiet) s.toast('ok', t('actions.k13', { v0: profile.name }));
     s.log(t('actions.k14', { v0: pack, v1: profile.path }));
   } catch (e) {
     failedAt(e, step);
   }
 }
 
+/** Other copies of the skin the install moved to the Recycle Bin, said in the log. */
+export function logDropped(name: string, r: { dropped?: string[] | null }) {
+  if (r.dropped?.length) st().log(t('gameLog.dropped', { v0: name, v1: r.dropped.join('、') }));
+}
+
 /** One toast for a failed 应用到游戏: the step it stopped at and why (a backend code in plain words, else the error's own
  * text, such as the file an image could not be read from); the full error goes to the log. */
 function failedAt(e: unknown, step: string) {
   const s = st();
-  s.log(t('store.k2', { v0: detail(e) }));
+  window.forge.appLog('error', detail(e));
   const own = (e as { message?: string } | undefined)?.message ?? String(e);
-  s.toast('error', t('actions.applyFailed', { v0: step, v1: friendly(e, own) }));
+  const text = t('actions.applyFailed', { v0: step, v1: friendly(e, own) });
+  s.log(text);
+  s.toast('error', text);
 }
 
-/** When the game shows a skin change in `profile`, in plain words. */
-async function whenSeen(profile: Profile, devRestart = false): Promise<string> {
-  // Whether the game runs now, not when the window last looked.
+/** Whether the game runs now, not when the window last looked. */
+async function gameRunning(): Promise<boolean> {
   const running = (await call('game.locate', {}).catch(() => null))?.running ?? false;
   useStore.setState((x) => ({ game: x.game && { ...x.game, running } }));
-  // Without the development switch the plugin reads skins only at game start.
-  if (!running) return t('actions.k13', { v0: profile.name });
-  if (devRestart) return t('actions.devNextLaunch');
-  return profile.development ? t('actions.k12') : t('actions.nextLaunch');
+  return running;
 }
 
 /** Makes an installed skin the one the game uses for its item (the item's other skins stay installed). */
@@ -331,9 +445,9 @@ export async function activateSkin(id: string, name: string): Promise<void> {
   const profile = s.profiles.find((p) => p.path === s.prefs.profilePath);
   if (!profile) return;
   try {
-    await call('pack.activate', { profile: profile.path, skinId: id, active: true });
+    await call('pack.activate', { profile: profile.path, skinId: id });
     await s.refreshInstalled();
-    s.toast('ok', `${t('skins.activated', { v0: name })} · ${await whenSeen(profile)}`);
+    s.toast('ok', `${t('skins.activated', { v0: name })} · ${(await gameRunning()) ? t('actions.k12') : t('works.nextLaunch')}`);
   } catch (e) {
     s.fail(e);
   }
@@ -343,7 +457,7 @@ const isSkinGroup = (path: string) => /manifest\.skingroup\.json$/i.test(path);
 
 /** Imports a Skins library skin group (its manifest.skingroup.json) as skins of ours, one per gear it is for. */
 export async function importSkinGroup(): Promise<void> {
-  const [p] = await window.forge.openDialog('files', [{ name: 'Skins (manifest.skingroup.json)', extensions: ['json'] }], 'skingroup');
+  const [p] = await window.forge.openDialog('file', [{ name: 'Skins (manifest.skingroup.json)', extensions: ['json'] }], 'skingroup');
   if (!p) return;
   if (!isSkinGroup(p)) return st().toast('error', t('skins.notGroup'));
   await importSkins(p);
@@ -376,13 +490,16 @@ export async function importSkins(manifest: string, weapon?: string): Promise<vo
     await st().refreshSkins();
     await st().switchSkin(first.id);
   } else await st().selectWeapon(first.weapon);
-  const names = r.skins.map((k) => st().catalog.find((c) => c.id === k.weapon)).map((c) => (c ? localName(c) : '')).join('、');
+  const names = r.skins
+    .map((k) => st().catalog.find((c) => c.id === k.weapon))
+    .map((c) => (c ? localName(c) : ''))
+    .join('、');
   s.toast('ok', t('skinsImport.done', { v0: r.skins.length, v1: names }));
   report();
 }
 
 export async function openProject(): Promise<void> {
-  const [p] = await window.forge.openDialog('project', [{ name: t('store.k11'), extensions: ['forgeskinproj', 'gtfoskin', 'gtfdyn', 'json'] }]);
+  const [p] = await window.forge.openDialog('file', [{ name: t('store.k11'), extensions: ['forgeskinproj', 'gtfoskin', 'gtfdyn', 'json'] }]);
   if (p) await (isSkinGroup(p) ? importSkins(p) : st().loadProject(p));
 }
 
@@ -465,15 +582,22 @@ export async function exportUvTemplates(): Promise<void> {
 }
 
 /** Imports a model as an attachment on the selected part; `charm` hangs it as a charm. */
-export async function importMesh(charm = false): Promise<void> {
+export async function importMesh(charm = false, file?: string): Promise<void> {
   const s = st();
-  const [glb] = await window.forge.openDialog('files', [{ name: t('actions.k24'), extensions: ['glb', 'gltf'] }]);
+  const [glb] = file ? [file] : await window.forge.openDialog('file', [{ name: t('actions.k24'), extensions: ['glb', 'gltf'] }]);
   if (!glb) return;
   useStore.setState({ busy: t('actions.k25') });
   try {
     const r = await call('mesh.import', { glb });
-    s.addAttachment('mesh', { forgeskinmesh: r.forgeskinmesh, glb: r.glb }, charm ? hangAsCharm : undefined);
+    // The model keeps its own pictures and colours; the attachment's colour and settings work on top as on any model.
+    s.addAttachment('mesh', { forgeskinmesh: r.forgeskinmesh, glb: r.glb }, (a) => {
+      a.material = { ...a.material, textures: r.textures, color: r.color ?? [1, 1, 1, 1] };
+      if (r.emissive) a.material.params = { ...a.material.params, emissiveEnabled: true, emissiveColor: r.emissive.color.slice(0, 3), emissiveIntensity: r.emissive.intensity };
+      if (charm) hangAsCharm(a);
+    });
     s.toast('ok', t('actions.k26'));
+    if (Object.keys(r.textures).length) s.log(t('actions.modelPictures', { v0: r.notes.join('; ') }));
+    else for (const n of r.notes) s.log(t('actions.k7', { v0: n }));
   } catch (e) {
     s.fail(e);
   } finally {
@@ -543,8 +667,7 @@ export async function exportMod(info: ModInfo): Promise<boolean> {
           docs = docs.slice(0, 1);
         }
         const livery = docs.flatMap((d) => (d.materials ?? []).filter((m) => m && hasLivery(m)).map((m) => m!.material ?? ''));
-        const preview =
-          k.item.id === st().weaponId ? st().preview : livery.length ? await openForBake(k.item.id, livery) : await call('preview.weapon', { id: k.item.id });
+        const preview = k.item.id === st().weaponId ? st().preview : livery.length ? await openForBake(k.item.id, livery) : await call('preview.weapon', { id: k.item.id });
         for (const doc of docs) packs.push(await build(`${s.dataDir}\\packs\\${doc.id}.forgeskin`, { doc, path: k.path, item: k.item, preview }));
       }
       useStore.setState({ busy: t('actions.k6') });
@@ -599,3 +722,18 @@ export async function restoreSnapshot(path: string): Promise<void> {
 }
 
 export const deleteSnapshot = (path: string) => call('project.delete', { path });
+
+/** Settings → data folder: saves the open skin, moves the data (main/dataDir.ts) and reloads the window on success. */
+export async function moveDataFolder(): Promise<void> {
+  const [to] = await window.forge.openDialog('folder', undefined, 'dataDir');
+  if (!to) return;
+  await exclusive(async () => {
+    useStore.setState({ busy: t('dataDir.moving') });
+    await persistAutosave();
+    const r = await window.forge.moveDataDir(to);
+    if (!r.ok) return st().toast('error', t(`dataDir.${r.reason}`, { v0: r.detail ?? '' }));
+    const notice = r.adopted ? t('dataDir.adopted', { v0: to }) : r.leftover ? t('dataDir.leftover', { v0: r.leftover }) : t('dataDir.moved', { v0: to });
+    sessionStorage.setItem(DATA_NOTICE, notice);
+    window.location.reload();
+  });
+}

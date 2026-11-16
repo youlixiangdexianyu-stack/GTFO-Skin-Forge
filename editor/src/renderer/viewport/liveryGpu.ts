@@ -3,6 +3,7 @@
 // frame (inside its width, height and depth, on a face that looks at the decal, it gets the image); patterns and wear
 // (viewport/uvPrograms) are computed from the fragment's position, normal and curvature in the item's root space.
 import {
+  Box3,
   BufferAttribute,
   Color,
   Euler,
@@ -17,6 +18,7 @@ import {
   OrthographicCamera,
   PlaneGeometry,
   Quaternion,
+  RepeatWrapping,
   Scene,
   ShaderMaterial,
   Texture,
@@ -29,9 +31,9 @@ import {
   type WebGLRenderer,
 } from 'three';
 import type { UvRenderer } from '../livery';
-import { PATTERNS, PATTERN_FRAGMENT, UV_VERTEX, WEAR_FRAGMENT } from './uvPrograms';
+import { GRADIENT_FRAGMENT, PATTERNS, PATTERN_FRAGMENT, TILE_FRAGMENT, UV_VERTEX, WEAR_FRAGMENT } from './uvPrograms';
 import type { LiveryLayer, Pattern } from '../protocol';
-import { unityToThree, type Vec3 } from '../space';
+import { threeToUnity, unityDirToThree, unityToThree, type Vec3 } from '../space';
 import { anchorObject, viewRefs } from './refs';
 
 let renderer: WebGLRenderer | null = null;
@@ -59,6 +61,42 @@ export function decalMatrix(l: LiveryLayer): Matrix4 {
   return new Matrix4().compose(pose.position, q, new Vector3(w, h, Math.max(1e-4, l.depth ?? 0.01)));
 }
 
+/**
+ * The frame in `anchor`'s three.js space that lies on the surface at world `point` with world `normal`: its origin at the
+ * point, its +Z into the surface (along -normal), its +X `right` laid onto the surface (`fallback` when `right` is along the
+ * normal). A decal faces the surface this way; an attachment, which shows its three +Z face, takes it turned half round X.
+ */
+export function surfaceFrame(anchor: Object3D, point: Vector3, normal: Vector3, right: Vector3, fallback: Vector3): { position: Vector3; quaternion: Quaternion } {
+  anchor.updateWorldMatrix(true, false);
+  const inv = anchor.matrixWorld.clone().invert();
+  const rotInv = new Quaternion().setFromRotationMatrix(new Matrix4().extractRotation(anchor.matrixWorld)).invert();
+  const n = normal.clone().applyQuaternion(rotInv).normalize();
+  const onto = (v: Vector3) => {
+    const r = v.clone().applyQuaternion(rotInv);
+    return r.sub(n.clone().multiplyScalar(r.dot(n)));
+  };
+  let x = onto(right);
+  if (x.lengthSq() < 1e-8) x = onto(fallback);
+  x.normalize();
+  const z = n.clone().negate();
+  const y = z.clone().cross(x).normalize();
+  x = y.clone().cross(z);
+  return { position: point.clone().applyMatrix4(inv), quaternion: new Quaternion().setFromRotationMatrix(new Matrix4().makeBasis(x, y, z)) };
+}
+
+/**
+ * The pose (position, rotation in the part's Unity space) that lays a decal on the surface at world `point` with world
+ * `normal`: its image faces the surface and its right is `right` laid onto it (`fallback` when `right` is along the normal).
+ */
+export function decalPose(part: string | null | undefined, point: Vector3, normal: Vector3, right: Vector3, fallback: Vector3) {
+  const f = surfaceFrame((part && anchorObject(part)) || viewRefs.root!, point, normal, right, fallback);
+  return threeToUnity(f.position, f.quaternion, new Vector3(1, 1, 1));
+}
+
+/** Whether `x` is a drawn slot of `material`: a node whose model was replaced keeps its own meshes under a hidden copy of the
+ * material (PartMeshes), and only the replacement's UVs take paint. */
+const drawsWith = (x: Material, material: string) => x.name === material && x.visible !== false;
+
 /** Meshes drawn with `material`, with the materials list the bake uses for each (others hidden). */
 export function meshesOf(material: string): Mesh[] {
   const out: Mesh[] = [];
@@ -66,7 +104,7 @@ export function meshesOf(material: string): Mesh[] {
     const m = o as Mesh;
     if (!m.isMesh || o.userData.sfUnmapped) return;
     const list = (Array.isArray(m.material) ? m.material : [m.material]) as Material[];
-    if (list.some((x) => x.name === material)) out.push(m);
+    if (list.some((x) => drawsWith(x, material))) out.push(m);
   });
   return out;
 }
@@ -80,9 +118,7 @@ export function drawUvWireframe(material: string, ctx: CanvasRenderingContext2D,
     const index = m.geometry.index;
     const count = index ? index.count : uv.count;
     const list = Array.isArray(m.material) ? (m.material as Material[]) : null;
-    const ranges = list
-      ? m.geometry.groups.filter((g) => list[g.materialIndex ?? 0]?.name === material).map((g) => [g.start, Math.min(count, g.start + g.count)])
-      : [[0, count]];
+    const ranges = list ? m.geometry.groups.filter((g) => list[g.materialIndex ?? 0]?.name === material).map((g) => [g.start, Math.min(count, g.start + g.count)]) : [[0, count]];
     const at = (i: number) => (index ? index.getX(i) : i);
     for (const [start, end] of ranges)
       for (let i = start; i + 2 < end; i += 3) {
@@ -152,6 +188,24 @@ function imageTexture(img: CanvasImageSource): Texture {
   return t;
 }
 
+/** An uploaded tile image that repeats (its own copy: decals clamp at their edge). */
+const tiles = new Map<CanvasImageSource, Texture>();
+function tileTexture(img: CanvasImageSource): Texture {
+  let t = tiles.get(img);
+  if (!t) {
+    t = imageTexture(img).clone();
+    t.wrapS = t.wrapT = RepeatWrapping;
+    t.needsUpdate = true;
+    tiles.set(img, t);
+    if (tiles.size > 16) {
+      const [oldest, old] = tiles.entries().next().value!;
+      old.dispose();
+      tiles.delete(oldest);
+    }
+  }
+  return t;
+}
+
 /**
  * Per-vertex curvature of a geometry, cached on it as the `curvature` attribute: vertices at the same position are one
  * point; for each, minus the mean cosine between its normal and the directions to its neighbours (positive on outer
@@ -196,7 +250,13 @@ function curvatureOf(g: BufferGeometry): void {
     nv.fromArray(N, v * 3).normalize();
     p.fromArray(P, v * 3);
     let sum = 0;
-    for (const u of neighbours[v]) sum += nv.dot(d.fromArray(P, u * 3).sub(p).normalize());
+    for (const u of neighbours[v])
+      sum += nv.dot(
+        d
+          .fromArray(P, u * 3)
+          .sub(p)
+          .normalize(),
+      );
     curve[v] = neighbours[v].size ? -sum / neighbours[v].size : 0;
   }
   const out = new Float32Array(pos.count);
@@ -221,6 +281,15 @@ const patternProgram = program(PATTERN_FRAGMENT, {
   rot: { value: new Matrix3() },
   seed: { value: 0 },
 });
+const gradientProgram = program(GRADIENT_FRAGMENT, {
+  start: { value: new Vector3() },
+  end: { value: new Vector3() },
+  radial: { value: 0 },
+  count: { value: 2 },
+  at: { value: [0, 1, 1, 1] },
+  colors: { value: [0, 1, 2, 3].map(() => new Vector4()) },
+});
+const tileProgram = program(TILE_FRAGMENT, { image: { value: null }, scale: { value: 0.05 }, rot: { value: new Matrix3() }, tint: { value: new Vector4(1, 1, 1, 1) } });
 const wearProgram = program(WEAR_FRAGMENT, { amount: { value: 0 }, edgeWeight: { value: 0 }, scratches: { value: 0 }, scale: { value: 0.05 }, seed: { value: 0 } });
 
 /** Colours of a pattern layer that has fewer than four of its own (an olive woodland). */
@@ -237,7 +306,7 @@ function uvPass(material: string, shader: ShaderMaterial, w: number, h: number):
   for (const m of meshesOf(material)) {
     if (shader !== decalProgram) curvatureOf(m.geometry);
     const list = (Array.isArray(m.material) ? m.material : [m.material]) as Material[];
-    const mats = list.map((x) => (x.name === material ? shader : hidden));
+    const mats = list.map((x) => (drawsWith(x, material) ? shader : hidden));
     const copy = new Mesh(m.geometry, Array.isArray(m.material) ? mats : mats[0]);
     copy.matrixAutoUpdate = false;
     copy.matrix.copy(m.matrixWorld);
@@ -394,7 +463,13 @@ export function uvRenderer(material: string, part: string | null | undefined): U
     if (!renderer || !root) throw Object.assign(new Error('the 3D view is not ready'), { code: 'no-livery-view' });
     root.updateMatrixWorld(true);
     const toRoot = root.matrixWorld.clone().invert();
-    if (layer.kind === 'brush') return islandFill(material, (layer.fills ?? []).filter((p): p is number[] => !!p), w, h);
+    if (layer.kind === 'brush')
+      return islandFill(
+        material,
+        (layer.fills ?? []).filter((p): p is number[] => !!p),
+        w,
+        h,
+      );
     if (layer.kind === 'pattern') {
       const u = patternProgram.uniforms;
       u.toRoot.value = toRoot;
@@ -406,6 +481,29 @@ export function uvRenderer(material: string, part: string | null | undefined): U
       u.rot.value = new Matrix3().setFromMatrix4(new Matrix4().makeRotationFromEuler(new Euler(rx, ry, rz)));
       u.seed.value = layer.seed ?? 0;
       return uvPass(material, patternProgram, w, h);
+    }
+    if (layer.kind === 'gradient') {
+      const g = layer.gradient;
+      const u = gradientProgram.uniforms;
+      u.toRoot.value = toRoot;
+      u.start.value = unityDirToThree((g?.start ?? [0, 0, 0]) as Vec3);
+      u.end.value = unityDirToThree((g?.end ?? [0, 0, 0.1]) as Vec3);
+      u.radial.value = g?.shape === 'radial' ? 1 : 0;
+      const stops = gradientStops(g);
+      u.count.value = stops.length;
+      u.at.value = [0, 1, 2, 3].map((i) => stops[Math.min(i, stops.length - 1)].at);
+      (u.colors.value as Vector4[]).forEach((v, i) => v.fromArray(stops[Math.min(i, stops.length - 1)].color));
+      return uvPass(material, gradientProgram, w, h);
+    }
+    if (layer.kind === 'tile') {
+      const u = tileProgram.uniforms;
+      u.toRoot.value = toRoot;
+      u.image.value = tileTexture(img!);
+      u.scale.value = layer.scale ?? 0.05;
+      const [rx, ry, rz] = (layer.patternRotation ?? [0, 0, 0]).map((x) => (x ?? 0) * DEG);
+      u.rot.value = new Matrix3().setFromMatrix4(new Matrix4().makeRotationFromEuler(new Euler(rx, ry, rz)));
+      (u.tint.value as Vector4).fromArray(layer.color ?? [1, 1, 1, 1]);
+      return uvPass(material, tileProgram, w, h);
     }
     if (layer.kind === 'wear') {
       const u = wearProgram.uniforms;
@@ -419,17 +517,62 @@ export function uvRenderer(material: string, part: string | null | undefined): U
     }
     const anchor: Object3D = (part && anchorObject(part)) || root;
     const frame = anchor.matrixWorld.clone().multiply(decalMatrix(layer));
-    const toFrame = frame.clone().invert();
-    const rot = new Quaternion();
-    frame.decompose(new Vector3(), rot, new Vector3());
     const u = decalProgram.uniforms;
-    u.toFrame.value = toFrame;
-    u.frameRot.value = new Matrix3().setFromMatrix4(new Matrix4().makeRotationFromQuaternion(rot.invert()));
     u.image.value = imageTexture(img!);
     const [r, g, b, a] = layer.color ?? [1, 1, 1, 1];
     u.tint.value = new Color(r, g, b);
     u.alpha.value = a ?? 1;
     u.mirror.value = layer.mirror ? -1 : 1;
-    return uvPass(material, decalProgram, w, h);
+    const pass = (f: Matrix4) => {
+      u.toFrame.value = f.clone().invert();
+      // The frame's axes, unit length, as rows: a world normal's z there tells whether a face looks at the decal (also for a
+      // mirrored frame, whose axes are left-handed).
+      const [x, y, z] = [0, 1, 2].map((i) => new Vector3().setFromMatrixColumn(f, i).normalize());
+      u.frameRot.value = new Matrix3().set(x.x, x.y, x.z, y.x, y.y, y.z, z.x, z.y, z.z);
+      return uvPass(material, decalProgram, w, h);
+    };
+    const one = pass(frame);
+    if (!layer.symmetric) return one;
+    // The mirror image across the item's centre plane (root X = 0); text is turned back so it reads the right way round.
+    const both = symmetric.canvas;
+    if (both.width !== w || both.height !== h) [both.width, both.height] = [w, h];
+    const ctx = both.getContext('2d')!;
+    ctx.clearRect(0, 0, w, h);
+    ctx.drawImage(one, 0, 0);
+    const mirror = root.matrixWorld
+      .clone()
+      .multiply(new Matrix4().makeScale(-1, 1, 1))
+      .multiply(toRoot)
+      .multiply(frame);
+    if (layer.kind === 'text') mirror.multiply(new Matrix4().makeScale(-1, 1, 1));
+    ctx.drawImage(pass(mirror), 0, 0);
+    return both;
   };
+}
+
+const symmetric = { canvas: document.createElement('canvas') };
+
+/** A gradient's stops in order, at least two (white to transparent when it has none). */
+export function gradientStops(g: LiveryLayer['gradient']): { at: number; color: number[] }[] {
+  const stops = (g?.stops ?? []).filter((x) => !!x).map((x) => ({ at: Math.min(1, Math.max(0, x!.at ?? 0)), color: (x!.color ?? [1, 1, 1, 1]).map((c) => c ?? 1) }));
+  stops.sort((a, b) => a.at - b.at);
+  if (!stops.length) stops.push({ at: 0, color: [1, 1, 1, 1] });
+  if (stops.length < 2) stops.push({ at: 1, color: [...stops[0].color.slice(0, 3), 0] });
+  return stops.slice(0, 4);
+}
+
+/** The box (Unity metres, the item's root space) around every mesh drawn with `material`; null when none is in the view. */
+export function materialBounds(material: string): { min: Vec3; max: Vec3 } | null {
+  const root = viewRefs.root;
+  if (!root) return null;
+  root.updateMatrixWorld(true);
+  const toRoot = root.matrixWorld.clone().invert();
+  const box = new Box3();
+  for (const m of meshesOf(material)) {
+    m.geometry.computeBoundingBox();
+    box.union(m.geometry.boundingBox!.clone().applyMatrix4(new Matrix4().multiplyMatrices(toRoot, m.matrixWorld)));
+  }
+  if (box.isEmpty()) return null;
+  // three z is Unity -z.
+  return { min: [box.min.x, box.min.y, -box.max.z], max: [box.max.x, box.max.y, -box.min.z] };
 }

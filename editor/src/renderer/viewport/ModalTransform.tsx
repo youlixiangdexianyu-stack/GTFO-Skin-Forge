@@ -1,12 +1,13 @@
 // Blender-style modal transform for the selected attachment: G move, R rotate, S scale; X/Y/Z lock to the anchor
-// part's local axes; left click / Enter confirms, right click / Esc cancels. Also handles snap-to-surface clicks.
+// part's local axes; left click / Enter confirms, right click / Esc cancels. Also places an attachment flush on a surface.
 import { useHotkeys } from '@mantine/hooks';
 import { useThree } from '@react-three/fiber';
 import { useEffect, useRef } from 'react';
-import { Matrix3, Quaternion, Vector2, Vector3, type Intersection, type Object3D, type PerspectiveCamera } from 'three';
-import { overridesFor, quaternionFacing, threeToUnity, unityDirToThree, type Vec3 } from '../space';
+import { Box3, Matrix3, Matrix4, Quaternion, Vector2, Vector3, type Object3D, type PerspectiveCamera } from 'three';
+import { overridesFor, threeToUnity, unityDirToThree, type UnityPose, type Vec3 } from '../space';
 import { useStore } from '../store';
-import { displayOffset, layoutTarget, viewRefs } from './refs';
+import { displayOffset, layoutTarget, outlinedMeshes, viewRefs } from './refs';
+import { surfaceFrame } from './liveryGpu';
 
 type Tool = 'move' | 'rotate' | 'scale';
 type Axis = 'x' | 'y' | 'z' | null;
@@ -68,6 +69,37 @@ export function selectedTarget(): Target | null {
   return null;
 }
 
+const HALF_TURN_X = new Quaternion().setFromAxisAngle(new Vector3(1, 0, 0), Math.PI);
+
+/**
+ * Puts attachment `id` flush on the surface at world `point` with world `normal` (贴到表面): its face (three +Z) along the
+ * normal, its right `right` laid onto the surface (`fallback` when that is along the normal), its back on the surface plus
+ * the gap (a screen's own, else 0.5 mm), in the frame it is mounted in. One undo step; null when it is not in the view.
+ */
+export function placeOnSurface(id: string, point: Vector3, normal: Vector3, right: Vector3, fallback: Vector3): UnityPose | null {
+  const g = viewRefs.attachments.get(id);
+  if (!g?.parent) return null;
+  const f = surfaceFrame(g.parent, point, normal, right, fallback);
+  const q = f.quaternion.multiply(HALF_TURN_X);
+  // How far the model reaches behind its origin, in its own frame (unscaled), times its depth scale.
+  g.updateWorldMatrix(true, true);
+  const inv = new Matrix4().copy(g.matrixWorld).invert();
+  const box = new Box3();
+  for (const m of outlinedMeshes({ kind: 'attachment', id })) {
+    if (!m.geometry.boundingBox) m.geometry.computeBoundingBox();
+    box.union(m.geometry.boundingBox!.clone().applyMatrix4(new Matrix4().multiplyMatrices(inv, m.matrixWorld)));
+  }
+  const a = useStore.getState().doc.attachments?.find((x) => x?.id === id);
+  const back = box.isEmpty() ? 0 : Math.max(0, -box.min.z) * Math.abs(g.scale.z);
+  f.position.addScaledVector(new Vector3(0, 0, 1).applyQuaternion(q), back + (a?.screen?.surfaceGap ?? 0.0005));
+  const pose = threeToUnity(f.position, q, g.scale);
+  useStore.getState().updateAttachment(id, (x) => {
+    x.position = pose.position;
+    x.rotation = pose.rotation;
+  });
+  return pose;
+}
+
 export const newGesture = () => `gesture:${Math.random().toString(36).slice(2)}`;
 
 export function ModalTransform() {
@@ -125,9 +157,7 @@ export function ModalTransform() {
         const persp = (camera as PerspectiveCamera).isPerspectiveCamera;
         const unitsPerPx = persp
           ? (2 * dist * Math.tan(((camera as PerspectiveCamera).fov * Math.PI) / 360)) / size.height
-          : ((camera as unknown as { top: number; bottom: number; zoom: number }).top - (camera as unknown as { bottom: number }).bottom) /
-            (camera as unknown as { zoom: number }).zoom /
-            size.height;
+          : ((camera as unknown as { top: number; bottom: number; zoom: number }).top - (camera as unknown as { bottom: number }).bottom) / (camera as unknown as { zoom: number }).zoom / size.height;
         const right = new Vector3().setFromMatrixColumn(camera.matrixWorld, 0);
         const up = new Vector3().setFromMatrixColumn(camera.matrixWorld, 1);
         const dWorld = right.multiplyScalar(d.x * unitsPerPx).add(up.multiplyScalar(-d.y * unitsPerPx));
@@ -229,35 +259,13 @@ export function ModalTransform() {
     };
     const onContext = (e: MouseEvent) => session.current && e.preventDefault();
 
-    // Snap to surface: put the selected attachment on the clicked triangle, facing out of it.
-    const onSurface = (ev: Event) => {
-      const hit = (ev as CustomEvent<Intersection>).detail;
-      const sel = useStore.getState().selection;
-      if (sel?.kind !== 'attachment' || !hit.face) return;
-      const target = selectedTarget();
-      const g = target?.obj;
-      if (!target || !g?.parent) return;
-      const a = useStore.getState().doc.attachments?.find((x) => x?.id === sel.id);
-      const gap = a?.screen?.surfaceGap ?? 0.0005;
-      const normalWorld = hit.face.normal.clone().transformDirection(hit.object.matrixWorld).normalize();
-      const parent = g.parent;
-      const pointLocal = parent.worldToLocal(hit.point.clone().add(normalWorld.clone().multiplyScalar(gap)));
-      const pq = parent.getWorldQuaternion(new Quaternion());
-      const normalLocal = normalWorld.applyQuaternion(pq.invert()).normalize();
-      g.position.copy(pointLocal);
-      g.quaternion.copy(quaternionFacing(normalLocal));
-      target.commit();
-    };
-
     el.addEventListener('pointermove', onMove);
     el.addEventListener('pointerdown', onDown, { capture: true });
     el.addEventListener('contextmenu', onContext);
-    window.addEventListener('sf:surface', onSurface);
     return () => {
       el.removeEventListener('pointermove', onMove);
       el.removeEventListener('pointerdown', onDown, { capture: true });
       el.removeEventListener('contextmenu', onContext);
-      window.removeEventListener('sf:surface', onSurface);
     };
   }, [camera, gl, size]);
 

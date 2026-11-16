@@ -378,7 +378,7 @@ While the bones are not matched, **Apply** says to match them first.
 
 ## Toon rendering setting
 
-Each player picks for themselves how materials marked toon (`toon`) in a character pack are drawn. In the lobby click **SKINS**, pick any cell and open the **ADJUST** tab; the top row, **Toon rendering**, has three choices:
+Each player picks for themselves how materials marked toon (`toon`) in a character pack are drawn. In the lobby click **SKINS**, then the gear in the picker's title bar; under **Skin settings · all gear**, **Toon rendering** has three choices:
 
 | Choice | How it draws | Thermal sight |
 | --- | --- | --- |
@@ -773,9 +773,10 @@ A palette is a set of up to 8 colours kept in the editor's data folder, for ever
 You can let players change your skin's colours themselves in game.
 
 1. Click the **person button** next to a colour setting to make it a player colour, or join it to an existing one so they always change together.
-2. In **Player colours**, name each one, set its default and add a few **Suggested colours**.
+2. In **Player colours**, name each one and set its default.
+3. To give players ready-made sets, click **Whole gun** at the top of the parts list, set the colours under **Colour schemes** and click **Save as scheme**; save as many as you like. **Original** is every colour's default.
 
-One player colour can drive tint, glow, attachment colour, screen digits, panel, border, low-ammo colour and effect flash colours. In game, the **Colours** page of the lobby SKINS picker offers your suggested colours first; without any it shows a row of 12 hues; and it can go back to the skin's own colour.
+One player colour can drive tint, glow, attachment colour, screen digits, panel, border, low-ammo colour and effect flash colours. In game, the colour page of the lobby SKINS picker shows your colour schemes as cards that players switch with one click, and under each player colour its default and a row of hues.
 
 #! Moving effects
 

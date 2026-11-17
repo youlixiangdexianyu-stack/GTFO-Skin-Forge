@@ -10,8 +10,8 @@ namespace ForgeSkin.Backend;
 public sealed record GameInfo(string? GameDir, string? DataDir, bool Found, bool Running);
 // Reason: why HasBepInEx is false. Modified: last time the profile changed or the game ran from it (BepInEx log).
 // PluginCurrent: Install.PluginCurrent (the shipped plugin and ForgeCore files, nothing retired beside them).
-// PluginShipped: the plugin version the editor ships.
-public sealed record ProfileInfo(string Name, string Path, bool HasBepInEx, string? PluginVersion, bool PluginCurrent, string? Reason, bool Custom, DateTime Modified, string? PluginShipped, int Packs = 0);
+// PluginShipped: the plugin version the editor ships. PluginNewer: store copies newer than the shipped ones, left alone (Install.Newer).
+public sealed record ProfileInfo(string Name, string Path, bool HasBepInEx, string? PluginVersion, bool PluginCurrent, string? Reason, bool Custom, DateTime Modified, string? PluginShipped, int Packs = 0, string[]? PluginNewer = null);
 
 // Finds the GTFO install (saved choice, then Steam registry + libraryfolders.vdf + common dirs) and BepInEx profiles.
 public static class Game
@@ -22,10 +22,26 @@ public static class Game
 
     public static bool Running => Process.GetProcessesByName("GTFO").Length > 0;
 
-    public static GameInfo Locate()
+    // Whether a running game was started from `profile`: the plugin writes its log in the profile when the game loads it, so that
+    // log is newer than the game's start. A profile whose plugin has no log was not loaded by any game.
+    public static bool RunsFrom(string profile)
+    {
+        var log = SkinFolders.AuthorLog(BepInEx(profile));
+        if (!File.Exists(log)) return false;
+        var written = File.GetLastWriteTime(log);
+        return Process.GetProcessesByName("GTFO").Any(p =>
+        {
+            using (p)
+                try { return written >= p.StartTime; }
+                catch (Exception e) when (e is InvalidOperationException or System.ComponentModel.Win32Exception) { return true; }
+        });
+    }
+
+    // `profile`: Running then says whether the game runs from that profile (RunsFrom), the only case an apply there shows in game.
+    public static GameInfo Locate(string? profile = null)
     {
         var dir = Valid(_chosen) ? _chosen : Valid(_searched) ? _searched : _searched = Candidates().FirstOrDefault(Valid);
-        return new GameInfo(dir, dir == null ? null : Path.Combine(dir, "GTFO_Data"), dir != null, Running);
+        return new GameInfo(dir, dir == null ? null : Path.Combine(dir, "GTFO_Data"), dir != null, profile == null ? Running : RunsFrom(profile));
     }
 
     public static GameInfo SetDir(string dir)
@@ -171,7 +187,7 @@ public static class Game
         var skins = SkinFolders.Skins(BepInEx(dir));
         var packs = Directory.Exists(skins) ? Directory.GetFiles(skins, "*" + SkinPack.Extension).Length : 0;
         return new ProfileInfo(Path.GetFileName(dir.TrimEnd('\\', '/')), dir, reason == null,
-            dll != null ? ShortVersion(FileVersionInfo.GetVersionInfo(dll)) : null, dll != null && Install.PluginCurrent(dir), reason, custom, modified, Install.ShippedVersion(), packs);
+            dll != null ? ShortVersion(FileVersionInfo.GetVersionInfo(dll)) : null, dll != null && Install.PluginCurrent(dir), reason, custom, modified, Install.ShippedVersion(), packs, dll != null ? Install.Newer(dir) : null);
     }
 
     // Accepts a profile root, its BepInEx folder or a game folder holding BepInEx.

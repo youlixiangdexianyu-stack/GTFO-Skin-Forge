@@ -137,6 +137,13 @@ public sealed class SkinPack : IDisposable
         {
             Vec(p.EmissiveColor, 3, where);
             Vec(p.Tint, 4, where);
+            foreach (var (channel, r) in p.Reticles ?? new Dictionary<TextureChannel, Reticle>())
+            {
+                // A reticle needs a reticle channel to name its layer; NaN or infinity cannot go to the shader.
+                if (!channel.IsReticle() || new[] { r.Intensity, r.Scale, r.Offset }.Any(v => v is { } f && !float.IsFinite(f)))
+                    throw new SkinFormatException("bad-reticle", $"{where}: reticle {channel} needs a reticle channel (reticleA to reticleC) and finite numbers");
+                Vec(r.Color, 3, $"{where} reticle {channel}");
+            }
         }
         static bool Fraction(float f) => f is >= 0 and <= 1;
 
@@ -209,6 +216,9 @@ public sealed class SkinPack : IDisposable
             }
             if (a.Material != null)
             {
+                // An attachment's model is drawn with a gear or hologram material, which has no reticle layers.
+                if (a.Material.Textures.Keys.Any(c => c.IsReticle()) || a.Material.Params.Reticles != null)
+                    throw new SkinFormatException("bad-reticle", $"{a.Id}: an attachment's material has no reticle layers");
                 foreach (var t in a.Material.Textures.Values) File(t, a.Id, true, packed: true);
                 Vec(a.Material.Color, 4, a.Id);
                 Params(a.Material.Params, a.Id);

@@ -60,20 +60,26 @@ export interface BoneRow {
   depth: number;
 }
 
-/** What ForgeCore's rig check says about the match (character.check). */
-export interface RigIssue {
-  kind: 'samePoint' | 'standing' | 'sides' | 'other';
+/** What ForgeCore's rig check notes about the match's rest pose (character.check): for the author to look at, nothing the game refuses. */
+export interface RigNote {
+  kind: 'standing' | 'sides' | 'other';
   joints: string[];
   degrees?: number | null;
   text: string;
 }
+/** How the game will take the match (character.check). */
 export interface RigCheck {
-  /** The joints a character cannot do without (Core/Character.cs CharacterRig.Required). */
+  /** The joints a character cannot do without (Core/Character.cs CharacterRig.Required: the hip), and those of them without a bone. */
   required: string[];
   missing: string[];
-  issues: RigIssue[];
+  /** The joints the game leaves in their rest pose: no bone, or a finger joint after one. */
+  unposed: string[];
+  notes: RigNote[];
   backwards: boolean;
-  fingers: { left: boolean; right: boolean };
+  /** The model wears its own first-person arms (both upper arms have a bone). */
+  arms: boolean;
+  /** Each arm is bent so its hand lands on the grip (its upper arm, forearm and hand have bones). */
+  reach: { left: boolean; right: boolean };
 }
 
 export interface CharacterState {
@@ -168,8 +174,8 @@ export function matchOf(s: Pick<CharacterState, 'auto' | 'picked'>): Record<stri
   return out;
 }
 
-/** Whether the match can be used: every required joint there and nothing wrong with the rest pose. */
-export const matchReady = (check: RigCheck | null) => !!check && !check.missing.length && !check.issues.length;
+/** Whether the match can be used: the required joint (the hip) has a bone. Nothing else stops a character. */
+export const matchReady = (check: RigCheck | null) => !!check && !check.missing.length;
 
 export function updateSpring(id: string, change: (s: Spring) => void) {
   useCharacter.setState((s) => ({

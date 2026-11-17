@@ -52,7 +52,7 @@ createRoot(document.getElementById('root')!).render(
   ) : (
     <StrictMode>
       <MantineProvider theme={theme} forceColorScheme="dark">
-        <Notifications position="bottom-right" limit={4} />
+        <Notifications position="bottom-right" limit={4} className="toasts" />
         <App />
       </MantineProvider>
     </StrictMode>

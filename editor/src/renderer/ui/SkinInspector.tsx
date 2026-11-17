@@ -9,6 +9,7 @@ import {
   IconCheck,
   IconChevronRight,
   IconComponents,
+  IconCrosshair,
   IconDeviceDesktop,
   IconFolderOpen,
   IconId,
@@ -29,8 +30,22 @@ import { PartLivery, TextureSizeField } from './LiveryPanel';
 import { PartModel } from './PartModel';
 import { useState, type ReactElement } from 'react';
 import { MAX_SECONDS, playGroup, playSound, soundChance, soundGroupKey } from '../audio';
-import { baseName, CHANNELS, fileUrl, TRIGGERS, triggersFor, type Attachment, type CatalogPart, type EnemyInfo, type SkinSound, type TextureChannel, type Trigger } from '../protocol';
-import { attachmentName, editorOf, glowOf, materialOf, pendingKey, useItem, useStore } from '../store';
+import {
+  baseName,
+  CHANNELS,
+  fileUrl,
+  RETICLES,
+  TRIGGERS,
+  triggersFor,
+  type Attachment,
+  type CatalogPart,
+  type EnemyInfo,
+  type Reticle,
+  type SkinSound,
+  type TextureChannel,
+  type Trigger,
+} from '../protocol';
+import { attachmentName, editorOf, glowOf, materialOf, pendingKey, reticleOf, useItem, useStore } from '../store';
 import { Color, Field, Slider } from './fields';
 import { SelectionLayout } from './SelectionLayout';
 import { Variants } from './Variants';
@@ -52,6 +67,15 @@ export const CHANNEL_LABEL: Record<TextureChannel, string> = {
   },
   get emissive() {
     return t('skinInspector.k4');
+  },
+  get reticleA() {
+    return t('skinInspector.reticleLayer', { v0: 'A' });
+  },
+  get reticleB() {
+    return t('skinInspector.reticleLayer', { v0: 'B' });
+  },
+  get reticleC() {
+    return t('skinInspector.reticleLayer', { v0: 'C' });
   },
 };
 
@@ -255,10 +279,51 @@ function MaterialParams({ material }: { material: string }) {
   );
 }
 
+/** A holographic sight's lens: its three reticle layers, each a picture with its colour, brightness, size and depth. */
+function ReticleSection({ material, part }: { material: string; part: string }) {
+  const { setReticle } = useStore.getState();
+  const { m, preview } = useParams(material);
+  const game = preview?.params[material]?.reticles;
+  return (
+    <Section id="tex-reticle" title={t('skinInspector.reticle')} icon={IconCrosshair} color="var(--warn)" info={t('skinInspector.reticleInfo')}>
+      {RETICLES.filter((ch) => game?.[ch]).map((ch) => {
+        const r = reticleOf(game?.[ch], m?.params?.reticles?.[ch]);
+        const set = (v: Partial<Reticle>, key: string) => setReticle(material, part, ch, v, `${key}-${ch}-${material}`);
+        return (
+          <div key={ch} style={{ display: 'grid', gap: 6, marginBottom: 12 }}>
+            <Group justify="space-between" wrap="nowrap">
+              <Text size="sm" fw={600}>
+                {CHANNEL_LABEL[ch]}
+              </Text>
+              <Switch size="sm" aria-label={t('skinInspector.reticleShown', { v0: CHANNEL_LABEL[ch] })} checked={r.visible} onChange={(e) => set({ visible: e.currentTarget.checked }, 'ret-on')} />
+            </Group>
+            <div className="slots">
+              <ChannelSlot material={material} part={part} channel={ch} />
+            </div>
+            <Field label={t('skinInspector.k14')}>
+              <Color rgb value={r.color} onChange={(c) => set({ color: c, intensity: r.intensity }, 'ret-c')} />
+            </Field>
+            <Field label={t('skinInspector.k15')}>
+              <Slider value={r.intensity} min={0} max={Math.max(10, Math.ceil(game?.[ch]?.intensity ?? 0))} step={0.05} onChange={(v) => set({ color: r.color, intensity: v }, 'ret-i')} />
+            </Field>
+            <Field label={t('skinInspector.reticleScale')}>
+              <Slider value={r.scale} min={0.1} max={Math.max(40, Math.ceil(game?.[ch]?.scale ?? 0))} step={0.05} onChange={(v) => set({ scale: v }, 'ret-s')} />
+            </Field>
+            <Field label={t('skinInspector.reticleDepth')}>
+              <Slider value={r.offset} min={0} max={1} step={0.01} onChange={(v) => set({ offset: v }, 'ret-o')} />
+            </Field>
+          </div>
+        );
+      })}
+    </Section>
+  );
+}
+
 function PartPanel({ part }: { part: CatalogPart }) {
   const [mi, setMi] = useState(0);
   const material = part.materials[Math.min(mi, part.materials.length - 1)];
   const doc = useStore((s) => s.doc);
+  const reticle = useStore((s) => !!material && s.preview?.params[material]?.kind === 'reticle');
   if (!material) return <p className="hint section">{t('skinInspector.k25')}</p>;
   // Counts on the side-panel icons: what this part already has of each kind.
   const mats = part.materials.map((m) => materialOf(doc, m));
@@ -294,6 +359,7 @@ function PartPanel({ part }: { part: CatalogPart }) {
         </div>
         <TextureSizeField material={material} part={part.id} />
       </Section>
+      {reticle && <ReticleSection material={material} part={part.id} />}
       <EmissiveSection material={material} />
       <MaterialParams material={material} />
     </>

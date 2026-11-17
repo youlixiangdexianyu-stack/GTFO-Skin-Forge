@@ -1,24 +1,17 @@
 import { Button, Checkbox, Group, Image, Modal, SegmentedControl, Select, Stack, Table, Text, Textarea, TextInput } from '@mantine/core';
 import { useEffect, useState } from 'react';
-import { exportMod } from '../actions';
+import { exportMod, itemModName, modName } from '../actions';
 import { call, fileUrl, type ProjectEntry } from '../protocol';
 import { autosaveRoot, useStore } from '../store';
-import { thumbOf } from '../viewport/thumbnails';
+import { skinThumbOf, thumbOf } from '../viewport/thumbnails';
 import { localName, t } from '../i18n';
 
 const NAME = /^[A-Za-z0-9_]+$/;
 const VERSION = /^\d+\.\d+\.\d+$/;
 
-/** A Thunderstore mod name from a skin name: ASCII letters, digits and _. */
-const modName = (name: string, fallback: string) =>
-  name
-    .normalize('NFKD')
-    .replace(/[^A-Za-z0-9]+/g, '_')
-    .replace(/^_+|_+$/g, '') || fallback;
-
-/** The current item's thumbnail as a PNG in the data dir, for the default icon; null when there is none yet. */
-async function thumbnailPng(weaponId: string): Promise<string | null> {
-  const url = thumbOf(weaponId);
+/** The open skin's card picture (else the item's own) as a PNG in the data dir, for the default icon; null when there is none yet. */
+async function thumbnailPng(weaponId: string, skinId: string): Promise<string | null> {
+  const url = skinThumbOf(skinId) ?? thumbOf(weaponId);
   if (!url) return null;
   const path = `${useStore.getState().dataDir}\\export\\${weaponId}-icon.png`;
   await window.forge.writeFile(path, new Uint8Array(await (await fetch(url)).arrayBuffer()));
@@ -49,11 +42,19 @@ export function ExportModDialog() {
   useEffect(() => {
     if (!open) return;
     const s = useStore.getState();
-    setName(modName(s.doc.name ?? '', `${s.weaponId}_skin`));
+    setName(
+      modName(
+        s.doc.name ?? '',
+        itemModName(
+          s.catalog.find((c) => c.id === s.weaponId),
+          s.weaponId!,
+        ),
+      ),
+    );
     setSkins([s.doc.id!]);
     setPack({ [s.weaponId!]: s.doc.id! });
     setIcon(null);
-    void thumbnailPng(s.weaponId!).then(setIcon, () => setIcon(null));
+    void thumbnailPng(s.weaponId!, s.doc.id!).then(setIcon, () => setIcon(null));
     void call('project.listAll', { root: autosaveRoot() }).then(setAll, () => setAll({ [s.weaponId!]: s.skins }));
   }, [open]);
   // Items with skins in catalog order, the open one first; the edited skin under its current name.

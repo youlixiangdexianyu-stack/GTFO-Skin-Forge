@@ -1,0 +1,168 @@
+{
+  "//": "Weapon inspect motions (Docs/forge-skin/PLAN.md §4.14, the format in Mods/ForgeSkin/DEVELOPERS.md). Every motion shows the gun's left face (muzzle to the left, top slightly right), then turns it to its right side with the muzzle still up and to the left (pistols, revolvers and compact guns all the way over in the wrist: the gun upside down, the back of the grip hand toward the viewer; rifles, shotguns, machine guns and long guns in both hands a third of a turn the other way, enough to show the right side and top), then it goes back; the revolver spins once before it goes back, and no other gun plays a beat of its own. gun: keys of the gun; { \"t\" } alone is the game's pose, otherwise turn (muzzle right +), tilt (muzzle up +), roll (about the bore, top to the right +) in degrees from the gun held level and pointing ahead, at [x, y] where the bounds centre should sit (-1..1 of the half view), fill the share of the half view the shown part stays in; rise (metres up) lifts the gun with both hands, spin (about the side axis) and flip (about the bore) free it to turn about its bounds centre while the hand stays where the key holds it, with rise a toss. Where the grip hand holds the gun, how far its elbow swings out and how wide the item camera looks are solved. hand: the off hand: grip, away (lowered out of view), under (without along: its own place on the gun), side, top, muzzle, mag. Rifles, shotguns, machine guns and long guns keep the off hand on the gun throughout (a short tap at most); only pistols, revolvers and compact guns go one-handed. gear: offline gear id -> motions, repeated presses take the next. fallback: by the gun's measured length in metres.",
+  "motions": {
+    "pistol": {
+      "gun": [
+        { "t": 0 },
+        { "t": 0.6, "turn": -40, "tilt": 5, "roll": 20 },
+        { "t": 1.3, "turn": -36, "tilt": 7, "roll": 24 },
+        { "t": 1.9, "turn": -65, "tilt": 45, "roll": -150 },
+        { "t": 2.6, "turn": -62, "tilt": 46, "roll": -155 },
+        { "t": 3.2 }
+      ],
+      "hand": [
+        { "t": 0, "on": "grip" },
+        { "t": 0.4, "on": "away" },
+        { "t": 2.8, "on": "away" },
+        { "t": 3.1, "on": "grip" }
+      ]
+    },
+    "revolver": {
+      "gun": [
+        { "t": 0 },
+        { "t": 0.6, "turn": -40, "tilt": 5, "roll": 20 },
+        { "t": 1.3, "turn": -36, "tilt": 7, "roll": 24 },
+        { "t": 1.9, "turn": -65, "tilt": 45, "roll": -150 },
+        { "t": 2.6, "turn": -62, "tilt": 46, "roll": -155 },
+        { "t": 2.9, "turn": 10, "tilt": 10, "roll": 0 },
+        { "t": 3.6, "turn": 10, "tilt": 10, "roll": 0, "spin": 720 },
+        { "t": 4.0 }
+      ],
+      "hand": [
+        { "t": 0, "on": "grip" },
+        { "t": 0.4, "on": "away" },
+        { "t": 3.6, "on": "away" },
+        { "t": 3.9, "on": "grip" }
+      ]
+    },
+    "compact": {
+      "gun": [
+        { "t": 0 },
+        { "t": 0.6, "turn": -45, "tilt": 0, "roll": 30 },
+        { "t": 1.3, "turn": -43, "tilt": 2, "roll": 32 },
+        { "t": 2.0, "turn": -35, "tilt": 50, "roll": -155 },
+        { "t": 2.7, "turn": -33, "tilt": 51, "roll": -158 },
+        { "t": 3.35 }
+      ],
+      "hand": [
+        { "t": 0, "on": "grip" },
+        { "t": 0.4, "on": "away" },
+        { "t": 2.9, "on": "away" },
+        { "t": 3.25, "on": "grip" }
+      ]
+    },
+    "rifle": {
+      "gun": [
+        { "t": 0 },
+        { "t": 0.6, "turn": -45, "tilt": 0, "roll": 30 },
+        { "t": 1.3, "turn": -43, "tilt": 2, "roll": 32 },
+        { "t": 2.0, "turn": -35, "tilt": 35, "roll": -90 },
+        { "t": 2.7, "turn": -33, "tilt": 36, "roll": -93 },
+        { "t": 3.35 }
+      ],
+      "hand": [
+        { "t": 0, "on": "grip" },
+        { "t": 0.4, "on": "under" },
+        { "t": 1.4, "on": "under" },
+        { "t": 1.9, "on": "under", "along": 0.45 },
+        { "t": 2.8, "on": "under", "along": 0.45 },
+        { "t": 3.2, "on": "grip" }
+      ]
+    },
+    "shotgun": {
+      "gun": [
+        { "t": 0 },
+        { "t": 0.6, "turn": -45, "tilt": 0, "roll": 30 },
+        { "t": 1.3, "turn": -43, "tilt": 2, "roll": 32 },
+        { "t": 2.0, "turn": -35, "tilt": 35, "roll": -90 },
+        { "t": 2.7, "turn": -33, "tilt": 36, "roll": -93 },
+        { "t": 3.35 }
+      ],
+      "hand": [
+        { "t": 0, "on": "grip" },
+        { "t": 0.4, "on": "under" },
+        { "t": 1.4, "on": "under" },
+        { "t": 1.9, "on": "under", "along": 0.45 },
+        { "t": 2.8, "on": "under", "along": 0.45 },
+        { "t": 3.2, "on": "grip" }
+      ]
+    },
+    "heavy": {
+      "gun": [
+        { "t": 0 },
+        { "t": 0.6, "turn": -45, "tilt": 0, "roll": 30 },
+        { "t": 1.3, "turn": -43, "tilt": 2, "roll": 32 },
+        { "t": 2.0, "turn": -35, "tilt": 35, "roll": -90 },
+        { "t": 2.7, "turn": -33, "tilt": 36, "roll": -93 },
+        { "t": 3.35 }
+      ],
+      "hand": [
+        { "t": 0, "on": "grip" },
+        { "t": 0.4, "on": "under" },
+        { "t": 1.4, "on": "under" },
+        { "t": 1.9, "on": "under", "along": 0.3 },
+        { "t": 2.8, "on": "under", "along": 0.3 },
+        { "t": 3.2, "on": "grip" }
+      ]
+    },
+    "long": {
+      "gun": [
+        { "t": 0 },
+        { "t": 0.6, "turn": -45, "tilt": 0, "roll": 30 },
+        { "t": 1.3, "turn": -43, "tilt": 2, "roll": 32 },
+        { "t": 2.0, "turn": -35, "tilt": 35, "roll": -90 },
+        { "t": 2.7, "turn": -33, "tilt": 36, "roll": -93 },
+        { "t": 3.35 }
+      ],
+      "hand": [
+        { "t": 0, "on": "grip" },
+        { "t": 0.4, "on": "under" },
+        { "t": 1.4, "on": "under" },
+        { "t": 1.9, "on": "under", "along": 0.35 },
+        { "t": 2.8, "on": "under", "along": 0.35 },
+        { "t": 3.2, "on": "grip" }
+      ]
+    }
+  },
+  "gear": {
+    "3": ["pistol"],
+    "67": ["pistol"],
+    "29": ["pistol"],
+    "45": ["pistol"],
+    "63": ["pistol"],
+    "15": ["revolver"],
+    "47": ["revolver"],
+    "4": ["compact"],
+    "60": ["compact"],
+    "49": ["compact"],
+    "34": ["compact"],
+    "66": ["compact"],
+    "51": ["compact"],
+    "40": ["rifle"],
+    "5": ["rifle"],
+    "50": ["rifle"],
+    "12": ["rifle"],
+    "30": ["rifle"],
+    "41": ["rifle"],
+    "46": ["rifle"],
+    "61": ["shotgun"],
+    "65": ["shotgun"],
+    "13": ["shotgun"],
+    "31": ["shotgun"],
+    "56": ["shotgun"],
+    "44": ["shotgun"],
+    "16": ["heavy"],
+    "38": ["heavy"],
+    "39": ["heavy"],
+    "43": ["heavy"],
+    "62": ["long"],
+    "14": ["long"],
+    "42": ["long"]
+  },
+  "fallback": [
+    { "upTo": 0.35, "motions": ["pistol"] },
+    { "upTo": 0.7, "motions": ["compact"] },
+    { "upTo": 1.0, "motions": ["rifle"] },
+    { "motions": ["long"] }
+  ]
+}

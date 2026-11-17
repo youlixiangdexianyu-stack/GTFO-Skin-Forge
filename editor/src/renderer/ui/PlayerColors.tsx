@@ -5,7 +5,7 @@ import { ActionIcon, Button, ColorSwatch, Group, Menu, TextInput, Tooltip } from
 import { IconPlus, IconTrash, IconUser, IconUsers, IconX } from '@tabler/icons-react';
 import type { ColorSlot, PlayerColor, SkinDocument } from '../protocol';
 import { activeScheme, colorOfSlot, linkSlot, removePlayerColor, setPlayerColor, shownColor, slotWorksInGame, unlinkSlot, updatePlayerColor } from '../playerColors';
-import { useStore } from '../store';
+import { attachmentName, useStore } from '../store';
 import { Color, Field } from './fields';
 import { Empty, Info, Section } from './Features';
 import { t } from '../i18n';
@@ -66,7 +66,8 @@ export function PlayerToggle({ slot, value }: { slot: ColorSlot; value: number[]
 function slotLabel(d: SkinDocument, s: ColorSlot): string {
   const a = d.attachments?.find((x) => x?.id === s.target);
   const what = t(`playerColors.slot.${s.kind ?? 'tint'}`, { v0: (s.effect ?? 0) + 1 });
-  return `${a?.name || s.target} · ${what}`;
+  // An attachment by the name the editor shows for it (its own, else 「弹药屏 1」 and the like), never its id.
+  return `${a ? attachmentName(d, a) : s.target} · ${what}`;
 }
 
 function Entry({ c }: { c: PlayerColor }) {

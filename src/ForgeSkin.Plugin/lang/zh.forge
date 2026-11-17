@@ -38,5 +38,7 @@
   "settings.toonBody": "皮肤作者做成卡通风格的部分（二次元的头发、脸、描边）在你屏幕上怎么画。延迟：用游戏自己的灯光照亮，热成像镜里也看得到。前向：卡通感更干净，但热成像镜里看不到这些部分。关闭：和其他表面一样画。只改你自己看到的，不影响队友。马上生效，下次进游戏还在。",
   "settings.toonForward": "前向",
   "settings.toonDeferred": "延迟",
-  "settings.toonOff": "关闭"
+  "settings.toonOff": "关闭",
+  "keys.group": "皮肤",
+  "keys.inspect": "检视武器"
 }

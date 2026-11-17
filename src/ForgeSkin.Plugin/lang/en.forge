@@ -38,5 +38,7 @@
   "settings.toonBody": "How parts a skin's author made toon-style (anime hair, faces, outlines) are drawn on your screen. Deferred: lit by the game's own lights, and seen through the thermal sight. Forward: a cleaner toon look, but the thermal sight does not show those parts. Off: drawn like every other surface. Only changes what you see, not what teammates see. Applies at once and is kept for the next game.",
   "settings.toonForward": "Forward",
   "settings.toonDeferred": "Deferred",
-  "settings.toonOff": "Off"
+  "settings.toonOff": "Off",
+  "keys.group": "Skins",
+  "keys.inspect": "Inspect weapon"
 }

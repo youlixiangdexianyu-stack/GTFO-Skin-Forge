@@ -36,9 +36,9 @@ public sealed class CharacterSkin
     // descriptor before building the model.
     public CharacterModelFiles Model { get; set; } = new();
 
-    // Canonical joint -> model bone. Required (CharacterRig.Required): hip, spine0, spine1, neck, head, both shoulders, upper arms,
-    // lower arms, hands, upper legs, lower legs and feet. spine2 and the 30 finger joints are optional; a hand that lacks any of its
-    // 15 finger joints keeps all its fingers in the model's rest pose.
+    // Canonical joint -> model bone, each bone on one joint. Only hip is required (CharacterRig.Required): the model's root follows the
+    // body's hips. A joint left out has no entry: that part of the model keeps its rest pose on the bone above it (ForgeCore
+    // HumanRig.Links), so a model without fingers, without an arm or with one side unlike the other is a character all the same.
     public Dictionary<string, string> Bones { get; set; } = new();
 
     // First-person arms: null takes them from the model (the triangles skinned to the upper arms and below); set, another model of
@@ -137,30 +137,39 @@ public sealed class CharacterMaterial
 // The bone map against the canonical humanoid, and the model files against their descriptor. Pure: the plugin, the backend and the tests.
 public static class CharacterRig
 {
-    public static readonly string[] Required =
-    {
-        "hip", "spine0", "spine1", "neck", "head", "leftShoulder", "rightShoulder", "leftUpperArm", "rightUpperArm", "leftLowerArm", "rightLowerArm",
-        "leftHand", "rightHand", "leftUpperLeg", "rightUpperLeg", "leftLowerLeg", "rightLowerLeg", "leftFoot", "rightFoot",
-    };
+    // The one joint a character cannot do without: the pose copy's root, whose place and height the model takes from the body's hips.
+    public static readonly string[] Required = { "hip" };
 
-    // The model bone of every canonical joint, in ClipRig order (null: not mapped). A hand with only some finger joints maps none.
+    // The model bone of every canonical joint, in ClipRig order (null: not mapped).
     public static string?[] Joints(CharacterSkin character)
     {
         var joints = new string?[ClipRig.Count];
         for (int j = 0; j < ClipRig.Count; j++)
             joints[j] = character.Bones.TryGetValue(ClipRig.Names[j], out var bone) && !string.IsNullOrWhiteSpace(bone) ? bone : null;
-        foreach (var first in new[] { ClipRig.BodyCount, ClipRig.BodyCount + 15 })
-        {
-            int have = 0;
-            for (int j = first; j < first + 15; j++) if (joints[j] != null) have++;
-            if (have is not (0 or 15)) for (int j = first; j < first + 15; j++) joints[j] = null;
-        }
         return joints;
     }
 
-    // What is wrong with the character against its model's skeleton, one sentence each; empty when it fits: a mapped bone or a spring
-    // bone the skeleton lacks, a capsule on an unmapped joint, materials that do not match the descriptor's, and the rest pose against the
-    // canonical rig (ForgeCore RigMap.Check: sides swapped, facing backwards, legs or spine more than 60 degrees off).
+    // Each mapped joint's rest position in the model's own space (zero for a joint not mapped or whose bone the skeleton lacks).
+    public static Vector3[] Rest(CharacterSkin character, ImportedModelDescriptor model)
+    {
+        var rest = new Vector3[ClipRig.Count];
+        if (model.Bones is not { } skeleton) return rest;
+        var joints = Joints(character);
+        for (int j = 0; j < ClipRig.Count; j++)
+            if (joints[j] is { } bone && skeleton.FirstOrDefault(b => b.Name == bone) is { } b) rest[j] = new Vector3(b.Rest[12], b.Rest[13], b.Rest[14]);
+        return rest;
+    }
+
+    // The pose copy's links and the first-person arms' bones for this character (ForgeCore HumanRig), from its map and its model's rest:
+    // the one rule of what a joint without a bone does, for the plugin and the editor's preview alike. Links throws ArgumentException
+    // without a hip; Arms is empty for a model without both upper arms (no first-person arms: the game's own stay).
+    public static PoseLink[] Links(CharacterSkin character, ImportedModelDescriptor model) => HumanRig.Links(Joints(character), Rest(character, model));
+
+    public static WearBone[] Arms(CharacterSkin character, ImportedModelDescriptor model) => HumanRig.ArmWear(Joints(character), Rest(character, model));
+
+    // What is wrong with the character against its model's skeleton, one sentence each; empty when it fits. Only what cannot work: no
+    // bone for the hip, a mapped bone or a spring bone the skeleton lacks, a capsule on an unmapped joint, materials that do not match
+    // the descriptor's, a height that is no size. A joint left out, joints on one point or sides unlike each other are not wrong.
     public static string Check(CharacterSkin character, ImportedModelDescriptor model)
     {
         var wrong = "";
@@ -169,16 +178,13 @@ public static class CharacterRig
         for (int i = 0; i < skeleton.Count; i++) index[skeleton[i].Name] = i;
         var joints = Joints(character);
         var present = new bool[ClipRig.Count];
-        var rest = new Vector3[ClipRig.Count];
+        if (joints[0] == null) wrong += " hip: no bone. The model follows the body by its hips, so one bone must stand for them.";
         for (int j = 0; j < ClipRig.Count; j++)
         {
             if (joints[j] is not { } bone) continue;
-            if (!index.TryGetValue(bone, out var b)) { wrong += $" {ClipRig.Names[j]}: the skeleton has no bone {bone}."; continue; }
-            var m = skeleton[b].Rest;
+            if (!index.ContainsKey(bone)) { wrong += $" {ClipRig.Names[j]}: the skeleton has no bone {bone}."; continue; }
             present[j] = true;
-            rest[j] = new Vector3(m[12], m[13], m[14]);
         }
-        wrong += RigMap.Check(present, rest, RigShape.Body);
         foreach (var chain in character.Springs.Chains)
             foreach (var bone in chain.Strands.SelectMany(s => s).Append(chain.Anchor))
                 if (!index.ContainsKey(bone)) wrong += $" spring {chain.Id}: the skeleton has no bone {bone}.";
@@ -188,7 +194,6 @@ public static class CharacterRig
             wrong += $" {character.Materials.Count} materials for the model's {model.Materials.Count}.";
         foreach (var i in character.Hide ?? new()) if (i < 0 || i >= model.Materials.Count) wrong += $" hide: the model has no material {i}.";
         if (!float.IsFinite(character.Height) || character.Height <= 0) wrong += $" height {character.Height} is not a positive number.";
-        else if (present[Array.IndexOf(ClipRig.Names, "head")] && Stature(character, model) <= 0) wrong += " the head is not above the feet, so the model's height cannot be measured.";
         return wrong.Trim();
     }
 
@@ -204,13 +209,16 @@ public static class CharacterRig
         return model.CheckFiles(mesh, textures, out var failure) ? null : failure.ToString();
     }
 
-    // The model's height at rest, feet to head: the head joint's height over the mean of the two feet's, in the model's own units (0 when
-    // a joint is not mapped). Bones, not bounds: hair, hats and raised arms do not count.
+    // The model's height at rest, feet to head: the head joint's height over the mean of the mapped feet's, or over the model's own
+    // floor (0) with no foot mapped, in the model's own units. 0 or less when the head is not mapped or not above them: the height
+    // cannot be measured. Bones, not bounds: hair, hats and raised arms do not count.
     public static float Stature(CharacterSkin character, ImportedModelDescriptor model)
     {
         if (model.Bones is not { } skeleton) return 0;
         float? Y(string joint) => character.Bones.TryGetValue(joint, out var bone) && skeleton.FirstOrDefault(b => b.Name == bone) is { } b ? b.Rest[13] : null;
-        return Y("head") is { } head && Y("leftFoot") is { } left && Y("rightFoot") is { } right ? head - (left + right) / 2 : 0;
+        if (Y("head") is not { } head) return 0;
+        var feet = new[] { Y("leftFoot"), Y("rightFoot") }.OfType<float>().ToArray();
+        return head - (feet.Length > 0 ? feet.Average() : 0);
     }
 
     static string Sha256(byte[] bytes) => Convert.ToHexString(SHA256.HashData(bytes)).ToLowerInvariant();

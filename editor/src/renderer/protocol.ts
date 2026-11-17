@@ -13,6 +13,7 @@ declare global {
 export type SkinDocument = NonNullable<GenDoc>;
 export type MaterialOverride = NonNullable<NonNullable<SkinDocument['materials']>[number]>;
 export type MaterialParams = NonNullable<MaterialOverride['params']>;
+export type Reticle = NonNullable<NonNullable<MaterialParams['reticles']>[string]>;
 export type DynamicLayer = NonNullable<NonNullable<MaterialOverride['layers']>[number]>;
 export type Attachment = NonNullable<NonNullable<SkinDocument['attachments']>[number]>;
 export type PartTransform = NonNullable<NonNullable<SkinDocument['parts']>[number]>;
@@ -227,7 +228,10 @@ export function triggersFor(item: { slot: Slot; id: string; itemId?: number | nu
   return TRIGGERS;
 }
 
+/** The texture slots every material has; a holographic sight's lens also has the three reticle layers (RETICLES). */
 export const CHANNELS: TextureChannel[] = ['albedo', 'normal', 'metallicSmoothness', 'emissive'];
+export type ReticleChannel = Extract<TextureChannel, 'reticleA' | 'reticleB' | 'reticleC'>;
+export const RETICLES: ReticleChannel[] = ['reticleA', 'reticleB', 'reticleC'];
 
 export interface GameInfo {
   gameDir: string | null;
@@ -245,6 +249,8 @@ export interface Profile {
   pluginCurrent?: boolean;
   /** The plugin version this app ships, which the profile's is held to; null without a plugin build. */
   pluginShipped?: string | null;
+  /** Copies from the store newer than the ones this app ships ("ForgeCore 1.0.3"), which it leaves alone. */
+  pluginNewer?: string[] | null;
   /** Added by the player with 「选择文件夹…」; can be removed again. */
   custom?: boolean;
   /** Last change of the profile (ISO time), used to pick the most recently used one. */
@@ -305,7 +311,7 @@ export interface PreviewMaterial extends MaterialParams {
   renderQueue: number;
   /** opaque; cutout (alpha test); glass (blended lens, tint alpha = opacity); reticle (holo sight: only its reticle layers, additive). */
   kind: 'opaque' | 'cutout' | 'glass' | 'reticle';
-  reticles: { layer: string; texture: string; color: number[]; scale: number; offset: number }[];
+  /* `reticles`: a sight's reticle layers as the game has them, every value set (their pictures are in `textures`). */
 }
 
 export interface WeaponPreview {
@@ -355,6 +361,8 @@ export interface ProjectEntry {
   modified: string;
   /** When the author last changed it (ISO; editor.editedAt), null for a work not changed since this was kept. */
   edited?: string | null;
+  /** Made from someone else's installed pack (editor.adopted): deleting it leaves that pack installed. */
+  adopted?: boolean;
 }
 
 /** Something a Skins import or export left out or changed; worded by `skinsNote.<kind>` (ui/SkinsReport). */
@@ -387,6 +395,7 @@ export type SkinsNoteKind =
   | 'sharedMaterial'
   | 'layers'
   | 'wear'
+  | 'reticleIntensity'
   | 'attachments'
   | 'parts'
   | 'sounds'
@@ -455,7 +464,8 @@ export interface AssetStatus {
 
 /** Methods, params and results. */
 export interface Methods {
-  'game.locate': [Record<string, never>, GameInfo];
+  /** `profile`: `running` then says whether the game runs from that profile (its plugin log is newer than the game's start). */
+  'game.locate': [{ profile?: string | null }, GameInfo];
   'game.setDir': [{ dir: string }, GameInfo];
   'profiles.list': [Record<string, never>, Profile[]];
   'profiles.get': [{ path: string }, Profile];
@@ -473,6 +483,8 @@ export interface Methods {
   'project.listAll': [{ root: string }, Record<string, ProjectEntry[]>];
   'skins.import': [{ manifest: string; root: string; weapon?: string; lang: string }, SkinsImport];
   'project.delete': [{ path: string }, unknown];
+  /** `project` (the work saved at `from`) as a copy saved at `to`, with the files kept beside the work copied into the copy's own folders. */
+  'project.copy': [{ project: SkinDocument; from: string; to: string }, SkinDocument];
   'project.missing': [{ project: SkinDocument }, { files: string[] }];
   'project.files': [{ project: SkinDocument }, { files: string[] }];
   'mesh.import': [{ glb: string }, MeshImport];
@@ -514,20 +526,26 @@ export interface Methods {
     },
     { frames: string[] },
   ];
-  /** A bone match held to ForgeCore's rig check: `joints` is canonical name to rest position in the game's axes, root space. */
+  /** A bone match as the game will take it: `joints` is canonical name to rest position in the game's axes, root space. `missing`
+   * alone stops a character; `unposed` are the joints the game leaves in their rest pose, `notes` what looks mismatched. */
   'character.check': [
     { joints: Record<string, number[]> },
     {
       required: string[];
       missing: string[];
-      issues: { kind: 'samePoint' | 'standing' | 'sides' | 'other'; joints: string[]; degrees?: number | null; text: string }[];
+      unposed: string[];
+      notes: { kind: 'standing' | 'sides' | 'other'; joints: string[]; degrees?: number | null; text: string }[];
       backwards: boolean;
-      fingers: { left: boolean; right: boolean };
+      arms: boolean;
+      reach: { left: boolean; right: boolean };
     },
   ];
-  /** The game's pose copy for a bone match (ForgeCore HumanRig): per canonical joint its link and whether the copy leaves it out;
-   * `fingers`: the playing body has finger joints. `reach`: upper, lower and end joint of each limb that reaches. */
-  'character.links': [{ bones: Record<string, string>; fingers: boolean }, { links: { joint: string; toward: number; from: number; skip: boolean }[]; reach: [number, number, number][] }];
+  /** The game's pose copy for a bone match on the model `descriptor` names (ForgeCore HumanRig): per canonical joint its link and
+   * whether the copy leaves it out; `fingers`: the playing body has finger joints. `reach`: upper, lower and end joint of each limb that reaches. */
+  'character.links': [
+    { descriptor: string; bones: Record<string, string>; fingers: boolean },
+    { links: { joint: string; toward: number; from: number; skip: boolean }[]; reach: [number, number, number][] },
+  ];
   /** The first-person arms the game cuts from the model for a bone match (ForgeCore HumanRig.ArmWear and MeshCut), the materials in
    * `hide` left out: the kept vertices in Unity's axes (base64 little-endian: positions, normals float32 ×3, uvs ×2, bone indices
    * uint16 ×4 into `bones`, weights float32 ×4) and per submesh its material and triangles (uint32). */

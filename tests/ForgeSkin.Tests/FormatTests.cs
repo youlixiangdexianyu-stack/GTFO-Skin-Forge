@@ -1,4 +1,5 @@
 using System.IO.Compression;
+using System.Numerics;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using ForgeSkin.Format;
@@ -22,7 +23,11 @@ public class FormatTests
             {
                 Material = "Front_UZI_2",
                 Textures = { [TextureChannel.Albedo] = "textures/Front_UZI_2_Albedo.png" },
-                Params = new MaterialParams { EmissiveColor = [1, 0.5f, 0], Tint = [1, 1, 1, 1] },
+                Params = new MaterialParams
+                {
+                    EmissiveColor = [1, 0.5f, 0], Tint = [1, 1, 1, 1],
+                    Reticles = new() { [TextureChannel.ReticleB] = new Reticle { Color = [0, 1, 0.5f], Intensity = 4, Scale = 2.2f, Offset = 0.4f, Visible = true } },
+                },
                 Layers =
                 {
                     new DynamicLayer
@@ -140,7 +145,7 @@ public class FormatTests
     }
 
     // A deliberately broken pack per error-code family (document, path, resource, mesh content, screen, audio, sound event, player
-    // colour, code effect) must be caught.
+    // colour, code effect, reticle) must be caught.
     public static TheoryData<string, Action<SkinDocument, Dictionary<string, byte[]>>> Broken => new()
     {
         { "schema", (d, _) => d.Schema = 99 },
@@ -166,6 +171,8 @@ public class FormatTests
         { "bad-fx-target", (d, _) => d.CodeEffects![1].Attachment = "s1" },
         // A layer target on an attachment without a model (a screen).
         { "bad-material-target", (d, _) => d.Materials[1].Material = MaterialOverride.ForAttachment("s1") },
+        // Reticle values under a channel that is no reticle layer.
+        { "bad-reticle", (d, _) => d.Materials[0].Params.Reticles![TextureChannel.Albedo] = new Reticle { Scale = 2 } },
     };
     [Theory]
     [MemberData(nameof(Broken))]
@@ -356,6 +363,10 @@ public class FormatTests
 
     static string Sha(byte[] b) => Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(b)).ToLowerInvariant();
 
+    // A backend method as the editor calls it.
+    static System.Text.Json.Nodes.JsonNode Backend(string method, object args) =>
+        JsonSerializer.SerializeToNode(ForgeSkin.Backend.Methods.Call(method, JsonSerializer.SerializeToNode(args, ForgeSkin.Backend.Program.Json)!.AsObject(), 1), ForgeSkin.Backend.Program.Json)!;
+
     // A character pack: the descriptor (ImportedModels format 2) with a hair strand under the head, its mesh and texture.
     // A PNG header of 4x4 (what ForgeCore's file check reads; decoding is the game's).
     static readonly byte[] Png4 = [0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 0, 0, 0, 13, (byte)'I', (byte)'H', (byte)'D', (byte)'R', 0, 0, 0, 4, 0, 0, 0, 4, 8, 6, 0, 0, 0];
@@ -427,13 +438,39 @@ public class FormatTests
             Assert.Equal("L_Hand", links[13].Model);
             Assert.Equal(0.5, person.Springs.Chains[0].Spec().Damping, 6);
 
-            // The skeleton with its sides swapped, and a mesh other than the descriptor's: both caught.
+            // The skeleton with its sides swapped is no longer refused (a creature's sides need not match), but the editor's check still
+            // notes it for the author; a mesh other than the descriptor's is caught.
             var swapped = SkinJson.Read(SkinJson.Write(pack.Manifest)).Character!;
             (swapped.Bones["leftUpperLeg"], swapped.Bones["rightUpperLeg"]) = (swapped.Bones["rightUpperLeg"], swapped.Bones["leftUpperLeg"]);
             (swapped.Bones["leftLowerLeg"], swapped.Bones["rightLowerLeg"]) = (swapped.Bones["rightLowerLeg"], swapped.Bones["leftLowerLeg"]);
             (swapped.Bones["leftFoot"], swapped.Bones["rightFoot"]) = (swapped.Bones["rightFoot"], swapped.Bones["leftFoot"]);
-            Assert.Contains("swapped", CharacterRig.Check(swapped, model));
+            Assert.Equal("", CharacterRig.Check(swapped, model));
+            var at = Skeleton.ToDictionary(s => s.Bone, s => new double[] { s.X, s.Y, 0 });
+            var noted = Backend("character.check", new { joints = swapped.Bones.ToDictionary(b => b.Key, b => at[b.Value]) });
+            Assert.Contains(noted["notes"]!.AsArray(), n => (string)n!["kind"]! == "sides");
+            Assert.Empty(noted["missing"]!.AsArray());
             Assert.NotNull(CharacterRig.Matches(model, [.. files["character/model.forgemesh"].Take(16), .. Enumerable.Repeat((byte)1, 180)], [Png4]));
+
+            // A creature with one arm, no neck, one shin and no fingers is a character all the same: only the hip is required. The plugin's
+            // links leave the parts without a bone out and point past them (the thigh at the foot, the chest at the head), the arm that
+            // is whole still reaches, and a model without both upper arms wears no first-person arms.
+            var creature = SkinJson.Read(SkinJson.Write(pack.Manifest)).Character!;
+            foreach (var joint in new[] { "leftShoulder", "leftUpperArm", "leftLowerArm", "leftHand", "neck", "rightLowerLeg" }) creature.Bones.Remove(joint);
+            Assert.Equal("", CharacterRig.Check(creature, model));
+            var pose = CharacterRig.Links(creature, model);
+            var unposed = ForgeVisual.HumanRig.Unposed(pose);
+            Assert.Equal(7 + ForgeVisual.PoseFingers.Count, unposed.Length); // the six, the upper chest the skeleton never had, every finger
+            Assert.Contains("leftHand", unposed);
+            Assert.DoesNotContain("rightHand", unposed);
+            Assert.Equal((6, 19), (pose[4].Toward, pose[8].Toward));
+            Assert.Empty(CharacterRig.Arms(creature, model));
+            Assert.NotEmpty(CharacterRig.Arms(person, model));
+            var taken = Backend("character.check", new { joints = creature.Bones.ToDictionary(b => b.Key, b => at[b.Value]) });
+            Assert.Equal((false, true, false), ((bool)taken["reach"]!["left"]!, (bool)taken["reach"]!["right"]!, (bool)taken["arms"]!));
+            // Two joints on one point give each other no direction: the forearm resting on the upper arm, that one points at the hand.
+            var folded = Skeleton.ToDictionary(s => s.Joint, s => s.Joint == "rightLowerArm" ? new System.Numerics.Vector3(0.2f, 1.45f, 0) : new System.Numerics.Vector3(s.X, s.Y, 0));
+            var rest = ForgeVisual.ClipRig.Names.Select(n => folded.GetValueOrDefault(n)).ToArray();
+            Assert.Equal(17, ForgeVisual.HumanRig.Links(CharacterRig.Joints(person), rest)[15].Toward);
         }
 
         // The editor's export: the converted model's files on disk built into a pack (PackBuilder) and a skin mod (ModExport), the pack
@@ -510,7 +547,7 @@ public class FormatTests
 
         foreach (var (code, breakIt) in new (string, Action<SkinDocument>)[]
         {
-            ("bad-character-bones", d => d.Character!.Bones.Remove("leftHand")),
+            ("bad-character-bones", d => d.Character!.Bones.Remove("hip")),
             ("bad-character-spring", d => d.Character!.Springs.Chains[0].Weight = 9),
             ("bad-character-target", d => d.Target.GearId = 45),
         })
@@ -519,5 +556,118 @@ public class FormatTests
             breakIt(broken);
             Assert.Equal(code, Assert.Throws<SkinFormatException>(() => SkinPack.Open(Write(broken, brokenFiles)).Dispose()).Code);
         }
+    }
+
+    // The inspect motion table and its solve (core algorithm, PLAN §4.14): the shipped table reads; a gun it names plays its own list,
+    // one it does not name gets the fallback for its length; a later table replaces an entry by id; a broken motion is refused with the
+    // table left as it was. Solved for two rigs read in game (a pistol in a 36-degree item camera, a 0.8 m rifle in a 33-degree one):
+    // every frame of every motion such a gun plays, sampled at 60 a second, keeps the frame rules (InspectShot: most of the gun in the
+    // view, not filling it, not at the eye or through the near plane, its centre and its shown part in the view, both hands within reach),
+    // and a motion that turns the gun's muzzle at the eye is caught, as is one whose off hand would flip round its wrist; at the rifle's keys the grip hand is within the arm's reach with its
+    // wrist within its limits and a rest key is the game's pose; the heavy motion's off hand under the gun is under it and within reach;
+    // the revolver's twirl turns the gun about its bounds centre while the hand stays at the held pose. A wrist wrung 90 degrees is
+    // turned back to its limit.
+    [Fact]
+    public void InspectMotionTable()
+    {
+        var table = new InspectTable();
+        table.Add(File.ReadAllText(Path.Combine(Repo(), "Mods/ForgeSkin/Core/inspect-motions.json")));
+        Assert.Equal(new[] { "pistol" }, table.For(3, 0.26f, out var fallback).Select(m => m.Id));
+        Assert.False(fallback);
+        Assert.Equal("long", table.For(14, 0.3f, out _)[0].Id); // the table's entry wins over the length
+        Assert.Equal("compact", table.For(9999, 0.5f, out fallback)[0].Id);
+        Assert.True(fallback);
+        Assert.Equal("long", table.For(9999, 1.4f, out _)[0].Id);
+
+        table.Add("""{ "motions": { "spin": { "gun": [{ "t": 0 }, { "t": 1, "roll": 90 }, { "t": 2 }] } }, "gear": { "3": ["spin"] } }""");
+        var spin = table.For(3, 0.26f, out _).Single();
+        spin.Intent(1f, out _, out var roll);
+        Assert.Equal(90f, roll);
+        Assert.Throws<FormatException>(() => table.Add("""{ "motions": { "spin": { "gun": [{ "t": 0 }, { "t": 1, "roll": 90 }] } } }"""));
+        Assert.Throws<FormatException>(() => table.Add("""{ "motions": { "spin": { "gun": [{ "t": 0 }, { "t": 2 }], "hand": [{ "t": 0, "on": "top" }] } } }"""));
+        Assert.Throws<FormatException>(() => table.Add("""{ "gear": { "3": ["nothing"] } }"""));
+        Assert.Equal(2f, table.For(3, 0.26f, out _).Single().Seconds);
+
+        // The rig as the game had it for an assault rifle (Malatack LX), read in game: item camera, the gun's bounds and pose, both arms.
+        var gunAt = new Vector3(0.0845f, -0.1053f, 0.3599f);
+        var rig = new InspectRig
+        {
+            TanHalf = MathF.Tan(16.5f * MathF.PI / 180f),
+            Aspect = 16f / 9f,
+            Near = 0.05f,
+            Centre = new Vector3(0.0007f, -0.0457f, 0.0096f),
+            Extents = new Vector3(0.0737f, 0.176f, 0.3945f),
+            GunAt = gunAt,
+            Gun = Quaternion.Identity,
+            GripAt = new Vector3(0.1381f, -0.191f, 0.1578f),
+            Grip = new Quaternion(-0.57192f, 0.48235f, 0.41794f, 0.51534f),
+            OffAt = new Vector3(0.006f, -0.1911f, 0.4167f),
+            Off = new Quaternion(-0.48466f, 0.57127f, 0.51665f, 0.41453f),
+        };
+        rig.GripArm = new InspectArm(new(0.1913f, -0.3233f, -0.0943f), new(0.2577f, -0.4512f, 0.2026f), new(0.138f, -0.1909f, 0.1578f), rig.GripAt, rig.Grip);
+        rig.OffArm = new InspectArm(new(-0.1897f, -0.3125f, 0.0822f), new(-0.1444f, -0.4368f, 0.3845f), new(0.0061f, -0.191f, 0.4168f), rig.OffAt, rig.Off);
+        // The pistol as the game had it (Shelling S49).
+        var pistol = new InspectRig
+        {
+            TanHalf = MathF.Tan(18f * MathF.PI / 180f),
+            Aspect = 16f / 9f,
+            Near = 0.05f,
+            Centre = new Vector3(0f, -0.0398f, -0.0149f),
+            Extents = new Vector3(0.0246f, 0.0984f, 0.1252f),
+            GunAt = new Vector3(0.0481f, -0.064f, 0.5306f),
+            Gun = new Quaternion(0.01521f, 0.03143f, 0.00185f, -0.99939f),
+            GripAt = new Vector3(0.09f, -0.1816f, 0.3451f),
+            Grip = new Quaternion(-0.67208f, 0.53353f, 0.48703f, 0.16264f),
+            OffAt = new Vector3(0.0132f, -0.1852f, 0.3445f),
+            Off = new Quaternion(0.55337f, -0.43514f, -0.57868f, -0.41178f),
+        };
+        pistol.GripArm = new InspectArm(new(0.2048f, -0.4233f, 0.0154f), new(0.1879f, -0.4544f, 0.3435f), new(0.0899f, -0.1814f, 0.3452f), pistol.GripAt, pistol.Grip);
+        pistol.OffArm = new InspectArm(new(-0.201f, -0.4125f, 0.123f), new(-0.051f, -0.4594f, 0.4132f), new(0.0133f, -0.1851f, 0.3445f), pistol.OffAt, pistol.Off);
+        foreach (var motion in table.Motions)
+        {
+            var onPistol = new InspectLook(motion, pistol);
+            Assert.True(float.IsNaN(onPistol.Fault), $"{motion.Id} on the pistol: at {onPistol.Fault} {onPistol.FaultRule}");
+            if (motion.Id is "pistol" or "revolver") continue; // one-handed motions a rifle never plays
+            var onRifle = new InspectLook(motion, rig);
+            Assert.True(float.IsNaN(onRifle.Fault), $"{motion.Id} on the rifle: at {onRifle.Fault} {onRifle.FaultRule}");
+        }
+        var broken = new InspectTable();
+        broken.Add("""{ "motions": { "face": { "gun": [{ "t": 0 }, { "t": 1, "turn": -170, "tilt": 10 }, { "t": 2 }] } } }""");
+        Assert.False(float.IsNaN(new InspectLook(broken.Motions.Single(), rig).Fault));
+        // A rifle rolled over in both hands: the off hand under it turns past its wrist's half turn and would flip round.
+        broken.Add("""{ "motions": { "face": { "gun": [{ "t": 0 }, { "t": 0.6, "turn": -45, "roll": 30 }, { "t": 1.3, "turn": -43, "tilt": 2, "roll": 32 }, { "t": 2.0, "turn": -45, "roll": -170 }, { "t": 2.7, "turn": -43, "roll": -173 }, { "t": 3.35 }], "hand": [{ "t": 0, "on": "grip" }, { "t": 0.4, "on": "under" }, { "t": 1.4, "on": "under" }, { "t": 1.9, "on": "under", "along": 0.45 }, { "t": 2.8, "on": "under", "along": 0.45 }, { "t": 3.2, "on": "grip" }] } } }""");
+        var wrapped = new InspectLook(broken.Motions.Single(), rig);
+        Assert.True(wrapped.FaultRule?.Contains("wrist") == true || wrapped.FaultRule?.Contains("forearm") == true, $"a wrapping wrist was not caught: {wrapped.Fault} {wrapped.FaultRule}");
+
+        var look = new InspectLook(table.Motions.Single(m => m.Id == "rifle"), rig);
+        var keys = look.Motion.Gun;
+        for (var k = 0; k < keys.Length; k++)
+        {
+            look.GunPose(keys[k].Time, 1f, gunAt, Quaternion.Identity, rig.TanHalf, out var at, out var turn, out var view);
+            if (keys[k].Rest) { Assert.True(Vector3.Distance(gunAt, at) < 1e-4f && view == rig.TanHalf); continue; }
+            Assert.True(view >= rig.TanHalf && view <= MathF.Tan(InspectLook.WideDegrees * MathF.PI / 360f) + 1e-5f, $"key {k}: view {view}");
+            var hand = at + Vector3.Transform(rig.GripAt - gunAt, turn);
+            Assert.True(Vector3.Distance(hand, rig.GripArm.Shoulder) <= rig.GripArm.Reach + 1e-4f);
+            var held = turn * rig.Grip;
+            var bent = 2f * MathF.Acos(MathF.Min(1f, MathF.Abs(Quaternion.Dot(rig.GripArm.Comfort(hand, held, look.Swivel[k]), held)))) * 180f / MathF.PI;
+            Assert.True(bent < 2f, $"key {k}: the wrist is {bent} degrees outside its limits");
+        }
+        look = new InspectLook(table.Motions.Single(m => m.Id == "heavy"), rig);
+        look.GunPose(1.0f, 1f, gunAt, Quaternion.Identity, rig.TanHalf, out var gunNow, out var gunTurn, out _);
+        Assert.True(look.HandOff(1.0f));
+        look.HandPose(1.0f, 1f, gunNow, gunTurn, rig.OffAt, rig.Off, out var under, out _);
+        Assert.True(Vector3.Transform(under - gunNow, Quaternion.Inverse(gunTurn)).Y < rig.Centre.Y);
+        Assert.True(Vector3.Distance(under, rig.OffArm.Shoulder) <= rig.OffArm.Reach + 1e-4f);
+
+        // A free gun (the revolver's twirl) turns about its bounds centre while the grip hand stays at the held pose.
+        look = new InspectLook(table.Motions.Single(m => m.Id == "revolver"), rig);
+        look.GunPose(3.0f, 1f, gunAt, Quaternion.Identity, rig.TanHalf, out var spunAt, out var spun, out _);
+        Assert.True(look.Free);
+        Assert.True(Vector3.Distance(spunAt + Vector3.Transform(rig.Centre, spun), look.HeldAt + Vector3.Transform(rig.Centre, look.HeldTurn)) < 1e-4f);
+        Assert.InRange(MathF.Abs(Quaternion.Dot(spun, look.HeldTurn)), 0f, 0.99f);
+
+        var wrung = Quaternion.CreateFromAxisAngle(Vector3.Normalize(rig.GripAt - rig.GripArm.Elbow(rig.GripAt)), MathF.PI / 2f) * rig.Grip;
+        var back = rig.GripArm.Comfort(rig.GripAt, wrung);
+        Assert.InRange(2f * MathF.Acos(MathF.Min(1f, MathF.Abs(Quaternion.Dot(back, rig.Grip)))) * 180f / MathF.PI, InspectArm.Twist - 1f, InspectArm.Twist + 1f);
     }
 }

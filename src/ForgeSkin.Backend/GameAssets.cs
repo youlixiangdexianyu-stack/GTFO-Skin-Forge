@@ -51,7 +51,7 @@ public sealed class GameAssets : IDisposable
     // Cache folder of this game build (PreviewCache deletes the folders no running copy uses once this one is ready).
     public readonly string Cache;
     // Bump when the catalog or preview output changes, so caches written by older backends are rebuilt.
-    const int CacheVersion = 14;
+    const int CacheVersion = 15;
     public static string CacheDir(string buildId) => Path.Combine(Paths.GameCache, $"{buildId}-v{CacheVersion}");
 
     // The game's own textures per game revision a release was made against (tools/build-editor-release.ps1 writes the list

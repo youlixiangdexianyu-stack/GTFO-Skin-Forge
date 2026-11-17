@@ -399,7 +399,7 @@ public static class SkinsFormat
                     // Skins reads pictures: a precompressed texture goes in decoded back to a PNG.
                     var file = $"{Preview.Safe(doc.Id)}/{(entry.EndsWith(".dds", StringComparison.OrdinalIgnoreCase) ? Path.ChangeExtension(entry, ".png") : entry)}";
                     if (files.Add(file)) using (var s = zip.CreateEntry($"{folder}/{file}").Open()) s.Write(Precompress.Png(pack.ReadBytes(entry), channel, entry));
-                    properties[Preview.ChannelProps.First(x => x.Value == channel).Key] = Property("Texture2D", new JsonObject { ["src"] = file });
+                    properties[channel.Property()] = Property("Texture2D", new JsonObject { ["src"] = file });
                 }
                 var p = o.Params;
                 bool emissive = o.Textures.ContainsKey(TextureChannel.Emissive);
@@ -412,6 +412,20 @@ public static class SkinsFormat
                 if (p.Metallic is float metal) properties["_Metallic"] = Property("Float", new JsonObject { ["value"] = metal });
                 if (p.Smoothness is float smooth) properties["_Glossiness"] = Property("Float", new JsonObject { ["value"] = smooth });
                 if (p.Tint is { } t) properties["_Color"] = Property("Color", new JsonObject { ["r"] = t[0], ["g"] = t[1], ["b"] = t[2], ["a"] = t[3] });
+                foreach (var (channel, r) in p.Reticles ?? new Dictionary<TextureChannel, Reticle>())
+                {
+                    var layer = channel.Layer();
+                    // Skins sets a whole colour: a reticle colour goes in with full alpha (the plugin keeps the game's alpha).
+                    if (r.Color is { } rc)
+                    {
+                        var c = ForgeVisual.ColourSpace.Glow(rc, r.Intensity ?? 1, game?.Hdr.Contains("_ReticuleColor" + layer) ?? true);
+                        properties["_ReticuleColor" + layer] = Property("Color", new JsonObject { ["r"] = c[0], ["g"] = c[1], ["b"] = c[2], ["a"] = 1 });
+                    }
+                    else if (r.Intensity != null) dropped.Add(new("reticleIntensity", doc.Name, $"{o.Material} {layer}"));
+                    if (r.Scale is float scale) properties["_ReticuleScale" + layer] = Property("Float", new JsonObject { ["value"] = scale });
+                    if (r.Offset is float offset) properties["_ReticuleOffset" + layer] = Property("Float", new JsonObject { ["value"] = offset });
+                    if (r.Visible is bool shown) properties["_Fade" + layer] = Property("Float", new JsonObject { ["value"] = shown ? 1 : 0 });
+                }
                 var target = new JsonObject { ["material_name"] = o.Material };
                 // BlendHS samples no albedo: as the plugin does, draw the picture with the gear shader, the slots the skin
                 // leaves empty filled as the plugin fills them (flat normal, no metal, no glow, white tint).

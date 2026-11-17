@@ -23,9 +23,10 @@ import { t } from '../i18n';
 import { fileUrl } from '../protocol';
 import { useStore } from '../store';
 import { Field, Slider } from '../ui/fields';
+import { modName } from '../actions';
 import { Empty, Info, InspHead, Section } from '../ui/Features';
 import { BODY_JOINTS, chooseModel, exportCharacterMod, exportCharacterPack, guessKind, pickBone, rematch, stageIcon, strandsFrom, useSpringPresets } from './model';
-import { COLLIDER_JOINTS, matchOf, matchReady, SPRING_KINDS, STEPS, updateSpring, useCharacter, type ColliderJoint, type SpringKind, type Step } from './state';
+import { COLLIDER_JOINTS, matchOf, matchReady, SPRING_KINDS, STEPS, updateSpring, useCharacter, type ColliderJoint, type RigCheck, type SpringKind, type Step } from './state';
 
 const STEP: Record<Step, { icon: Icon; color: string }> = {
   model: { icon: IconUser, color: 'var(--flare)' },
@@ -45,10 +46,9 @@ function StepState({ step }: { step: Step }) {
   if (step === 'bones') {
     if (!s.model) return null;
     if (matchReady(s.check)) return <IconCheck size={14} color="var(--ok)" />;
-    const n = (s.check?.missing.length ?? 0) + (s.check?.issues.length ?? 0);
-    return n ? (
+    return s.check?.missing.length ? (
       <Badge size="xs" color="red" variant="light">
-        {n}
+        {s.check.missing.length}
       </Badge>
     ) : null;
   }
@@ -210,18 +210,12 @@ export function jointLabel(joint: string): string {
   return t(`character.joint.${joint as 'hip'}`);
 }
 
-/** Where a joint stands: matched, missing a required bone, or named in a rest-pose problem. */
-function jointState(joint: string, match: Record<string, string>, problems: Set<string>, missing: Set<string>) {
-  if (missing.has(joint) || problems.has(joint)) return 'bad';
-  return match[joint] ? 'ok' : 'none';
-}
-
 function Figure() {
   const s = useCharacter();
   const match = matchOf(s);
   const missing = new Set(s.check?.missing ?? []);
-  const problems = new Set((s.check?.issues ?? []).flatMap((x) => x.joints));
-  const color = (j: string) => ({ ok: '#4fd18b', bad: '#ff5d5d', none: '#5b6675' })[jointState(j, match, problems, missing)];
+  // Red only for the one joint a character cannot do without; a joint left without a bone is grey, not wrong.
+  const color = (j: string) => (missing.has(j) ? '#ff5d5d' : match[j] ? '#4fd18b' : '#5b6675');
   return (
     <svg className="char-figure" viewBox="0 0 200 290" role="group" aria-label={t('character.figure')}>
       {EDGES.map(([a, b]) => (
@@ -251,21 +245,17 @@ function Figure() {
 function FingerGrid({ side }: { side: 'left' | 'right' }) {
   const s = useCharacter();
   const match = matchOf(s);
-  const whole = s.check?.fingers[side];
+  const moving = movingFingers(s.check, side);
   return (
     <div>
       <Group gap={6} mb={4}>
         <Text size="xs" fw={600}>
           {t(`character.${side}Fingers`)}
         </Text>
-        {whole ? (
-          <Badge size="xs" color="green" variant="light">
-            {t('character.fingersMove')}
-          </Badge>
-        ) : (
-          <Tooltip label={t('character.fingersStillInfo')} multiline w={260}>
-            <Badge size="xs" color="yellow" variant="light">
-              {t('character.fingersStill')}
+        {s.check && (
+          <Tooltip label={t('character.fingersInfo')} multiline w={260}>
+            <Badge size="xs" color={moving === FINGERS.length ? 'green' : 'gray'} variant="light">
+              {moving === FINGERS.length ? t('character.fingersMove') : moving ? t('character.fingersSome', { v0: moving }) : t('character.fingersStill')}
             </Badge>
           </Tooltip>
         )}
@@ -292,11 +282,34 @@ function FingerGrid({ side }: { side: 'left' | 'right' }) {
   );
 }
 
-function problemText(issue: { kind: string; joints: string[]; degrees?: number | null; text: string }) {
-  if (issue.kind === 'samePoint') return t('character.issue.samePoint', { v0: jointLabel(issue.joints[0]), v1: jointLabel(issue.joints[1]) });
-  if (issue.kind === 'standing') return t('character.issue.standing', { v0: jointLabel(issue.joints[0]), v1: issue.degrees ?? 0 });
-  if (issue.kind === 'sides') return t('character.issue.sides', { v0: jointLabel(issue.joints[0]) });
-  return issue.text;
+/** How many of a hand's fingers the game moves: those whose first joint is posed. */
+function movingFingers(check: RigCheck | null, side: 'left' | 'right') {
+  if (!check) return 0;
+  const unposed = new Set(check.unposed);
+  return FINGERS.filter((f) => !unposed.has(`${side}${f}1`)).length;
+}
+
+// The joints most skeletons do without: leaving them out changes nothing the author would see, so the notes do not list them.
+const QUIET = new Set(['spine2', 'leftShoulder', 'rightShoulder']);
+
+/** What the game will do differently with this match, one plain sentence per kind (never one per joint): which parts stay still,
+ * which hand does not hold the gun, whose arms show in first person, what looks bound to the wrong side. None of them stops export. */
+function matchNotes(check: RigCheck): string[] {
+  const notes: string[] = [];
+  const fingers = movingFingers(check, 'left') + movingFingers(check, 'right');
+  if (!fingers) notes.push(t('character.note.noFingers'));
+  else if (fingers < FINGERS.length * 2) notes.push(t('character.note.someFingers', { v0: FINGERS.length * 2 - fingers }));
+  const still = BODY_JOINTS.filter((j) => check.unposed.includes(j) && !QUIET.has(j));
+  if (still.length) notes.push(t('character.note.still', { v0: still.map(jointLabel).join(t('character.note.comma')) }));
+  if (!check.reach.left || !check.reach.right)
+    notes.push(t('character.note.noReach', { v0: t(!check.reach.left && !check.reach.right ? 'character.note.bothHands' : check.reach.left ? 'character.right' : 'character.left') }));
+  if (!check.arms) notes.push(t('character.note.noArms'));
+  if (check.notes.some((n) => n.kind === 'sides')) notes.push(t('character.note.sides'));
+  const off = check.notes.filter((n) => n.kind === 'standing').map((n) => jointLabel(n.joints[0]));
+  if (off.length) notes.push(t('character.note.standing', { v0: off.join(t('character.note.comma')) }));
+  for (const n of check.notes) if (n.kind === 'other') notes.push(n.text);
+  if (check.backwards) notes.push(t('character.backwards'));
+  return notes;
 }
 
 function BonesStep() {
@@ -335,19 +348,14 @@ function BonesStep() {
                   {t('character.missingJoint', { v0: jointLabel(j) })}
                 </UnstyledButton>
               ))}
-              {s.check?.issues.map((x, i) => (
-                <UnstyledButton key={i} className="char-problem" onClick={() => x.joints[0] && useCharacter.setState({ joint: x.joints[0] })}>
-                  <IconAlertTriangle size={13} />
-                  {problemText(x)}
-                </UnstyledButton>
-              ))}
             </div>
           )}
-          {s.check?.backwards && (
-            <Text size="xs" c="dimmed">
-              {t('character.backwards')}
-            </Text>
-          )}
+          {ready &&
+            matchNotes(s.check!).map((note) => (
+              <Text key={note} size="xs" c="dimmed">
+                {note}
+              </Text>
+            ))}
           <Figure />
           <Group grow align="flex-start">
             <FingerGrid side="right" />
@@ -368,16 +376,20 @@ function BonesStep() {
               onChange={(v) => pickBone(s.joint!, v)}
               nothingFoundMessage={t('character.noBone')}
             />
-            {s.picked[s.joint] !== undefined && (
-              <Button
-                size="compact-xs"
-                variant="subtle"
-                color="gray"
-                onClick={() => useCharacter.setState((x) => ({ picked: Object.fromEntries(Object.entries(x.picked).filter(([k]) => k !== s.joint)) }))}
-              >
-                {t('character.useAuto')}
-              </Button>
-            )}
+            <Group gap="xs">
+              {match[s.joint] && !required.has(s.joint) && (
+                <Tooltip label={t('character.unbindInfo')} multiline w={260}>
+                  <Button size="compact-xs" variant="subtle" color="gray" onClick={() => pickBone(s.joint!, null)}>
+                    {t('character.unbind')}
+                  </Button>
+                </Tooltip>
+              )}
+              {s.picked[s.joint] !== undefined && (
+                <Button size="compact-xs" variant="subtle" color="gray" onClick={() => pickBone(s.joint!, undefined)}>
+                  {t('character.useAuto')}
+                </Button>
+              )}
+            </Group>
           </Stack>
         ) : (
           <Empty>{t('character.pickJointHint')}</Empty>
@@ -400,9 +412,14 @@ function ArmsStep() {
         <Text size="xs" c="dimmed">
           {t('character.armsText')}
         </Text>
-        <Button size="xs" variant={s.view === 'arms' ? 'filled' : 'light'} disabled={!ready} onClick={() => useCharacter.setState({ view: s.view === 'arms' ? 'body' : 'arms' })}>
+        <Button size="xs" variant={s.view === 'arms' ? 'filled' : 'light'} disabled={!ready || !s.check?.arms} onClick={() => useCharacter.setState({ view: s.view === 'arms' ? 'body' : 'arms' })}>
           {t(s.view === 'arms' ? 'character.viewBody' : 'character.armsShow')}
         </Button>
+        {ready && !s.check?.arms && (
+          <Text size="xs" c="dimmed">
+            {t('character.note.noArms')}
+          </Text>
+        )}
         {!ready && (
           <div className="char-problems">
             <UnstyledButton className="char-problem" onClick={() => useCharacter.setState({ step: 'bones' })}>
@@ -626,13 +643,10 @@ function CheckRow({ ok, text }: { ok: boolean; text: string }) {
   );
 }
 
-/** What export checks: every joint matched and the pose. */
+/** What export checks: the one joint a character cannot do without has a bone. */
 function useChecks() {
   const s = useCharacter();
-  return [
-    { ok: !!s.check && !s.check.missing.length, text: t('character.checkJoints') },
-    { ok: !!s.check && !s.check.issues.length, text: t('character.checkPose') },
-  ];
+  return [{ ok: matchReady(s.check), text: t('character.checkJoints') }];
 }
 
 function CheckStep() {
@@ -689,12 +703,7 @@ function ModForm({ ready }: { ready: boolean }) {
   const [icon, setIcon] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   useEffect(() => {
-    setName(
-      skinName
-        .normalize('NFKD')
-        .replace(/[^A-Za-z0-9]+/g, '_')
-        .replace(/^_+|_+$/g, '') || 'character_skin',
-    );
+    setName(modName(skinName, 'Character_Skin'));
     void stageIcon().then(setIcon, () => setIcon(null));
   }, [skin]); // eslint-disable-line react-hooks/exhaustive-deps
   const pickIcon = async () => {

@@ -37,8 +37,6 @@ public static class AssetPatch
 
     sealed record Edit(long PathId, MaterialOverride Override, SkinPack Pack, string Skin);
 
-    static readonly TextureChannel[] Linear = [TextureChannel.Normal, TextureChannel.MetallicSmoothness];
-
     // ---- methods ----
 
     public static object Apply(string packPath, string? gameDir, long requestId)
@@ -243,7 +241,7 @@ public static class AssetPatch
 
     static bool Writable(MaterialOverride m) =>
         m.Textures.Count > 0 || m.Params is { EmissiveEnabled: not null } or { EmissiveColor: not null } or { EmissiveIntensity: not null }
-            or { Metallic: not null } or { Smoothness: not null } or { Tint: not null };
+            or { Metallic: not null } or { Smoothness: not null } or { Tint: not null } or { Reticles.Count: > 0 };
 
     static MaterialOverride Override(SkinDocument doc, Target t) => doc.Materials.Last(m => m.Material == t.Material && Writable(m));
 
@@ -413,8 +411,13 @@ public static class AssetPatch
                     foreach (var c in e.Override.Textures.Keys) textures[c] = e;
                 foreach (var (channel, e) in textures)
                 {
-                    var prop = Preview.ChannelProps.First(kv => kv.Value == channel).Key;
+                    var prop = channel.Property();
                     var env = Env(envs, prop);
+                    if (channel.IsReticle() && env == null)
+                    {
+                        warningsOf(e.Skin).Add($"{name}: has no reticle layer {channel.Layer()}; {channel} not written");
+                        continue;
+                    }
                     var own = env != null && env["second.m_Texture.m_PathID"].AsLong != 0;
                     var template = (own ? env : Env(envs, "_MainTex") is { } main && main["second.m_Texture.m_PathID"].AsLong != 0 ? main
                         : envs.Children.FirstOrDefault(c => c["second.m_Texture.m_PathID"].AsLong != 0)) is { } from ? Texture(am, inst, data, from["second.m_Texture"]) : null;
@@ -425,7 +428,7 @@ public static class AssetPatch
                     }
                     var tex = Encode(template, e.Pack.ReadBytes(e.Override.Textures[channel]), channel, $"{name} {channel}", warningsOf(e.Skin));
                     tex["m_Name"].AsString = $"{name}_{channel}_{e.Skin}";
-                    if (!own) tex["m_ColorSpace"].AsInt = Linear.Contains(channel) ? 0 : 1;
+                    if (!own) tex["m_ColorSpace"].AsInt = Dds.Linear(channel) ? 0 : 1;
                     var texInfo = AssetFileInfo.Create(inst.file, next, (int)AssetClassID.Texture2D, am.ClassDatabase)
                         ?? throw new BackendException("internal", "Texture2D type missing from the class database");
                     texInfo.SetNewData(tex);
@@ -511,6 +514,24 @@ public static class AssetPatch
         {
             if (Entry("m_Colors", "_Color") is { } c) Color(c, t);
             else warnings.Add($"{name}: the material has no tint; not written");
+        }
+        foreach (var (channel, r) in p.Reticles ?? new Dictionary<TextureChannel, Reticle>())
+        {
+            var layer = channel.Layer();
+            var colour = "_ReticuleColor" + layer;
+            if (r.Color != null || r.Intensity != null)
+            {
+                if (Entry("m_Colors", colour) is { } cur)
+                {
+                    float k = r.Intensity ?? 1;
+                    float[] rgb = r.Color is { } rc ? ForgeVisual.ColourSpace.Glow(rc, k, hdr.Contains(colour)) : [cur["r"].AsFloat * k, cur["g"].AsFloat * k, cur["b"].AsFloat * k];
+                    Color(cur, [.. rgb, cur["a"].AsFloat]);
+                }
+                else warnings.Add($"{name}: the material has no reticle colour {layer}; not written");
+            }
+            if (r.Scale is float scale) Float("_ReticuleScale" + layer, scale, $"reticle scale {layer}");
+            if (r.Offset is float offset) Float("_ReticuleOffset" + layer, offset, $"reticle offset {layer}");
+            if (r.Visible is bool shown) Float("_Fade" + layer, shown ? 1 : 0, $"reticle switch {layer}");
         }
     }
 

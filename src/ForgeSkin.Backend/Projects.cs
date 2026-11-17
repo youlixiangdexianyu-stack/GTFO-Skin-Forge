@@ -7,7 +7,9 @@ using SkiaSharp;
 namespace ForgeSkin.Backend;
 
 // `Edited`: when the author last changed the work (the editor keeps it in editor.editedAt; a save without a change keeps it).
-public sealed record ProjectEntry(string Path, string Id, string Name, DateTime Modified, string? Edited = null);
+// `Adopted`: made from someone else's installed pack (editor.adopted, Adopt): its id is that pack's, so deleting the work
+// leaves the pack installed.
+public sealed record ProjectEntry(string Path, string Id, string Name, DateTime Modified, string? Edited = null, bool Adopted = false);
 
 // Editor projects (.forgeskinproj = SkinDocument with paths relative to the file) and the old tool's project formats.
 // In the protocol every file reference is absolute (Absolute); Load and Save convert.
@@ -74,7 +76,9 @@ public static class Projects
         var name = Path.GetFileNameWithoutExtension(file);
         JsonObject? json = null;
         try { json = JsonNode.Parse(File.ReadAllText(file)) as JsonObject; } catch (System.Text.Json.JsonException) { json = null; }
-        return new ProjectEntry(file, (string?)json?["id"] ?? name, (string?)json?["name"] ?? name, File.GetLastWriteTimeUtc(file), (json?["editor"] as JsonObject)?["editedAt"]?.GetValue<string>());
+        var editor = json?["editor"] as JsonObject;
+        return new ProjectEntry(file, (string?)json?["id"] ?? name, (string?)json?["name"] ?? name, File.GetLastWriteTimeUtc(file), editor?["editedAt"]?.GetValue<string>(),
+            editor?["adopted"] is JsonValue v && v.TryGetValue<bool>(out var adopted) && adopted);
     }).OrderByDescending(e => e.Modified).ToList();
 
     // Every item's skins under the autosave root (one folder per item id); items without skins are left out.
@@ -104,6 +108,27 @@ public static class Projects
         return new { removed = path };
     }
 
+    // A copy of the work saved at `from`, to be saved at `to`: the files the work keeps beside it (an import's textures, a
+    // character's converted model) are copied into the new work's own folders and `doc` points at them, so deleting one of
+    // the two works leaves the other whole.
+    public static SkinDocument Copy(SkinDocument doc, string from, string to)
+    {
+        foreach (var ext in new[] { ".textures", ".character" })
+        {
+            var source = Path.GetFullPath(Path.ChangeExtension(from, ext));
+            if (!Directory.Exists(source)) continue;
+            var target = Path.GetFullPath(Path.ChangeExtension(to, ext));
+            foreach (var file in Directory.GetFiles(source, "*", SearchOption.AllDirectories))
+            {
+                var copy = Path.Combine(target, Path.GetRelativePath(source, file));
+                Directory.CreateDirectory(Path.GetDirectoryName(copy)!);
+                File.Copy(file, copy, true);
+            }
+            MapPaths(doc, p => Under(p, source) ? Path.Combine(target, Path.GetRelativePath(source, Path.GetFullPath(p))) : p);
+        }
+        return doc;
+    }
+
     // An installed pack made into one of the author's works (「搬到我的作品」): its manifest saved as the project `<dir>/<id>.forgeskinproj`
     // and its files unpacked into `<id>.textures/` beside it, a precompressed texture decoded back to PNG (the editor reads only
     // pictures). `lost` names what a pack no longer holds, which the work comes back without: "editor" (the editor's own notes:
@@ -126,6 +151,7 @@ public static class Projects
         if (File.Exists(path)) throw new BackendException("bad-request", $"{path} already exists");
         var files = Path.ChangeExtension(path, ".textures");
         var lost = new SortedSet<string> { doc.Character != null ? "source" : "editor" };
+        doc.Editor = new() { ["adopted"] = true };
         if (doc.Attachments.Any(a => a.Mesh != null)) lost.Add("meshes");
         // A screen's font is not in a pack; the editor draws its glyphs again (default font) and the build traces them anew.
         foreach (var s in doc.Attachments.Select(a => a.Screen).OfType<Screen>())
@@ -133,6 +159,10 @@ public static class Projects
             (s.GlyphMeshes, s.TextMesh, s.BorderMesh) = (null, null, null);
             lost.Add("screens");
         }
+        // A hologram's scanlines and outline are code effects the build adds from its settings (hologram.ts, ids `<attachment>~scan`
+        // and `~edge`); the pack holds them already made, and kept they would be added twice on the next build.
+        var holograms = doc.Attachments.Where(a => a.Hologram != null).SelectMany(a => new[] { a.Id + "~scan", a.Id + "~edge" }).ToHashSet();
+        doc.CodeEffects?.RemoveAll(e => holograms.Contains(e.Id));
         Unpack(p, doc, files, lost);
         foreach (var m in doc.Materials)
             foreach (var l in m.Layers.ToList())

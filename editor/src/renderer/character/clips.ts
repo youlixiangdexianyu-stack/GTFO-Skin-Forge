@@ -54,8 +54,10 @@ export async function clipPlayer(id: string): Promise<ClipPlayer | null> {
     const file = await fileOf(id);
     const body = file.scene;
     const fingers = !!body.getObjectByName('leftThumb1');
-    const match = matchOf(useCharacter.getState());
-    const { links, reach } = await call('character.links', { bones: match, fingers });
+    const state = useCharacter.getState();
+    const match = matchOf(state);
+    if (!state.files) return null;
+    const { links, reach } = await call('character.links', { descriptor: state.files.descriptor, bones: match, fingers });
     // The links the copy keeps, renumbered among themselves (a link never points at one it leaves out).
     const kept = links.flatMap((l, j) => (l.skip ? [] : [j]));
     const index = new Map(kept.map((j, k) => [j, k]));

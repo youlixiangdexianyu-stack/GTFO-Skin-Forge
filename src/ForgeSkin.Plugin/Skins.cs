@@ -217,8 +217,11 @@ sealed class Skin
         ForgeSkinPlugin.Info($"character model of {Doc.Id}: pictures decoded {decoded} ms after the load began, built in {build.ElapsedMilliseconds} ms in one frame");
         if (result.Model is not { Skinned: true } built)
             return new SkinFormatException(result.Failure.Code == ImportedModelCodes.CutoutUnsupported ? "unsupported-character-material" : "bad-character-model", result.Failure.ToString());
-        try { Links = HumanRig.Links(CharacterRig.Joints(Doc.Character!)); }
+        try { Links = CharacterRig.Links(Doc.Character!, _model.Model!); }
         catch (ArgumentException e) { return new SkinFormatException("bad-character-bones", e.Message); }
+        // Never silent: the joints this model has no bone for, once per load.
+        if (HumanRig.Unposed(Links) is { Length: > 0 } unposed)
+            ForgeSkinPlugin.Fail("skin-character-part-skipped", $"character {Doc.Id} has no bone for {string.Join(", ", unposed)}: those parts keep their rest pose and move with the bone above them");
         Character = built;
         _model = null;
         return null;
@@ -724,11 +727,16 @@ static class Skins
         ById.Clear();
         ByNumber.Clear();
         var own = Path.GetFullPath(_dir) + Path.DirectorySeparatorChar;
-        // Two packs with one id: the skins folder's (what the editor installs) wins over a mod's, then the first by file name, so the
-        // same one wins at every reload.
-        foreach (var (file, skin) in ByFile.OrderBy(kv => Path.GetFullPath(kv.Key).StartsWith(own, StringComparison.OrdinalIgnoreCase) ? 0 : 1).ThenBy(kv => kv.Key, StringComparer.OrdinalIgnoreCase))
+        // Two packs with one id: the newer file wins (a pack's write time is when it was built: the editor's 应用 builds and writes it
+        // then, a mod's packs carry when their author built them or when the mod manager unpacked them), then the skins folder's
+        // over a mod's, then the first
+        // by path, so the same one wins at every reload.
+        string Where(string file) => Path.GetFullPath(file).StartsWith(own, StringComparison.OrdinalIgnoreCase)
+            ? $"the skins folder's {Path.GetFileName(file)}" : $"plugins/{Path.GetRelativePath(_plugins, file).Replace('\\', '/')}";
+        foreach (var (file, skin) in ByFile.OrderByDescending(kv => kv.Value.Stamp).ThenBy(kv => Path.GetFullPath(kv.Key).StartsWith(own, StringComparison.OrdinalIgnoreCase) ? 0 : 1)
+                     .ThenBy(kv => kv.Key, StringComparer.OrdinalIgnoreCase))
             if (ById.TryGetValue(skin.Doc.Id, out var kept))
-                ForgeSkinPlugin.Fail("skin-pack-duplicate-id", $"two packs share id {skin.Doc.Id}; {Path.GetFileName(file)} is ignored, {Path.GetFileName(kept.File)} is used");
+                ForgeSkinPlugin.Fail("skin-pack-duplicate-id", $"two packs share id {skin.Doc.Id}; {Where(kept.File)} ({kept.Stamp:yyyy-MM-dd HH:mm} UTC) is used, {Where(file)} ({skin.Stamp:yyyy-MM-dd HH:mm} UTC) is ignored");
             else
             {
                 ById[skin.Doc.Id] = skin;

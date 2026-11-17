@@ -15,7 +15,7 @@ namespace ForgeSkin.Backend;
 public static class ModExport
 {
     // Thunderstore ids of the libraries the skin mods depend on; the base library is this release of the ForgeSkin plugin.
-    const string BaseVersion = "1.0.0"; // package-version: NAinfini-ForgeSkin
+    const string BaseVersion = "1.0.1"; // package-version: NAinfini-ForgeSkin
     const string BaseLibrary = "NAinfini-ForgeSkin-" + BaseVersion, SkinsLibrary = "food-Skins-0.12.0";
 
     public static object Export(string[] packs, string output, string name, string version, string description, string icon,
@@ -64,7 +64,7 @@ public static class ModExport
                 using var r = new StreamReader(entry.Open());
                 return r.ReadToEnd().Trim();
             }).Where(c => !string.IsNullOrEmpty(c)).Distinct().ToList();
-            Text(zip, "README.md", $"# {name.Replace('_', ' ')}\n\n{description}\n\nSkins for GTFO, applied by {(skins ? "the Skins library" : "ForgeSkin")} (installed automatically as a dependency).\n\n"
+            Text(zip, "README.md", $"# {name.Replace('_', ' ')}\n\n{(string.IsNullOrWhiteSpace(description) ? "" : description.Trim() + "\n\n")}Skins for GTFO, applied by {(skins ? "the Skins library" : "ForgeSkin")} (installed automatically as a dependency).\n\n"
                 + string.Join("\n", docs.Select(d => $"- {d.Name}")) + "\n"
                 + (credits.Count > 0 ? "\n## Credits\n\n" + string.Join("\n", credits.Select(c => $"- {c}")) + "\n" : ""));
         }
@@ -78,17 +78,34 @@ public static class ModExport
         w.Write(text);
     }
 
-    // Thunderstore wants a 256x256 PNG; any image is scaled to cover that square.
+    // Thunderstore wants a 256x256 PNG. The whole picture fits inside the square on a mid grey (game guns are dark), so a long gun
+    // keeps its muzzle and stock; a picture with a transparent margin (the gear pictures the editor draws) is cut to what it shows first.
     static void Icon(string path, Stream output)
     {
         using var source = SKBitmap.Decode(path) ?? throw new BackendException("bad-request", $"Icon {path} is not an image");
+        var shown = Shown(source);
+        const float size = 256, margin = 12;
+        float scale = (size - 2 * margin) / Math.Max(shown.Width, shown.Height);
+        float w = shown.Width * scale, h = shown.Height * scale;
         using var surface = SKSurface.Create(new SKImageInfo(256, 256));
-        float scale = 256f / Math.Min(source.Width, source.Height);
-        float w = source.Width * scale, h = source.Height * scale;
-        surface.Canvas.Clear(SKColors.Transparent);
+        surface.Canvas.Clear(new SKColor(0x4a, 0x50, 0x58));
         using var paint = new SKPaint { FilterQuality = SKFilterQuality.High };
-        surface.Canvas.DrawBitmap(source, new SKRect((256 - w) / 2, (256 - h) / 2, (256 + w) / 2, (256 + h) / 2), paint);
+        surface.Canvas.DrawBitmap(source, shown, new SKRect((size - w) / 2, (size - h) / 2, (size + w) / 2, (size + h) / 2), paint);
         using var image = surface.Snapshot();
         image.Encode(SKEncodedImageFormat.Png, 100).SaveTo(output);
+    }
+
+    // The part of a picture that is not see-through (alpha above 8), or the whole picture when nothing is.
+    static SKRectI Shown(SKBitmap b)
+    {
+        int left = b.Width, top = b.Height, right = -1, bottom = -1;
+        for (int y = 0; y < b.Height; y++)
+            for (int x = 0; x < b.Width; x++)
+                if (b.GetPixel(x, y).Alpha > 8)
+                {
+                    left = Math.Min(left, x); right = Math.Max(right, x);
+                    top = Math.Min(top, y); bottom = Math.Max(bottom, y);
+                }
+        return right < 0 ? new SKRectI(0, 0, b.Width, b.Height) : new SKRectI(left, top, right + 1, bottom + 1);
     }
 }

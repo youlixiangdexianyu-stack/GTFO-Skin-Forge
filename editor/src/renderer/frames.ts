@@ -31,7 +31,7 @@ export function loadImage(path: string): Promise<HTMLImageElement> {
       img.crossOrigin = 'anonymous';
       img.onload = () => resolve(img);
       // A failure is not kept: the file may be written again (preview cache rebuilt) and the next view retries.
-      img.onerror = () => (images.delete(path), reject(new Error(`cannot load ${path}`)));
+      img.onerror = () => (images.delete(path), reject(Object.assign(new Error(`cannot load ${path}`), { code: 'bad-image' })));
       img.src = `${fileUrl(path)}?v=${generation}`;
     });
   images.set(path, p);
@@ -70,7 +70,7 @@ const gifs = new Map<string, Promise<SourceFrames>>();
 
 async function decodeGif(path: string): Promise<SourceFrames> {
   const r = await fetch(fileUrl(path));
-  if (!r.ok || !r.body) throw new Error(`cannot load ${path}`);
+  if (!r.ok || !r.body) throw Object.assign(new Error(`cannot load ${path}`), { code: 'bad-image' });
   const decoder = new ImageDecoder({ data: r.body, type: 'image/gif' });
   await decoder.completed;
   const frames: HTMLCanvasElement[] = [];

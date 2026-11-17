@@ -70,7 +70,7 @@ sealed partial class SkinnedGear
     public int Kills, Shots, ShotHits;
     public float Damage;
     readonly bool _gun; // a ranged gun: its Fire is a shot that hits or misses
-    int _shotFrame = -1, _hitFrame = -1; // frame of the unresolved shot (-1: none) and of the last Hit/Kill
+    int _shotFrame = -1, _hitFrame = -1; // frame of the unresolved shot (-1: none) and of the last hit it sent on an enemy (HitSent)
     readonly List<AmmoScreen> _screens = new();
     readonly List<Transform> _faceCamera = new();
     readonly List<PartPose> _poses = new();
@@ -266,7 +266,7 @@ sealed partial class SkinnedGear
         if (state != eGameStateName.Generating) return;
         LastHeld.Clear();
         Wear.Save(Time.unscaledTime, true);
-        _wielded = _lastWielded = IntPtr.Zero;
+        _wielded = _lastWielded = _hitBy = IntPtr.Zero;
         _inventory = null;
         _local = IntPtr.Zero;
         _playerDamage = null;
@@ -928,9 +928,11 @@ sealed partial class SkinnedGear
             textures = stage.Textures;
             ForgeSkinPlugin.Info($"{_label}: {o.Material} wears with kills: {Wear.Count(counter)} kills, stage at {stage.Kills}");
         }
-        foreach (var (channel, path) in textures) look.SetTexture(Property(channel), skin.Texture(path, Skin.Linear(channel)));
+        foreach (var (channel, path) in textures)
+            if (!channel.IsReticle()) look.SetTexture(Property(channel), skin.Texture(path, Skin.Linear(channel)));
         if (o.Textures.ContainsKey(TextureChannel.Emissive) && o.Params.EmissiveEnabled != false) SetEmissive(look, true);
         Params(skin, look, o.Params);
+        Reticles(skin, look, o);
         AddLayers(skin, look, o.Layers, source.name);
         return look;
     }
@@ -978,6 +980,48 @@ sealed partial class SkinnedGear
             ForgeSkinPlugin.Info($"{_label}: material {m.name} ({m.shader.name}) has no {string.Join(", ", missing)}; left as the game draws it");
     }
 
+    // A holographic sight's reticle layers (MaterialParams.Reticles, pictures in the ReticleA..C textures; a wear stage keeps
+    // them). Seen only through the sight, so in practice by the player who aims it. A layer or value the material's shader
+    // lacks is left out and logged once.
+    void Reticles(Skin skin, Material m, MaterialOverride o)
+    {
+        List<string>? missing = null;
+        // The property's id, or 0 when the shader lacks it.
+        int Has(string property)
+        {
+            int id = Shader.PropertyToID(property);
+            if (m.HasProperty(id)) return id;
+            (missing ??= new()).Add(property);
+            return 0;
+        }
+        foreach (var channel in TextureChannels.Reticles)
+        {
+            bool picture = o.Textures.TryGetValue(channel, out var path);
+            var r = o.Params.Reticles?.GetValueOrDefault(channel);
+            if (!picture && r == null) continue;
+            var l = channel.Layer();
+            if (picture && Has(channel.Property()) is var slot and not 0)
+            {
+                var texture = skin.Texture(path!, Skin.Linear(channel));
+                texture.wrapMode = TextureWrapMode.Clamp; // a layer scaled below 1 shows the picture once, never repeated
+                m.SetTexture(slot, texture);
+            }
+            if (r == null) continue;
+            var colour = "_ReticuleColor" + l;
+            if ((r.Color != null || r.Intensity != null) && Has(colour) is var tint and not 0)
+            {
+                var now = m.GetColor(tint);
+                var k = r.Intensity ?? 1f;
+                m.SetColor(tint, r.Color is { } c ? Glow.Value(m, colour, new Color(c[0], c[1], c[2], now.a), k) : new Color(now.r * k, now.g * k, now.b * k, now.a));
+            }
+            if (r.Scale is float scale && Has("_ReticuleScale" + l) is var s and not 0) m.SetFloat(s, scale);
+            if (r.Offset is float offset && Has("_ReticuleOffset" + l) is var d and not 0) m.SetFloat(d, offset);
+            if (r.Visible is bool shown && Has("_Fade" + l) is var f and not 0) m.SetFloat(f, shown ? 1 : 0);
+        }
+        if (missing != null)
+            ForgeSkinPlugin.Fail("skin-reticle-skipped", $"{_label}: material {o.Material} has no {string.Join(", ", missing)}; the skin's reticle there is left out");
+    }
+
     // Emission goes through ForgeCore Glow, the one emission write. On: the material glows in its own colour and emission
     // map; off: its glow is switched off and its colour and map stay.
     public static void SetEmissive(Material m, bool on)
@@ -994,13 +1038,7 @@ sealed partial class SkinnedGear
         if (m.HasProperty(EmissiveColor)) Glow.Write(m, colour, gain, m.GetTexture(EmissiveMap));
     }
 
-    static int Property(TextureChannel channel) => channel switch
-    {
-        TextureChannel.Albedo => MainTex,
-        TextureChannel.Normal => BumpMap,
-        TextureChannel.MetallicSmoothness => MetallicGlossMap,
-        _ => EmissiveMap,
-    };
+    static int Property(TextureChannel channel) => Shader.PropertyToID(channel.Property());
 
     public T Own<T>(T o) where T : Object
     {
@@ -1418,7 +1456,7 @@ sealed partial class SkinnedGear
     {
         // An item without holder gets Equip and Unequip from the wielded-item poll only.
         if (_holder == null && trigger is Trigger.Equip or Trigger.Unequip) return;
-        int frame = Time.frameCount;
+        int frame = CurrentFrame;
         if (Remote)
         {
             if (!RemoteTriggers.Contains(trigger)) return;
@@ -1429,16 +1467,10 @@ sealed partial class SkinnedGear
             }
             if (trigger == Trigger.Equip) LastHeld[_ownerAgentPointer] = _itemPointer;
         }
-        if (trigger == Trigger.Kill)
-        {
-            Kills++;
-            if (_worn.Count > 0) Worn(this);
-        }
-        if (trigger is Trigger.Kill or Trigger.Hit)
-        {
-            Damage += damage;
-            _hitFrame = frame;
-        }
+        // What shows (the counters on screen, the effects, the kill sound) follows the prediction; wear with kills is saved and
+        // follows the host's settlement only (Settled).
+        if (trigger == Trigger.Kill) Kills++;
+        if (trigger is Trigger.Kill or Trigger.Hit) Damage += damage;
         if (trigger == Trigger.Fire && _gun && !Remote)
         {
             if (_shotFrame >= 0) ResolveShot(time);
@@ -1482,13 +1514,72 @@ sealed partial class SkinnedGear
     // Whether a hit's source is the local player, as the wielded-item poll last found them.
     public static bool IsLocal(Agents.Agent? source) => source != null && _local != IntPtr.Zero && source.Pointer == _local;
 
-    // Damage the local player dealt to a living enemy (the health it lost): a kill when it died, else a hit, for the item
-    // in their hands (gun or melee weapon alike).
-    public static void Damaged(bool killed, float damage, uint? enemy)
+    // The item that sent the local player's latest hit request on an enemy (HitSent), zero before the first this level.
+    static IntPtr _hitBy;
+
+    // The game's frame number, read in one place: shots, hits and events of one frame are compared by it.
+    static int CurrentFrame => Time.frameCount;
+
+    // This machine sent a hit of the local player on an enemy (the game's own request, made where the shot or swing happens, on
+    // the host and on a client alike): the item in hand sent it. A gun's shot counts as a hit when one is sent in its frame
+    // (ResolveShot), so Accuracy and Miss read the same on every machine.
+    public static void HitSent()
+    {
+        var wielded = Wielded();
+        if (wielded == IntPtr.Zero) return;
+        _hitBy = wielded;
+        int frame = CurrentFrame;
+        for (int i = 0; i < Live.Count; i++)
+            if (Live[i]._itemPointer == wielded) Live[i]._hitFrame = frame;
+    }
+
+    // The item a late word of the host is credited to: the one that sent the latest hit (the word comes a round trip after the
+    // hit on a client, after a switch to another item, too), else the one in hand.
+    static IntPtr Credited => _hitBy != IntPtr.Zero ? _hitBy : Wielded();
+
+    // What the local player's hit request on an enemy is expected to do (ForgeCore's prediction, made in the hit's own frame on
+    // host and client): a kill when it should take the enemy's last health, else a hit, credited to the item in hand. The Kill or
+    // Hit event, the kill sound and the counters on screen follow it at once.
+    public static void Predicted(bool kill, float damage, uint? enemy)
+    {
+        var wielded = Wielded();
+        Shown(wielded != IntPtr.Zero ? wielded : _hitBy, kill, damage, enemy);
+    }
+
+    static void Shown(IntPtr item, bool kill, float damage, uint? enemy)
     {
         DamageAll += damage;
-        var wielded = Wielded();
-        if (wielded != IntPtr.Zero) Event(wielded, killed ? Trigger.Kill : Trigger.Hit, damage, enemy);
+        if (item != IntPtr.Zero) Event(item, kill ? Trigger.Kill : Trigger.Hit, damage, enemy);
+    }
+
+    // The prediction turned out different (the host settled another amount, a hit never landed, a kill was not predicted or
+    // did not happen): the counters on screen take the difference. Only a kill or a hit that never showed raises its event now.
+    public static void Corrected(float damage, int kills, bool showKill, bool showHit, uint? enemy)
+    {
+        var item = Credited;
+        if (showKill || showHit && kills == 0) { Shown(item, showKill, damage, enemy); return; }
+        // Never under zero: the counters start again with each level, and what is taken back may be of the level before.
+        DamageAll = Math.Max(0f, DamageAll + damage);
+        for (int i = 0; i < Live.Count; i++)
+        {
+            var gear = Live[i];
+            if (gear._itemPointer != item) continue;
+            gear.Damage = Math.Max(0f, gear.Damage + damage);
+            gear.Kills = Math.Max(0, gear.Kills + kills);
+        }
+    }
+
+    // A kill of the local player as the host settled it: what is saved (wear with kills) counts only these, never a prediction.
+    public static void Settled(bool killed)
+    {
+        if (!killed) return;
+        try
+        {
+            var item = Credited;
+            for (int i = 0; i < Live.Count; i++)
+                if (Live[i]._itemPointer == item && !Live[i].Remote && Live[i]._worn.Count > 0) Worn(Live[i]);
+        }
+        catch (Exception e) { ForgeSkinPlugin.Fail("skin-event-failed", $"settled kill: {e.Message}", e); }
     }
 
     // The local player went down or was revived: a state of theirs, raised for the item they hold, so only the skin of that
@@ -1500,8 +1591,9 @@ sealed partial class SkinnedGear
         if (item != IntPtr.Zero) Event(item, trigger);
     }
 
-    // A gun's shot is decided at the end of the frame after it: hitscan damage of the local shooter is applied in the
-    // shot's own frame, so a Hit/Kill from then on is its hit (a shotgun's pellets are one shot); none is a Miss.
+    // A gun's shot is decided at the end of the frame after it: the shooter's machine sends the hit requests of a hitscan shot in
+    // the shot's own frame (HitSent), so one from then on is its hit (a shotgun's pellets are one shot); none is a Miss. The
+    // settlement is not waited for: on a client it comes a round trip later.
     void ResolveShot(float time)
     {
         bool hit = _hitFrame >= _shotFrame;
@@ -1642,7 +1734,7 @@ sealed partial class SkinnedGear
 
     void Update(float time)
     {
-        if (_shotFrame >= 0 && Time.frameCount > _shotFrame + 1) ResolveShot(time);
+        if (_shotFrame >= 0 && CurrentFrame > _shotFrame + 1) ResolveShot(time);
         // A teammate's gear is drawn as the menu preview is: no ammo, no counts, no aim of the local player's (their backpack and
         // hands are not this machine's to read).
         if (_item != null && !_icon && !Remote && (_screens.Count > 0 || _lowAmmo.Count > 0 || _on[(int)Trigger.Empty].Count > 0))

@@ -20,6 +20,8 @@ const api = {
   dataDir: (): Promise<string> => ipcRenderer.invoke('app:dataDir'),
   /** dev: run from a checkout; installed: the Setup.exe install; portable: the unzipped copy. */
   edition: (): Promise<'dev' | 'installed' | 'portable'> => ipcRenderer.invoke('app:edition'),
+  /** Development editor only: builds and stages the plugin from the checkout before an install (main.ts stageDevPlugin). */
+  stagePlugin: (): Promise<{ ok: true } | { ok: false; reason: 'notDev' | 'noForgeCore' | 'failed'; detail?: string }> => ipcRenderer.invoke('plugin:stage'),
   /** Whether the editor was started with --ai-control (the renderer then installs window.forgeAI). */
   aiControl: (): Promise<boolean> => ipcRenderer.invoke('app:aiControl'),
   /** Moves the data folder (main/dataDir.ts moveData); the window reloads after a move that worked. */

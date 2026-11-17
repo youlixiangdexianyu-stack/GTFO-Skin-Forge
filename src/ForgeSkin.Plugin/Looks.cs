@@ -15,6 +15,8 @@ namespace ForgeSkin.Plugin;
 static class Looks
 {
     static NetLobbyValue? _row;
+    // ForgeSkin's one Net channel (ForgeCore opens a mod's channel once); Inspect adds its per-player state to it.
+    public static NetChannel? Channel;
 
     // What a teammate's gear wears: the skin, their changes as picks, the wear stage reached, and a number that moves with any change
     // (their coloured copy of the skin is made once per number).
@@ -40,7 +42,8 @@ static class Looks
     {
         try
         {
-            _row = Net.Open(ForgeSkinPlugin.Guid).Lobby("look");
+            Channel = Net.Open(ForgeSkinPlugin.Guid);
+            _row = Channel.Lobby("look");
             _row.Changed += Received;
         }
         catch (Exception e) { ForgeSkinPlugin.Fail("skin-look-failed", $"looks are not shared with teammates: {e.Message}", e); }

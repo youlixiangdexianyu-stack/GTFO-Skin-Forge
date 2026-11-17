@@ -148,7 +148,7 @@ public static class Program
             var list = args[at + 1];
             var (revision, keys) = Methods.WithGame(g => (g.Revision, Preview.TextureKeys(g)));
             AtomicFile.WriteText(Path.GetFullPath(list), JsonSerializer.Serialize(new Dictionary<string, SortedSet<string>> { [revision] = keys },
-                new JsonSerializerOptions { WriteIndented = true }) + "\n");
+                new JsonSerializerOptions { WriteIndented = true, NewLine = "\n" }) + "\n"); // LF: the file is eol=lf in Git
             Console.WriteLine($"{keys.Count} textures of game revision {revision} -> {list}");
             return;
         }

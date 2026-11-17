@@ -215,9 +215,9 @@ public static class Matching
         }
 
         // Slots: every channel of every material (procedural game materials such as GTFO/BlendHS have no texture to compare
-        // against but can still take the user's).
+        // against but can still take the user's). A sight's reticle layers are picked one by one, never guessed from a folder.
         var slots = item.Parts.SelectMany(p => p.Materials.Select(m => (Part: p, Material: m))).DistinctBy(s => s.Material)
-            .Select(s => (s.Part, s.Material, Channels: Enum.GetValues<TextureChannel>().ToList()))
+            .Select(s => (s.Part, s.Material, Channels: Enum.GetValues<TextureChannel>().Where(c => !c.IsReticle()).ToList()))
             .ToList();
         var features = new Dictionary<string, float[]>();
         float[]? BaselineFeature(string material, TextureChannel c)

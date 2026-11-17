@@ -157,7 +157,36 @@ public sealed class PartTransform
     public string? Mesh { get; set; }
 }
 
-public enum TextureChannel { Albedo, Normal, MetallicSmoothness, Emissive }
+// ReticleA..C: the three reticle layers of a holographic sight's lens (the game's Unlit/HolographicSight_3Layers and its
+// thermal sibling: _ReticuleA/B/C), drawn additively as picture x colour, projected at the layer's depth.
+public enum TextureChannel { Albedo, Normal, MetallicSmoothness, Emissive, ReticleA, ReticleB, ReticleC }
+
+public static class TextureChannels
+{
+    public static readonly TextureChannel[] Reticles = { TextureChannel.ReticleA, TextureChannel.ReticleB, TextureChannel.ReticleC };
+
+    public static bool IsReticle(this TextureChannel c) => c is TextureChannel.ReticleA or TextureChannel.ReticleB or TextureChannel.ReticleC;
+
+    // A reticle channel's layer letter, as the shader names the layer's properties: _Reticule<L>, _ReticuleColor<L>,
+    // _ReticuleScale<L>, _ReticuleOffset<L>, _Fade<L>.
+    public static string Layer(this TextureChannel c) => c switch
+    {
+        TextureChannel.ReticleA => "A",
+        TextureChannel.ReticleB => "B",
+        TextureChannel.ReticleC => "C",
+        _ => throw new ArgumentOutOfRangeException(nameof(c), c, "not a reticle channel"),
+    };
+
+    // The shader property a channel's texture goes in.
+    public static string Property(this TextureChannel c) => c switch
+    {
+        TextureChannel.Albedo => "_MainTex",
+        TextureChannel.Normal => "_BumpMap",
+        TextureChannel.MetallicSmoothness => "_MetallicGlossMap",
+        TextureChannel.Emissive => "_EmissiveMap",
+        _ => "_Reticule" + c.Layer(),
+    };
+}
 
 public sealed class MaterialOverride
 {
@@ -353,6 +382,24 @@ public sealed class MaterialParams
     public float? Metallic { get; set; }
     public float? Smoothness { get; set; }
     public float[]? Tint { get; set; } // RGBA multiplier on albedo
+    // A holographic sight's reticle layers by channel (ReticleA..C), beside the layer's picture in Textures; a layer or
+    // value left out keeps the game's.
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public Dictionary<TextureChannel, Reticle>? Reticles { get; set; }
+}
+
+// One reticle layer's look. Color (sRGB) and Intensity are its colour as a glow: the shader gets
+// ForgeVisual.ColourSpace.Glow(Color, Intensity) in _ReticuleColor<L> (Intensity is what white takes in that property's units;
+// MaterialParams.GlowFromGame's colour space without the emission unit), the colour's alpha kept; Intensity alone scales the
+// game's colour. Scale and Offset are the shader's _ReticuleScale<L> and _ReticuleOffset<L> (Offset is the layer's projection
+// depth, not a shift); Visible is _Fade<L> (1 drawn, 0 not).
+public sealed class Reticle
+{
+    public float[]? Color { get; set; }
+    public float? Intensity { get; set; }
+    public float? Scale { get; set; }
+    public float? Offset { get; set; }
+    public bool? Visible { get; set; }
 }
 
 public enum LayerKind { Image, Sequence, Video, Text }

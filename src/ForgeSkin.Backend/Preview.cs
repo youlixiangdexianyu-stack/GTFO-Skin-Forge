@@ -24,25 +24,18 @@ public sealed record PreviewResult(string Glb, List<PreviewPart> Parts, Dictiona
 // How the game draws a material. Kind: opaque; cutout (alpha test); glass (alpha-blended lens: Tint alpha is its opacity,
 // albedo if any is lens dirt); reticle (holographic sight surface: invisible except its reticle layers, drawn additively as
 // texture x colour). Colours are the material's values (Tint = _Color RGBA), except its glow (_EmissiveColor or
-// _EmissionColor RGB), which is in a skin's units (MaterialParams.GlowFromGame), as the editor previews and edits it.
+// _EmissionColor RGB), which is in a skin's units (MaterialParams.GlowFromGame), as the editor previews and edits it, and a
+// reticle layer's colour, which is a skin's Reticle colour and intensity (ColourSpace.FromGlow of _ReticuleColor<L>, alpha
+// dropped). Reticles: every layer the material has, every value set; the pictures are in PreviewResult.Textures.
 public sealed record PreviewMaterial(string Shader, int RenderQueue, string Kind, bool? EmissiveEnabled, float[]? EmissiveColor,
-    float? EmissiveIntensity, float? Metallic, float? Smoothness, float[]? Tint, List<PreviewReticle> Reticles);
-
-// One reticle layer of a holographic sight (_ReticuleA/B/C): PNG, colour (RGBA, linear), scale and offset as the shader takes them.
-public sealed record PreviewReticle(string Layer, string Texture, float[] Color, float Scale, float Offset);
+    float? EmissiveIntensity, float? Metallic, float? Smoothness, float[]? Tint, Dictionary<TextureChannel, Reticle>? Reticles);
 
 // Assembled item -> GLB (full transform tree, Unity -> glTF) + game textures as PNG + material parameters, cached per game
 // build when the item is first asked for. Textures go to the build's shared store (PreviewCache.Textures) named by content,
 // so items that share a texture share its file.
 public static class Preview
 {
-    public static readonly Dictionary<string, TextureChannel> ChannelProps = new()
-    {
-        ["_MainTex"] = TextureChannel.Albedo,
-        ["_BumpMap"] = TextureChannel.Normal,
-        ["_MetallicGlossMap"] = TextureChannel.MetallicSmoothness,
-        ["_EmissiveMap"] = TextureChannel.Emissive,
-    };
+    public static readonly Dictionary<string, TextureChannel> ChannelProps = Enum.GetValues<TextureChannel>().ToDictionary(c => c.Property());
 
     public static PreviewResult Weapon(GameAssets g, string id, long requestId)
     {
@@ -127,7 +120,7 @@ public static class Preview
             Program.Progress(requestId, done++, materials.Count, name);
             var data = Unity.ReadMaterial(g, m);
             var channels = new Dictionary<TextureChannel, string>();
-            string? Export(TexRef t, TextureChannel channel, string suffix, bool now = false)
+            string? Export(TexRef t, TextureChannel channel, string suffix)
             {
                 if (!written.TryGetValue((t.File.path, t.PathId), out var png))
                 {
@@ -141,27 +134,11 @@ public static class Preview
                     }
                     png = Path.Combine(store, $"{Safe(texName)}_{key}_{channel}.png");
                     written[(t.File.path, t.PathId)] = png;
-                    if (File.Exists(png) || pending.Exists(p => p.Png == png)) { }
-                    else if (now) SaveTexture(loaded, channel, png);
-                    else pending.Add((loaded, channel, png));
-                }
-                if (now && pending.FindIndex(p => p.Png == png) is var i and >= 0)
-                {
-                    // Queued earlier by another material, but needed on disk now (a reticle is read back).
-                    SaveTexture(pending[i].Loaded, pending[i].Channel, png);
-                    pending.RemoveAt(i);
+                    if (!File.Exists(png) && !pending.Exists(p => p.Png == png)) pending.Add((loaded, channel, png));
                 }
                 return png;
             }
-            var reticles = new List<PreviewReticle>();
-            if (data.Shader.Contains("HolographicSight"))
-                foreach (var layer in new[] { "A", "B", "C" })
-                    if (data.Textures.TryGetValue("_Reticule" + layer, out var rt) && (!data.Floats.TryGetValue("_Fade" + layer, out var fade) || fade > 0)
-                        && Export(rt, TextureChannel.Emissive, "Reticle" + layer, now: true) is { } png && !Blank(png))
-                        reticles.Add(new PreviewReticle(layer, png,
-                            data.Colors.GetValueOrDefault("_ReticuleColor" + layer) ?? [1, 1, 1, 1],
-                            data.Floats.GetValueOrDefault("_ReticuleScale" + layer, 1), data.Floats.GetValueOrDefault("_ReticuleOffset" + layer)));
-            var info = Params(data, reticles);
+            var info = Params(data);
             parameters[name] = info;
             foreach (var (prop, channel) in ChannelProps)
             {
@@ -218,19 +195,11 @@ public static class Preview
     {
         Glb = map(r.Glb),
         Textures = r.Textures.ToDictionary(m => m.Key, m => m.Value.ToDictionary(c => c.Key, c => map(c.Value))),
-        Params = r.Params.ToDictionary(m => m.Key, m => m.Value with { Reticles = m.Value.Reticles.Select(x => x with { Texture = map(x.Texture) }).ToList() }),
     };
-
-    // Placeholder reticle textures (fully transparent or black, e.g. "Black", "UI_black") draw nothing in game.
-    static bool Blank(string png)
-    {
-        using var bmp = Images.Load(png);
-        return bmp.Pixels.All(c => c.Alpha == 0 || (c.Red | c.Green | c.Blue) == 0);
-    }
 
     public static string Safe(string name) => string.Concat(name.Select(c => Path.GetInvalidFileNameChars().Contains(c) ? '_' : c));
 
-    public static PreviewMaterial Params(MaterialData d, List<PreviewReticle> reticles)
+    public static PreviewMaterial Params(MaterialData d)
     {
         float? F(string k) => d.Floats.TryGetValue(k, out var v) ? v : null;
         float[]? C(string k, int n) => d.Colors.TryGetValue(k, out var v) ? v[..n] : null;
@@ -243,6 +212,23 @@ public static class Preview
         int queue = d.RenderQueue >= 0 ? d.RenderQueue : kind switch { "opaque" => 2000, "cutout" => 2450, _ => 3000 };
         var glowName = d.Colors.ContainsKey("_EmissiveColor") ? "_EmissiveColor" : "_EmissionColor";
         var (glow, intensity) = C(glowName, 3) is { } g ? MaterialParams.GlowFromGame(g[0], g[1], g[2], d.Hdr.Contains(glowName)) : default;
+        Dictionary<TextureChannel, Reticle>? reticles = null;
+        if (kind == "reticle")
+            foreach (var channel in TextureChannels.Reticles)
+            {
+                // A layer the material holds a picture or a colour for.
+                var l = channel.Layer();
+                if (!d.Textures.ContainsKey(channel.Property()) && C("_ReticuleColor" + l, 3) == null) continue;
+                var (colour, gain) = C("_ReticuleColor" + l, 3) is { } c ? ForgeVisual.ColourSpace.FromGlow(c[0], c[1], c[2], d.Hdr.Contains("_ReticuleColor" + l)) : (new float[] { 1, 1, 1 }, 1f);
+                (reticles ??= new())[channel] = new Reticle
+                {
+                    Color = colour,
+                    Intensity = gain,
+                    Scale = F("_ReticuleScale" + l) ?? 1,
+                    Offset = F("_ReticuleOffset" + l) ?? 0,
+                    Visible = !(F("_Fade" + l) <= 0),
+                };
+            }
         return new PreviewMaterial(d.Shader, queue, kind, F("_EnableEmissive") is { } e ? e > 0.5f : null,
             glow, glow != null ? intensity : null, F("_Metallic"), F("_Glossiness"), C("_Color", 4), reticles);
     }

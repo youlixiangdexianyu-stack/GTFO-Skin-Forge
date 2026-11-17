@@ -5,7 +5,7 @@ import { bakeHolograms } from './hologram';
 import { drawUvWireframe, liveryViewReady, meshesOf, uvRenderer } from './viewport/liveryGpu';
 import { LiveryPreview } from './viewport/liveryPreview';
 import { skinPicture } from './viewport/thumbnails';
-import { attachedOf, attachmentMaterial, call, dirName, type CatalogItem, type Profile, type SkinDocument, type SkinsImport, type SkinsNote, type WeaponPreview } from './protocol';
+import { attachedOf, attachmentMaterial, call, CHANNELS, dirName, type CatalogItem, type Profile, type SkinDocument, type SkinsImport, type SkinsNote, type WeaponPreview } from './protocol';
 import { autosavePath, autosaveRoot, currentItem, DATA_NOTICE, attachmentName, editorOf, hangAsCharm, persistAutosave, useStore, type Selection } from './store';
 import { lang, localName, partLabel, t } from './i18n';
 import { confirmInGame } from './gameLog';
@@ -100,7 +100,10 @@ export function problems(doc = st().doc, item = currentItem()): Problem[] {
     const ed = editorOf(doc);
     for (const p of item.parts) {
       if (ed.enabled[p.id] === false) continue;
-      const short = p.materials.some((mat) => Object.keys(doc.materials?.find((m) => m?.material === mat)?.textures ?? {}).length < 4);
+      const short = p.materials.some((mat) => {
+        const textures = doc.materials?.find((m) => m?.material === mat)?.textures ?? {};
+        return CHANNELS.some((ch) => !textures[ch]);
+      });
       if (short) out.push({ text: t('actions.k4', { v0: partLabel(p) }), select: { kind: 'part', id: p.id } });
     }
   }
@@ -308,6 +311,35 @@ export function profileProblem(profile: Profile | undefined): string | null {
   return null;
 }
 
+/** The plugin version this editor ships, as said to the user; the backend gives none when its plugin files are missing. */
+export const shippedLabel = (profile: Profile) => profile.pluginShipped ?? t('works.shippedNone');
+
+let edition: Promise<'dev' | 'installed' | 'portable'> | null = null;
+/** dev: run from a checkout; installed or portable: a packaged editor carrying its own plugin/. */
+export const editorEdition = () => (edition ??= window.forge.edition());
+
+/** plugin.install into `profile`. The development editor first builds and stages the plugin from its checkout, so it never
+ * installs an old build; when it cannot, the error says why in plain words. */
+export async function installPluginInto(profile: string): Promise<unknown> {
+  if ((await editorEdition()) === 'dev') {
+    const staged = await window.forge.stagePlugin();
+    if (!staged.ok)
+      throw { code: 'dev-plugin', message: staged.reason === 'noForgeCore' ? t('actions.devNoForgeCore', { v0: staged.detail ?? '' }) : t('actions.devStageFailed', { v0: staged.detail ?? '' }) };
+  }
+  return call('plugin.install', { profile });
+}
+
+// Profiles already told that the editor leaves their newer store plugin alone (once per editor run and set of copies, unless
+// `again`: the user asked for the install).
+const toldNewer = new Set<string>();
+export function tellNewer(profile: Profile, again = false) {
+  const newer = profile.pluginNewer ?? [];
+  const key = `${profile.path}|${newer.join(',')}`;
+  if (!newer.length || (toldNewer.has(key) && !again)) return;
+  toldNewer.add(key);
+  st().toast('info', t('actions.pluginNewer', { v0: profile.name, v1: newer.join(', ') }));
+}
+
 /**
  * Installs or updates the skin plugin in the chosen profile when it is missing or not this app's build, like a mod
  * manager would. While the running game holds an old plugin the update waits (`pluginPending`) and is retried once the
@@ -321,14 +353,15 @@ export async function ensurePlugin(quiet = false): Promise<boolean> {
   const fresh = known ? await call('profiles.get', { path: known.path }).catch(() => null) : null;
   const profile = fresh ? { ...fresh, name: known!.name } : known;
   if (fresh) useStore.setState({ profiles: st().profiles.map((p) => (p.path === profile!.path ? profile! : p)) });
+  if (profile?.hasBepInEx) tellNewer(profile);
   if (!profile?.hasBepInEx || profile.pluginCurrent !== false) return true;
   // Say which problem this is before fixing it; not an error, the install follows by itself.
   const why = profile.pluginVersion
-    ? t('actions.pluginWrong', { v0: profile.name, v1: profile.pluginVersion, v2: profile.pluginShipped ?? '' })
-    : t('actions.pluginMissing', { v0: profile.name, v1: profile.pluginShipped ?? '' });
+    ? t('actions.pluginWrong', { v0: profile.name, v1: profile.pluginVersion, v2: shippedLabel(profile) })
+    : t('actions.pluginMissing', { v0: profile.name, v1: shippedLabel(profile) });
   try {
     if (!quiet) s.toast('info', why);
-    await call('plugin.install', { profile: profile.path });
+    await installPluginInto(profile.path);
     useStore.setState({ pluginPending: null });
     await s.refreshProfiles();
     s.toast('ok', t(profile.pluginVersion ? 'actions.pluginUpdated' : 'actions.pluginInstalled', { v0: profile.name }));
@@ -406,7 +439,7 @@ async function apply(quiet: boolean, wear = true): Promise<void> {
     // The plugin follows its skins folder, so a running game shows the skin in seconds; its log says whether it really loaded.
     const item = currentItem();
     const shown = shownDoc(s.doc);
-    if (await gameRunning()) void confirmInGame(profile.path, since, shown.id ?? '', `${shown.name} → ${item ? localName(item) : ''}`, quiet);
+    if (await gameRunning(profile.path)) void confirmInGame(profile.path, since, shown.id ?? '', `${shown.name} → ${item ? localName(item) : ''}`, quiet);
     else if (!quiet) s.toast('ok', t('actions.k13', { v0: profile.name }));
     s.log(t('actions.k14', { v0: pack, v1: profile.path }));
   } catch (e) {
@@ -430,9 +463,10 @@ function failedAt(e: unknown, step: string) {
   s.toast('error', text);
 }
 
-/** Whether the game runs now, not when the window last looked. */
-async function gameRunning(): Promise<boolean> {
-  const running = (await call('game.locate', {}).catch(() => null))?.running ?? false;
+/** Whether the game runs now (not when the window last looked) and was started from `profile`: a game running another profile
+ * never sees this install. */
+async function gameRunning(profile: string): Promise<boolean> {
+  const running = (await call('game.locate', { profile }).catch(() => null))?.running ?? false;
   useStore.setState((x) => ({ game: x.game && { ...x.game, running } }));
   return running;
 }
@@ -445,7 +479,7 @@ export async function activateSkin(id: string, name: string): Promise<void> {
   try {
     await call('pack.activate', { profile: profile.path, skinId: id });
     await s.refreshInstalled();
-    s.toast('ok', `${t('skins.activated', { v0: name })} · ${(await gameRunning()) ? t('actions.k12') : t('works.nextLaunch')}`);
+    s.toast('ok', `${t('skins.activated', { v0: name })} · ${(await gameRunning(profile.path)) ? t('actions.k12') : t('works.nextLaunch')}`);
   } catch (e) {
     s.fail(e);
   }
@@ -625,6 +659,20 @@ async function openForBake(weapon: string, materials: string[]): Promise<WeaponP
   }
   return st().preview;
 }
+
+const asciiName = (name: string) =>
+  name
+    .normalize('NFKD')
+    .replace(/[̀-ͯ]/g, '') // the accents NFKD splits off (Köning: o + ¨), not a word break
+    .replace(/[^A-Za-z0-9]+/g, '_')
+    .replace(/^_+|_+$/g, '');
+
+/** A Thunderstore mod name (ASCII letters, digits and _) from a skin name. A name written in Latin letters keeps them (accents
+ * dropped); one in another script (a Chinese name) would keep only its stray digits and Latin bits, so `fallback` is used. */
+export const modName = (name: string, fallback: string) => (/[^\u0000-ɏ]/.test(name) ? '' : asciiName(name)) || fallback;
+
+/** The mod name for a skin of `item` whose own name gives none: the item's English name, as 「Koning_PR_11_Skin」. */
+export const itemModName = (item: CatalogItem | undefined, id: string) => `${(item && asciiName(item.name ?? '')) || id}_Skin`;
 
 /** Builds the chosen skins and packs them as a Thunderstore skin mod zip. Returns false when it stopped. */
 export async function exportMod(info: ModInfo): Promise<boolean> {

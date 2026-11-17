@@ -150,7 +150,7 @@ function ArmsView({ controls }: { controls: React.RefObject<CameraControlsImpl |
   const auto = useCharacter((s) => s.auto);
   const picked = useCharacter((s) => s.picked);
   const hide = useCharacter((s) => s.hide);
-  const ready = useCharacter((s) => matchReady(s.check));
+  const ready = useCharacter((s) => matchReady(s.check) && !!s.check?.arms);
   const version = useSyncExternalStore(onModel, modelVersion);
   const framed = useRef(false);
   useEffect(() => {
@@ -317,6 +317,7 @@ export function CharacterStage() {
   const showBones = useCharacter((s) => s.showBones);
   const view = useCharacter((s) => s.view);
   const ready = useCharacter((s) => matchReady(s.check));
+  const arms = useCharacter((s) => !!s.check?.arms);
   // The character skin edited last comes back when the tab first shows.
   useEffect(() => void reopenCharacter(), []);
   return (
@@ -356,13 +357,13 @@ export function CharacterStage() {
             </Group>
           </div>
           <Group className="overlay light" gap={8}>
-            <Tooltip label={ready ? t('character.viewInfo') : t('character.armsNeedsBones', { step: t('character.step.bones') })} multiline w={280}>
+            <Tooltip label={!ready ? t('character.armsNeedsBones', { step: t('character.step.bones') }) : arms ? t('character.viewInfo') : t('character.note.noArms')} multiline w={280}>
               <SegmentedControl
                 size="xs"
                 disabled={!ready}
                 data={[
                   { value: 'body', label: t('character.viewBody') },
-                  { value: 'arms', label: t('character.viewArms') },
+                  { value: 'arms', label: t('character.viewArms'), disabled: !arms },
                 ]}
                 value={view}
                 onChange={(v) => useCharacter.setState({ view: v as 'body' | 'arms' })}

@@ -415,14 +415,30 @@ public static class PackBuilder
     // the image at that size is made.
     sealed record TextureJob(string Key, Func<SKBitmap> Make, TextureChannel Channel, (int W, int H) Size, string File);
 
+    // A reticle is added onto the view by colour, so it goes in with its colour multiplied by its alpha: a picture drawn on
+    // a transparent background shows only its lines, whether the shader reads the alpha or not (the editor previews it so).
     static TextureJob MaterialTexture(string file, int? longest, TextureChannel channel)
     {
         var (sw, sh) = Images.Size(file);
         var size = TargetSize(longest, sw, sh);
-        return new($"texture|{Stamp(file)}|{size}", () =>
+        bool reticle = channel.IsReticle();
+        return new($"texture|{Stamp(file)}|{size}{(reticle ? "|premultiplied" : "")}", () =>
         {
             using var src = Images.Load(file);
-            return Images.Resize(src, size.W, size.H);
+            var bmp = Images.Resize(src, size.W, size.H);
+            if (!reticle) return bmp;
+            using (bmp)
+            {
+                var rgba = new byte[bmp.Width * bmp.Height * 4];
+                int i = 0;
+                foreach (var c in bmp.Pixels) // straight colours, whatever the bitmap stores
+                {
+                    (rgba[i], rgba[i + 1], rgba[i + 2], rgba[i + 3]) = (Times(c.Red, c.Alpha), Times(c.Green, c.Alpha), Times(c.Blue, c.Alpha), c.Alpha);
+                    i += 4;
+                }
+                return Images.FromRgba(bmp.Width, bmp.Height, rgba);
+            }
+            static byte Times(byte v, byte a) => (byte)((v * a + 127) / 255);
         }, channel, size, file);
     }
 

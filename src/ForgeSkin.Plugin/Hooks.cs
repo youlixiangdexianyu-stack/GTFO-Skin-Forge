@@ -53,21 +53,21 @@ static class SharedHooks
     {
         // dump.cs 614836: runs once every part of a gear is spawned and its GearMaterialFeeder is set up.
         On(GameHooks.GearPartsSpawned, () => GameHooks.GearPartsSpawned.After(static (holder, _) => { if (NativeObjects.Is<GearPartHolder>(holder)) SkinnedGear.Spawned(holder); }));
-        // dump.cs 544371: the funnel every hit on an enemy passes on this machine (the shooter's own hits are applied locally
-        // too). With the local player as source and the enemy alive before (its health, else -1): dead after is a kill, alive
-        // after is a hit; the damage is the health it lost (before minus after, never below 0). The source is compared first (two
-        // pointers), so the host's hits by everybody else read nothing more. The enemy read before is kept for after; a kill reads
-        // which enemy it was once (its EnemyDataBlock persistentID) for that enemy's kill sounds.
-        On(GameHooks.EnemyDamageReceived, () => GameHooks.EnemyDamageReceived.Around(
-            static call => SkinnedGear.IsLocal(call.Source) && NativeObjects.Is<Dam_EnemyDamageBase>(call.Receiver) && call.Receiver.Owner is { } owner && owner.Alive
-                ? (Health: call.Receiver.Health, Enemy: owner) : (Health: -1f, Enemy: null),
-            static (call, before, _) =>
-            {
-                if (before.Enemy == null) return;
-                bool killed = !before.Enemy.Alive;
-                uint? enemy = killed && before.Enemy.EnemyData is { } data ? data.persistentID : null;
-                SkinnedGear.Damaged(killed, Math.Max(0, before.Health - Math.Max(0, call.Receiver.Health)), enemy);
-            }));
+        // The local player's hits on living enemies. The game settles a client's hits on the host only, so what shows (the Kill
+        // and Hit events, kill sounds, the counters on screen) follows ForgeCore's prediction of the hit in its own frame
+        // (Combat.OwnHitPredicted) and its corrections (Combat.OwnHitCorrected), and what is saved (wear with kills) follows the
+        // host's settlement (Combat.OwnHitSettled). A kill names which enemy it was (its EnemyDataBlock persistentID) for that
+        // enemy's kill sounds. A prediction no host will settle shows its hit and counts nothing.
+        try
+        {
+            Combat.OwnHitPredicted += static hit => SkinnedGear.Predicted(hit.Kill, hit.Confirmable ? hit.Damage : 0f, hit.EnemyType != 0 ? hit.EnemyType : null);
+            Combat.OwnHitCorrected += static change => SkinnedGear.Corrected(change.DamageDelta, change.KillDelta, change.ShowKill, change.ShowHit, change.EnemyType != 0 ? change.EnemyType : null);
+            Combat.OwnHitSettled += static (_, killed, _) => SkinnedGear.Settled(killed);
+        }
+        catch (Exception e) { ForgeSkinPlugin.Fail("skin-hook-unavailable", "hook GameHooks.EnemyDamageReceived not installed", e); }
+        // The request of a hit on an enemy, made on the machine of whoever shot or swung in the hit's own frame: the local player's
+        // decides a shot's hit or miss and which item a later settlement is credited to, the same on host and client.
+        On(GameHooks.EnemyHitSent, () => GameHooks.EnemyHitSent.Before(static call => { if (SkinnedGear.IsLocal(call.Source)) SkinnedGear.HitSent(); }));
         // dump.cs 565304: a reload starts when the call sets the item's reloading flag (the bracket carries no answer; the flag
         // is what the game's own `true` stands for, and a call while already reloading starts nothing).
         On(GameHooks.ReloadTriggered, () => GameHooks.ReloadTriggered.Around(static item => item.IsReloading,

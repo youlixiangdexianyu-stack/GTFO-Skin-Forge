@@ -2,8 +2,8 @@
 // names, one editable material per game material, and each material's textures, parameters and blend mode.
 import {
   AdditiveBlending,
-  ClampToEdgeWrapping,
   Color,
+  DataTexture,
   Mesh,
   type MeshLambertMaterial,
   MeshStandardMaterial,
@@ -18,12 +18,12 @@ import {
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
 import { baseTexturePath } from '../frames';
 import { liveryParams } from '../livery';
-import { CHANNELS, type DynamicLayer, type PreviewMaterial, type SkinDocument, type TextureChannel, type WeaponPreview } from '../protocol';
-import { glowOf, materialOf } from '../store';
+import { CHANNELS, RETICLES, type DynamicLayer, type MaterialOverride, type SkinDocument, type TextureChannel, type WeaponPreview } from '../protocol';
+import { glowOf, materialOf, reticleOf } from '../store';
 import { walkGear } from './refs';
 import { loadTexture, textureKey } from './textures';
 
-const SLOT: Record<TextureChannel, 'map' | 'normalMap' | 'metalnessMap' | 'emissiveMap'> = {
+const SLOT: Partial<Record<TextureChannel, 'map' | 'normalMap' | 'metalnessMap' | 'emissiveMap'>> = {
   albedo: 'map',
   normal: 'normalMap',
   metallicSmoothness: 'metalnessMap',
@@ -110,13 +110,9 @@ export function paintMaterial(
   livery?: (ch: TextureChannel) => Texture | null,
 ): Promise<unknown>[] {
   const info = preview.params[name];
-  if (info?.kind === 'reticle') {
-    const r = info.reticles.find((x) => (x.color[3] ?? 1) > 0.01);
-    if (r) keep.add(textureKey(r.texture, 'reticle'));
-    return [showReticle(mat, r, cancelled)];
-  }
-  const loads: Promise<unknown>[] = [];
   const override = materialOf(doc, name);
+  if (info?.kind === 'reticle') return showReticle(mat, name, override, preview, keep, cancelled, onError);
+  const loads: Promise<unknown>[] = [];
   const own = {
     ...(livery ? liveryParams(override) : {}),
     ...Object.fromEntries(Object.entries(override?.params ?? {}).filter(([, v]) => v != null)),
@@ -184,11 +180,64 @@ export function paintMaterial(
   return loads;
 }
 
+/** A layer without a picture adds nothing. */
+const NO_RETICLE = Object.assign(new DataTexture(new Uint8Array([0, 0, 0, 255]), 1, 1), { needsUpdate: true });
+
+type ReticleUniforms = Record<`reticleMap${0 | 1 | 2}`, { value: Texture }> & { reticleColor: { value: Color[] }; reticleScale: { value: number[] } };
+
+/** The sum of the three layers, each picture scaled around the lens centre (nothing outside it) times its colour. */
+const RETICLE_PARS = /* glsl */ `
+uniform sampler2D reticleMap0;
+uniform sampler2D reticleMap1;
+uniform sampler2D reticleMap2;
+uniform vec3 reticleColor[3];
+uniform float reticleScale[3];
+vec3 reticleLayer(sampler2D map, vec3 colour, float scale) {
+  vec2 uv = (vEmissiveMapUv - 0.5) * scale + 0.5;
+  if (any(lessThan(uv, vec2(0.0))) || any(greaterThan(uv, vec2(1.0)))) return vec3(0.0);
+  return texture2D(map, uv).rgb * colour;
+}`;
+const RETICLE_SUM = /* glsl */ `totalEmissiveRadiance = reticleLayer(reticleMap0, reticleColor[0], reticleScale[0])
+  + reticleLayer(reticleMap1, reticleColor[1], reticleScale[1]) + reticleLayer(reticleMap2, reticleColor[2], reticleScale[2]);`;
+
+/** The material's reticle uniforms, made (and its shader extended to draw them) the first time. */
+function reticleUniforms(mat: MeshStandardMaterial): ReticleUniforms {
+  let u = mat.userData.reticle as ReticleUniforms | undefined;
+  if (u) return u;
+  const made: ReticleUniforms = {
+    reticleMap0: { value: NO_RETICLE },
+    reticleMap1: { value: NO_RETICLE },
+    reticleMap2: { value: NO_RETICLE },
+    reticleColor: { value: [new Color(0, 0, 0), new Color(0, 0, 0), new Color(0, 0, 0)] },
+    reticleScale: { value: [1, 1, 1] },
+  };
+  u = mat.userData.reticle = made;
+  mat.onBeforeCompile = (s) => {
+    Object.assign(s.uniforms, made);
+    s.fragmentShader = s.fragmentShader
+      .replace('#include <emissivemap_pars_fragment>', `#include <emissivemap_pars_fragment>\n${RETICLE_PARS}`)
+      .replace('#include <emissivemap_fragment>', RETICLE_SUM);
+  };
+  mat.customProgramCacheKey = () => 'forgeskin-reticle';
+  // The emission map only switches on the UVs the layers are read at.
+  mat.emissiveMap = NO_RETICLE;
+  mat.needsUpdate = true;
+  return u;
+}
+
 /**
- * Holographic sight surface: invisible except its reticle, added on top as texture x colour with no lighting. Only the
- * first visible layer is drawn, scaled around the lens centre.
+ * Holographic sight surface: invisible except its reticle layers, added on top as picture x colour with no lighting, each
+ * as the game has it with the skin's picture and values over it.
  */
-function showReticle(mat: MeshStandardMaterial, r: PreviewMaterial['reticles'][number] | undefined, cancelled: () => boolean): Promise<unknown> {
+function showReticle(
+  mat: MeshStandardMaterial,
+  name: string,
+  override: MaterialOverride | undefined,
+  preview: WeaponPreview,
+  keep: Set<string>,
+  cancelled: () => boolean,
+  onError: (path: string) => void,
+): Promise<unknown>[] {
   Object.assign(mat, {
     map: null,
     metalness: 0,
@@ -199,32 +248,36 @@ function showReticle(mat: MeshStandardMaterial, r: PreviewMaterial['reticles'][n
     blending: AdditiveBlending,
   });
   mat.color.setRGB(0, 0, 0);
-  mat.visible = !!r;
-  if (!r) return Promise.resolve();
-  // HDR reticle colours (some above 100) are capped so the preview's bloom does not flood the screen.
-  const a = r.color[3] ?? 1;
-  const k = a / Math.max(1, Math.max(r.color[0], r.color[1], r.color[2]) / 4);
-  mat.emissive.setRGB(r.color[0] * k, r.color[1] * k, r.color[2] * k);
+  mat.emissive.setRGB(1, 1, 1);
   mat.emissiveIntensity = 1;
-  return loadTexture(r.texture, 'reticle').then((t) => {
-    if (cancelled()) return;
-    const s = r.scale || 1;
-    // A view of the shared image with this reticle's own scale and offset.
-    const tex = t.clone();
-    tex.repeat.set(s, s);
-    // The layer's offset is the reticle's projection depth in the game shader, not a UV shift; the preview draws it centred.
-    tex.offset.set(0.5 - 0.5 * s, 0.5 - 0.5 * s);
-    tex.wrapS = tex.wrapT = ClampToEdgeWrapping;
-    tex.needsUpdate = true;
-    mat.emissiveMap?.dispose();
-    mat.emissiveMap = tex;
-    mat.needsUpdate = true;
+  const u = reticleUniforms(mat);
+  const game = preview.params[name]?.reticles;
+  return RETICLES.map((ch, i) => {
+    const r = reticleOf(game?.[ch], override?.params?.reticles?.[ch]);
+    const path = override?.textures?.[ch] ?? preview.textures[name]?.[ch];
+    // HDR reticle colours (some above 100) are capped so the preview's bloom does not flood the screen.
+    const c = new Color().setRGB(r.color[0], r.color[1], r.color[2], SRGBColorSpace).multiplyScalar(r.intensity);
+    u.reticleColor.value[i].copy(r.visible && path ? c.multiplyScalar(1 / Math.max(1, Math.max(c.r, c.g, c.b) / 4)) : new Color(0, 0, 0));
+    // The layer's offset is its projection depth in the game shader, not a shift; the preview draws it centred.
+    u.reticleScale.value[i] = r.scale || 1;
+    const map = u[`reticleMap${i as 0 | 1 | 2}`];
+    if (!path) {
+      map.value = NO_RETICLE;
+      return Promise.resolve();
+    }
+    keep.add(textureKey(path, 'reticle'));
+    return loadTexture(path, 'reticle').then(
+      (t) => {
+        if (!cancelled()) map.value = t;
+      },
+      () => onError(path),
+    );
   });
 }
 
 /** Only a map coming or going changes the shader; another texture in the same slot needs no rebuild. */
 function setSlot(mat: MeshStandardMaterial, ch: TextureChannel, t: Texture | null) {
-  const slot = SLOT[ch];
+  const slot = SLOT[ch]!;
   if (!mat[slot] !== !t) mat.needsUpdate = true;
   mat[slot] = t;
   if (ch === 'metallicSmoothness') mat.roughnessMap = t;

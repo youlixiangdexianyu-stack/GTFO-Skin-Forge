@@ -65,7 +65,7 @@ public static class Methods
     // files) take one gate; the long ones that write packs, mods and game files take another, so a build or an apply does
     // not hold up a project save.
     static readonly Lock FileGate = new(), JobGate = new();
-    static readonly HashSet<string> FileWrites = ["game.setDir", "profiles.add", "profiles.remove", "project.save", "project.delete", "skins.import",
+    static readonly HashSet<string> FileWrites = ["game.setDir", "profiles.add", "profiles.remove", "project.save", "project.delete", "project.copy", "skins.import",
         "pack.install", "pack.list", "pack.remove", "pack.adopt", "pack.activate", "plugin.install", "plugin.uninstall"];
     static readonly HashSet<string> Jobs = ["pack.build", "pack.exportMod", "assets.apply", "assets.restore", "assets.export"];
 
@@ -78,7 +78,7 @@ public static class Methods
 
     static object? Dispatch(string method, JsonObject p, long id) => method switch
     {
-        "game.locate" => Game.Locate(),
+        "game.locate" => Game.Locate(Opt<string>(p, "profile")),
         "game.setDir" => Game.SetDir(Str(p, "dir")),
         "plugin.log" => Game.PluginLog(Str(p, "profile"), Opt<DateTime?>(p, "since"), Opt<long>(p, "from"), Opt<string>(p, "head")),
         "profiles.list" => Game.Profiles(),
@@ -99,6 +99,7 @@ public static class Methods
         "skins.import" => SkinsFormat.Import(Str(p, "manifest"), Str(p, "root"), Opt<string>(p, "weapon"), Opt<string>(p, "lang") ?? "en",
             WithGame(Catalog.Get), GameMaterials),
         "project.delete" => Projects.Delete(Str(p, "path")),
+        "project.copy" => Projects.Copy(Doc(p), Str(p, "from"), Str(p, "to")),
         "project.missing" => Projects.Missing(Doc(p)),
         "project.files" => new { files = Projects.Files(Doc(p)) },
         "mesh.import" => MeshImport.Import(Str(p, "glb")),
@@ -108,7 +109,7 @@ public static class Methods
         "springs.simulate" => CharacterPreview.Simulate(Get<SpringChain>(p, "chain"), Get<List<CharacterPreview.Node>>(p, "nodes"),
             Opt<List<int[]>>(p, "strands"), Get<List<CharacterPreview.Frame>>(p, "frames")),
         "character.check" => CharacterPreview.Check(Get<Dictionary<string, double[]>>(p, "joints")),
-        "character.links" => CharacterPreview.Links(Get<Dictionary<string, string>>(p, "bones"), Get<bool>(p, "fingers")),
+        "character.links" => CharacterPreview.Links(Str(p, "descriptor"), Get<Dictionary<string, string>>(p, "bones"), Get<bool>(p, "fingers")),
         "character.arms" => CharacterPreview.Arms(Str(p, "descriptor"), Str(p, "mesh"), Get<Dictionary<string, string>>(p, "bones"), Opt<List<int>>(p, "hide")),
         "pack.build" => Build(Doc(p), Str(p, "projectPath"), Str(p, "out"), id),
         "pack.install" => Install.Pack(Str(p, "pack"), Str(p, "profile"), Opt<bool?>(p, "activate") ?? true, Opt<bool?>(p, "pick") ?? false),

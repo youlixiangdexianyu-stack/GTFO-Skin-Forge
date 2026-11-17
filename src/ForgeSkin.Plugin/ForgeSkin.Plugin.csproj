@@ -9,7 +9,7 @@
     <AssemblyName>ForgeSkin.Plugin</AssemblyName>
     <RootNamespace>ForgeSkin.Plugin</RootNamespace>
     <IsPackable>false</IsPackable>
-    <Version>1.0.0</Version>
+    <Version>1.0.1</Version>
     <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
     <!-- Line numbers in error logs without the builder's local paths. -->
     <DebugType>embedded</DebugType>
@@ -30,6 +30,8 @@
     <None Update="lang/*.forge" CopyToOutputDirectory="PreserveNewest" />
     <!-- The picker's CHARACTER slot icon, rendered from its SVG by the icons step of Tools/Brand/make-logo.ts. -->
     <EmbeddedResource Include="Native/character-slot.png" LogicalName="ForgeSkin.character-slot.png" />
+    <!-- The weapon inspect motions (PLAN §4.14); BepInEx/config/ForgeSkin.inspect.json, when there, replaces entries of it. -->
+    <EmbeddedResource Include="Core/inspect-motions.json" LogicalName="ForgeSkin.inspect-motions.json" />
     <Reference Include="ForgeCore" HintPath="$(ForgeCoreDll)" Private="false" />
     <Reference Include="$(GTFOBepInExPath)/core/0Harmony.dll" Private="false" />
     <Reference Include="$(GTFOBepInExPath)/core/BepInEx.Core.dll" Private="false" />

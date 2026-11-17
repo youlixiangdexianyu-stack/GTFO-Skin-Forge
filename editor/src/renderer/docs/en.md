@@ -12,7 +12,7 @@ ForgeSkin is two things:
 ## What you need
 
 - GTFO installed. The editor finds the game by itself; if it does not, the 3D view asks for the game folder (the one with `GTFO.exe`).
-- An r2modman profile with **BepInExPack_GTFO** in it. The ForgeSkin plugin and the ForgeCore it needs are installed by the editor the first time you click **Apply** on a work's card; you don't download them yourself.
+- An r2modman profile with **BepInExPack_GTFO** in it. The ForgeSkin plugin and the ForgeCore it needs are installed by the editor the first time you click **Apply** on a work's card; you don't download them yourself. When the profile already has a ForgeSkin or ForgeCore from r2modman that is newer than the editor's, the editor leaves it as it is, says so once and installs the skin as usual.
 
 ## Good to know
 
@@ -45,6 +45,7 @@ This is the window with **Weapons** picked at the left of the top bar; for **Cha
 
 - Drag in the 3D view to turn the gun, scroll to zoom, right-drag to pan.
 - Click a part or attachment in the 3D view to select it; a click a few pixels off a thin ring or charm chain still counts. Hovering a row of the left list lights up its thing in the 3D view, and hovering a thing in the 3D view lights up its row.
+- The round, casing or speed loader on its own below the gun is the gun's ammo: inside the gun it cannot be seen, so the editor lays out one of each to select and skin and hides the rest. Only the preview places them there; in game they stay in the gun and the skin applies to every one.
 - <kbd>F</kbd> or **Frame selection** points the camera at what is selected.
 - Numpad <kbd>1</kbd> front, <kbd>3</kbd> right, <kbd>7</kbd> top; with <kbd>Ctrl</kbd> the opposite side; <kbd>5</kbd> switches perspective and orthographic; <kbd>0</kbd> frames the selection. The cube at the top right does the same with a click.
 - <kbd>Ctrl</kbd>+<kbd>Z</kbd> undoes, <kbd>Ctrl</kbd>+<kbd>Y</kbd> redoes. Every change is one undo step.
@@ -187,7 +188,7 @@ Changes save by themselves. The next time you switch to **Character**, the chara
 ## In what order
 
 1. [Import the model](#char-import)
-2. [Bones](#char-bones): everything green before you go on.
+2. [Bones](#char-bones): once the hips have a bone you can go on; other parts may stay empty.
 3. [Move preview](#char-motion): play a few moves to see the model move right.
 4. [Hair, skirt and body colliders](#char-springs)
 5. [Materials and first-person arms](#char-materials)
@@ -199,7 +200,7 @@ The first time, the [worked example](#char-example) is the quickest way through.
 
 ## What model works
 
-- A skinned `.glb` or `.vrm` with a humanoid skeleton. Exports from Mixamo, VRoid and Blender all work.
+- A skinned `.glb` or `.vrm`. Exports from Mixamo, VRoid and Blender all work. It need not be a whole human: a creature without fingers, with one arm or leg, or with unlike sides works too, as long as one bone can serve as the hips.
 - PNG or JPEG textures, at most 4 bones per vertex, exported as one uncompressed file.
 - A `.vrm` is the easiest: the bones, swinging hair and skirt, colliders and any credit its author asks for are filled in on import.
 
@@ -243,30 +244,34 @@ Your character follows the game's own body, so the editor needs to know which bo
 
 ## The figure
 
-- Every dot on the little figure on the right is a joint: **green** is matched, **red** needs fixing, **grey** is not set (joints that are not required may stay empty).
-- The two grids below are the 15 finger joints of each hand. When all of a hand's fingers are matched it says **Move**; otherwise **Still**, and in game that hand's fingers keep the model's own pose.
+- Every dot on the little figure on the right is a joint: **green** has a bone, **grey** has none, **red** must be fixed (only the hips can be red).
+- The two grids below are the 15 finger joints of each hand; beside each it says whether that hand's fingers **Move**, how many move, or **Still**. Match each finger from its first joint to the tip: from the first joint without a bone on, that finger stays still.
 - In the 3D view the matched joints are green dots too; click one to pick it.
 
-## Fixing problems
+## What must have a bone
 
-Problems are listed above the figure; click one to pick its joint:
+Only the hips: the model follows the body by them. If your model has no hip bone, pick the one nearest the middle of the body. While they have none, a red line at the top says so; click it to pick the hips.
 
-| Message | Meaning |
+Every other part may go without. A part without a bone does not move on its own in game and goes with the bone above it, so all of these work:
+
+| The model | In game |
 | --- | --- |
-| No bone for Left hand: click to pick one | A required joint has no bone. |
-| A and B sit on one point | Two joints point at the same place; a bone is probably wrong. |
-| X is N° off | The bone is wrong, or the model is not standing upright. |
-| X is on the right side: left and right are swapped | The two sides are the wrong way round. |
+| No separate fingers | The fingers do not move; each hand goes with its wrist. |
+| One arm missing, or an upper arm, forearm or hand not matched | That hand does not reach for the gun; the gun stays where the original holds it. |
+| Both upper arms not matched | First person shows the game's own arms. |
+| One leg missing, no neck or no shoulders | That part does not move on its own and goes with the part above. |
+| Unlike left and right | Each side takes its own bones; neither affects the other. |
 
-The required joints: hips, lower spine, spine, neck, head, both shoulders, upper arms, forearms, hands, thighs, shins and feet.
+The grey lines above the figure say these same things. They tell you what the game will do and do not stop you.
 
 ## Pick a joint's bone yourself
 
 1. Click the joint on the figure or in a finger grid.
-2. In the drop-down of the **Pick a joint** box below, choose the model's bone for it; you can type to search.
-3. To take back just this one, click **Use the automatic match**; to start over, click **Match again** at the top.
+2. In the drop-down of the **Pick a joint** box below, choose the model's bone for it; you can type to search. A bone serves one part only: pick a bone another part uses, and that part is left without one.
+3. To leave this part without a bone, click **Leave this part out**.
+4. To take back just this one, click **Use the automatic match**; to start over, click **Match again** at the top.
 
-Done right: the top says **Every bone is matched and the rest pose checks out.** and **Bones** on the left has a tick. Until then the move bar is grey and you cannot try the character on or export it.
+Done right: the top says **Ready to use.** and **Bones** on the left has a tick. Until the hips have a bone the move bar is grey and you cannot try the character on or export it.
 
 > [!NOTE]
 > When the whole model faces backwards, a line says the game turns it round. Nothing to do.
@@ -292,7 +297,7 @@ The move bar under the 3D view makes the model move, so you can see whether it i
 4. **Speed** 0.25×, 0.5× or 1× slows it down to watch hands and feet.
 5. **Rest pose** stops the move and the model goes back to the pose it was imported in.
 
-While the bones are not matched the whole bar is grey; hover it to see that the bones come first.
+While the hips have no bone the whole bar is grey; hover it to see that the bones come first.
 
 ## What to look for
 
@@ -355,7 +360,7 @@ Open [Materials](editor:character-materials): one row per material of the model,
 
 ## First-person arms
 
-The game makes the arms you see in first person from your model itself: it keeps what is skinned to the upper arms and below (forearms, hands, fingers, sleeves) and puts each joint on the game's own arm, so the hands hold every weapon where the original hands do. You do not make a second model. Open the **First-person arms** step (it works once the bones are matched):
+The game makes the arms you see in first person from your model itself: it keeps what is skinned to the upper arms and below (forearms, hands, fingers, sleeves) and puts each joint on the game's own arm, so the hands hold every weapon where the original hands do. You do not make a second model. Open the **First-person arms** step (it works once both upper arms have a bone; a model without them shows the game's own arms in first person):
 
 1. Click **Show the first-person arms**, or switch **Whole model** to **First-person arms** above the 3D view. The view keeps only the part the game keeps, cut by the same code as in the game.
 2. For a material that would cover the sights (a wide cuff, say), switch on **Left out in first person** in its row below; it disappears from the arms view at once, and the game leaves it out too.
@@ -367,12 +372,12 @@ When nothing of the model is skinned to the arms the step says so, and first per
 
 ## Try it on in the game
 
-1. Once the bones are matched, click **Apply** on the character's card in the left column.
+1. Once the hips have a bone, click **Apply** on the character's card in the left column.
 2. The editor packs the character, installs it into the profile picked under **Apply to:** and has you wear it in game; the card turns **In use**.
 3. If the game is running, it shows from the next level.
 4. To go back to the original character, change the **CHARACTER** cell of the lobby's **SKINS**; the pack stays in the profile.
 
-While the bones are not matched, **Apply** says to match them first.
+While the hips have no bone, **Apply** says to match the bones first.
 
 ## Toon rendering setting
 
@@ -395,7 +400,7 @@ On the character side, click **Export** → **Export as Thunderstore skin mod…
 
 ![Export: the checks and the mod details](shot:character-export)
 
-1. Both checks at the top need a tick: **Every required joint has a bone** and **Rest pose check**.
+1. The check at the top needs a tick: **The hips have a bone**.
 2. A model with a credit gets a line saying the pack carries it.
 3. Fill in **Mod name** (English letters, digits and underscores only; it starts from the skin name), **Version** (like 1.0.0) and **Description** (up to 250 characters). The **Icon** starts as a picture of the 3D view; **Choose image…** uses one of your own.
 4. Click **Export Thunderstore mod…** and pick where to save: you get a zip ready for Thunderstore. For the skin pack alone, click **Export skin pack only…** and you get a `.forgeskin`.
@@ -407,7 +412,7 @@ This page takes a `.vrm` character made in VRoid all the way into the game.
 
 1. **Switch.** Click **Characters** at the top of the left column.
 2. **Import.** Drag the `.vrm` into the window. The bottom right says how many bones came in and how many swinging sets and colliders were filled in; the editor moves on to **Bones**.
-3. **Check the bones.** A VRM's bones are usually all green, and the top says **Every bone is matched and the rest pose checks out.** For red dots, see [Bones](#char-bones).
+3. **Check the bones.** A VRM's bones are usually all green, and the top says **Ready to use.** For a red dot or a wrong bone, see [Bones](#char-bones).
 4. **Play moves.** On the move bar click **Walk**, **Run**, **Hold gun** and **Reload** to check feet and hands; then a few **Try-out moves** to see that big movements do not tear the model. Click **Rest pose**.
 5. **Tune hair and skirt.** Click **Hair and skirt** on the left, then **Run** and **Turn**. Hair too floppy: raise **Stiffness** a little. Skirt going into the legs: make the thigh and shin colliders thicker.
 6. **Name it.** Click **Import model** on the left and change the **Skin name**.
@@ -449,6 +454,15 @@ Save an image again in Photoshop or Substance Painter and the editor reads it ag
 ## Material settings
 
 Under **Material settings**: **Metallic**, **Smoothness** and **Colour tint**, where the game's material has them. Some materials have none; use a finish or paint layers under [Livery](#livery) for those.
+
+## Sight reticle
+
+Select the sight part and pick its lens material (only a holographic lens has this): below the texture slots is **Reticle**. A reticle has up to three layers, each with:
+
+- A picture slot: a PNG with a transparent background, whose lines are the reticle; transparent parts show nothing. A picture on a layer the game leaves off switches it on.
+- A **Show** switch, **Colour** and **Strength** (the reticle glows by itself), **Scale** (larger draws it smaller) and **Depth** (how far beyond the lens it seems).
+
+The 3D view draws the three layers on the lens with these values (depth is not shown there). In game only you see it, when you aim down the sight; teammates with the same skin never look through your lens.
 
 ## Paint in another program
 
@@ -1074,7 +1088,7 @@ Packs by others in this profile are folded into one bar at the top of the list (
 
 - **Check**: goes through every skin before export and lists what to fix. Click a problem to go to it.
 - **Export skin pack…**: one `.forgeskin` file with everything in it.
-- **Export as Thunderstore skin mod…**: a mod ready to upload to Thunderstore, with skins of any items. Give a name (letters, digits and _), a version like 1.0.0, a description (up to 250 characters) and an icon (scaled to 256 × 256; the item's picture by default). Three formats:
+- **Export as Thunderstore skin mod…**: a mod ready to upload to Thunderstore, with skins of any items. Give a name (letters, digits and _), a version like 1.0.0, a description (up to 250 characters) and an icon (fitted whole into a 256 × 256 grey square, so a long gun keeps its muzzle and stock; the skin's card picture by default). Three formats:
   - **ForgeSkin**: every effect, applied by the ForgeSkin plugin.
   - **Skins: a group per skin**: for players with the Skins library. Each skin is its own skin group; a weapon may get several, and players pick in game.
   - **Skins gun pack**: the whole mod is one skin group; pick one skin per weapon (or "Not in the pack").
@@ -1105,7 +1119,7 @@ A game update or a Steam file check puts the original files back.
 A pack the game cannot read does nothing; the right side of the SKINS picker lists it in red with the reason. Common reasons:
 
 - A file is missing: an image, sound or model the pack names is not there. Apply or export again.
-- A bad or oversized image: only PNG and JPEG, at most 16384 pixels on a side.
+- A bad or oversized image: the game reads only PNG, JPEG and the DDS the editor compresses, at most 16384 pixels on a side. The editor converts pictures itself when it applies or exports, so this usually means the pack was edited by hand: export it again.
 - A bad sound: it must convert to Ogg, at most 10 seconds.
 - A bad path: paths in a pack cannot be absolute or contain `..`. Usually the pack was edited by hand; export it again.
 - An old plugin: when the editor says ForgeSkin or ForgeCore is too old, update them in r2modman.
@@ -1118,7 +1132,7 @@ A pack the game cannot read does nothing; the right side of the SKINS picker lis
 
 ## Apply on a character's card says the bones are not matched
 
-The bones are not matched yet. Open **Bones** and fix the red joints until it says **Every bone is matched and the rest pose checks out.** (see [Bones](#char-bones)).
+The hips have no bone yet. Open **Bones**, click the red hips and pick a bone, until it says **Ready to use.** (see [Bones](#char-bones)).
 
 ## My character still looks original in game
 
@@ -1126,15 +1140,15 @@ The bones are not matched yet. Open **Bones** and fix the red joints until it sa
 - A character installed while the game runs shows from the next level.
 - Teammates without your character mod, or with another version of it, see the original character.
 
-## "Skin plugin files not found"
+## "The plugin files the editor installs are missing"
 
-The editor carries the plugin it installs into your profile. This message means those files are missing from the editor itself. Fix it by how you run the editor:
+The editor carries the plugin it installs into your profile. This message means those files are missing from the editor itself; it names each missing file with its full path. Fix it by how you run the editor:
 
 | How you run it | Fix |
 | --- | --- |
 | Installed (Setup.exe) | Run the latest Setup.exe again. The plugin sits in the install folder under `app-<version>\resources\publish\plugin`; your data folder (`Documents\ForgeSkin`) is not touched. |
 | Portable zip | Unzip the whole zip again over the same folder. `resources\publish\plugin\ForgeSkin\ForgeSkin.Plugin.dll` and `resources\publish\plugin\ForgeCore\ForgeCore.dll` must be there; `GTFO_UserData` next to the program is kept. |
-| From the source code | In the repository root run `pwsh Mods/ForgeSkin/tools/build-editor-release.ps1 -PluginOnly -ForgeCore <NAinfini-ForgeCore zip>` (the ForgeCore zip of the release set), then restart the editor. If it fails, the reason is usually the BepInEx profile path: pass `-BepInEx <profile>/BepInEx` or set `GTFO_BEPINEX_PATH`. |
+| From the source code | The editor run from source installs a plugin only when you ask: **Build the plugin from source and install it** in the profile menu, or **Apply** when the profile's plugin is missing or out of date; either builds the plugin from the checkout first. The first time, run `pwsh Mods/ForgeSkin/tools/build-editor-release.ps1 -PluginOnly -ForgeCore <NAinfini-ForgeCore zip>` (the ForgeCore zip of the release set) once from the repository root; later builds reuse that ForgeCore zip. If it fails, the reason is usually the BepInEx profile path: pass `-BepInEx <profile>/BepInEx` or set `GTFO_BEPINEX_PATH`. |
 
 ## The log
 
@@ -1148,7 +1162,7 @@ The book button in the top bar holds five guided tours: **Make your first skin**
 
 # Control the editor with AI {#ai}
 
-An AI agent (Claude, Codex or a script) can drive the editor through the Chromium DevTools protocol. Started with `--ai-control`, the editor opens a debugging port on 127.0.0.1 and offers `window.forgeAI`, a structured interface to everything the editor does: read the skin as JSON, change any field, place decals by UV, set the camera, render the 3D view. File dialogs become a path field in the window, so the agent can type paths.
+An AI agent (Claude, Codex or a script) can drive the editor through the Chromium DevTools protocol. Started with `--ai-control`, the editor opens a debugging port on 127.0.0.1 and offers `window.forgeAI`, a structured interface to everything the editor does: read the skin as JSON, change any field, place decals by UV, set the camera, render the 3D view. To choose a file, the agent gives the path with `pickNext` first and then clicks the button: the next file dialog does not open and uses that path. Without it, the system's dialog opens, which only a person can close.
 
 ## Start the editor for an agent
 

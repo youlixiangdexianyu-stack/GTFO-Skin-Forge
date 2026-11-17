@@ -31,7 +31,8 @@ import {
 } from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { matchHumanBones, matchHumanFingers } from '../../../../../../Web/src/forge/animation-bone-match';
-import { aimFollow, type CharacterImport } from '../../../../../../Web/src/forge/character-import';
+import { aimFollow, upgradeVrm, vrmJoints, type CharacterImport } from '../../../../../../Web/src/forge/character-import';
+import { characterBlend, characterBlendCutoff } from '../../../../../../Web/src/forge/imported-model-glb';
 import { readImportedModelDescriptor } from '../../../../../../Web/src/forge/imported-model-format';
 import { buildImportedScene } from '../../../../../../Web/src/shared/render/imported-model-build';
 import { HumanFingerJoints, HumanJoints } from '../../../../../../Web/src/generated/rig/animation-reference.js';
@@ -55,6 +56,8 @@ let scene: Group | null = null;
 const byName = new Map<string, Bone>();
 const bindLocal = new Map<Bone, Quaternion>();
 const bindPosition = new Map<Bone, Vector3>();
+/** Canonical joint to bone name as the loaded file's own humanoid (VRM) says; empty for a file without one. */
+let fileJoints: Record<string, string> = {};
 let sceneVersion = 0;
 const listeners = new Set<() => void>();
 
@@ -74,6 +77,18 @@ const toast = (kind: 'ok' | 'error' | 'info', text: string) => useStore.getState
 async function loadScene(source: string, turned: boolean): Promise<{ rows: BoneRow[]; vertices: number } | null> {
   const gltf = await new GLTFLoader().loadAsync(fileUrl(source));
   if (!hasSkin(gltf.scene)) return null;
+  // A see-through material is drawn as the game draws it (characterBlend), not blended: blended layers in one place draw over each other.
+  const json = gltf.parser.json as { materials?: { alphaMode?: string }[] };
+  gltf.parser.associations.forEach((a, o) => {
+    const material = o as MeshStandardMaterial;
+    if (!material.isMaterial || !a || !('materials' in a) || a.materials === undefined || json.materials?.[a.materials]?.alphaMode !== 'BLEND') return;
+    const how = characterBlend(!!material.map, material.opacity);
+    material.transparent = false;
+    material.depthWrite = true;
+    material.alphaTest = how === 'mask' ? characterBlendCutoff : 0;
+    if (how === 'opaque') material.opacity = 1;
+    if (how === 'drop') material.visible = false;
+  });
   // A helper bone the file aims by a constraint rides the bone it follows, at its rest pose, as the converter packs it.
   const nodeObject = new Map<number, Object3D>();
   gltf.parser.associations.forEach((a, o) => void (a && 'nodes' in a && a.nodes !== undefined && o instanceof Object3D && nodeObject.set(a.nodes, o)));
@@ -83,6 +98,9 @@ async function loadScene(source: string, turned: boolean): Promise<{ rows: BoneR
       to = nodeObject.get(under);
     if (o && to && !o.getObjectById(to.id)) to.attach(o);
   });
+  const vrm = upgradeVrm(gltf.parser.json);
+  const names = (gltf.parser.json as { nodes?: { name?: string }[] }).nodes ?? [];
+  fileJoints = Object.fromEntries(vrm ? vrmJoints(vrm).map(([joint, node]) => [joint, names[node]?.name ?? '']) : []);
   return showScene(gltf.scene, turned);
 }
 
@@ -91,6 +109,7 @@ async function loadScene(source: string, turned: boolean): Promise<{ rows: BoneR
  * converter put it. */
 async function loadPacked(files: PackedFiles): Promise<{ rows: BoneRow[]; vertices: number } | null> {
   const built = await buildPacked(files);
+  fileJoints = {};
   return hasSkin(built) ? showScene(built, false) : null;
 }
 
@@ -185,6 +204,7 @@ export async function importModel(path: string) {
     }
     if (r.model.descriptor.format !== 2) return toast('error', t('character.notSkinned'));
     editedAt = new Date().toISOString();
+    adopted = false;
     const skinId = `char-${crypto.randomUUID().replace(/-/g, '').slice(0, 12)}`;
     const dir = `${characterDir()}\\${skinId}.character`;
     const files = {
@@ -215,7 +235,7 @@ export async function importModel(path: string) {
       bones: loaded.rows,
       materials,
       vertices: r.model.stats.vertices,
-      auto: r.vrm ? r.bones : autoMatch(),
+      auto: autoMatch(),
       picked: {},
       joint: null,
       springs: r.springs.map((x) => ({
@@ -258,15 +278,15 @@ export async function chooseModel(): Promise<boolean> {
   return !!file;
 }
 
-/** Whether a .glb/.gltf is a character: it carries VRM data, or the site's matcher finds a whole humanoid on one of its root bones (as
- * autoMatch does). Null when the file cannot be read. */
+/** Whether a .glb/.gltf is a character: it carries VRM data, or the site's matcher finds hips on one of its root bones (the one joint
+ * a character needs; a creature without fingers or an arm is one too). Null when the file cannot be read. */
 export async function isCharacterModel(path: string): Promise<boolean | null> {
   try {
     const gltf = await new GLTFLoader().loadAsync(fileUrl(path));
     if ((gltf.parser.json.extensionsUsed as string[] | undefined)?.some((name) => /^VRM/.test(name))) return true;
     let humanoid = false;
     gltf.scene.traverse((o) => {
-      if (!humanoid && (o as Bone).isBone && !(o.parent as Bone | null)?.isBone) humanoid = !matchHumanBones<Object3D>(o).missing.length;
+      if (!humanoid && (o as Bone).isBone && !(o.parent as Bone | null)?.isBone) humanoid = matchHumanBones<Object3D>(o).bones.has('hip');
     });
     return humanoid;
   } catch {
@@ -292,7 +312,7 @@ interface Saved {
 /** The colliders as the document holds them: the file's own, else the automatic ones switched on, each on its joint's bone. */
 function capsuleEntries(): Capsule[] {
   const s = useCharacter.getState();
-  const match = matchOf(s);
+  const match = oneJointPerBone(matchOf(s));
   if (s.capsules) return s.capsules.filter((c) => match[c.joint]);
   scene?.updateMatrixWorld(true);
   const local = (bone: Bone, w: Vector3): [number, number, number] => {
@@ -333,13 +353,13 @@ export function characterDoc(): SkinDocument | null {
     sounds: [],
     character: {
       model: { descriptor: s.files.descriptor, mesh: s.files.mesh, textures: s.files.textures },
-      bones: matchOf(s),
+      bones: oneJointPerBone(matchOf(s)),
       springs: { chains: s.springs.map(springEntry), capsules: capsuleEntries() },
       materials: s.materials.map((name) => ({ name, shader: 'lit' })),
       ...(s.hide.length ? { hide: s.hide } : {}),
       height: s.height,
     },
-    editor: { character: saved, ...(s.credit ? { credit: s.credit } : {}), ...(editedAt ? { editedAt } : {}) } as SkinDocument['editor'],
+    editor: { character: saved, ...(s.credit ? { credit: s.credit } : {}), ...(editedAt ? { editedAt } : {}), ...(adopted ? { adopted } : {}) } as SkinDocument['editor'],
   };
 }
 
@@ -368,6 +388,8 @@ export async function saveCharacter() {
 let saveTimer: ReturnType<typeof setTimeout> | undefined;
 /** When the author last changed the open character skin (ISO), saved as editor.editedAt. */
 let editedAt: string | null = null;
+/** Whether the open character skin was made from someone else's pack (editor.adopted), kept through its saves. */
+let adopted = false;
 // Every change the author makes autosaves after a pause, as a weapon skin does.
 useCharacter.subscribe((s, before) => {
   if (!s.skinId || s.loading) return;
@@ -409,11 +431,13 @@ export async function deleteCharacter(path: string) {
   const open = characterProject() === path;
   if (open) clearTimeout(saveTimer);
   const s = useStore.getState();
-  const id = s.characters.find((k) => k.path === path)?.id;
+  const entry = s.characters.find((k) => k.path === path);
+  const id = entry?.id;
   const profile = s.profiles.find((p) => p.path === s.prefs.profilePath);
   try {
     await call('project.delete', { path });
-    if (profile && id && s.installed.some((p) => p.id === id && p.source !== 'mod')) {
+    // An adopted work shares its id with the pack it was made from, which stays installed.
+    if (profile && id && !entry?.adopted && s.installed.some((p) => p.id === id && p.source !== 'mod')) {
       await call('pack.remove', { profile: profile.path, skinId: id });
       void s.refreshInstalled();
     }
@@ -456,6 +480,7 @@ export async function openCharacter(path: string) {
     const loaded = files.source ? await loadScene(files.source, saved.turned) : await loadPacked(files);
     if (!loaded) return;
     editedAt = (doc.editor as { editedAt?: string } | null)?.editedAt ?? null;
+    adopted = (doc.editor as { adopted?: boolean } | null)?.adopted === true;
     useCharacter.setState({
       skinId: doc.id ?? null,
       name: doc.name ?? '',
@@ -743,22 +768,40 @@ export function useSpringPresets(): PresetValues | null {
   return value;
 }
 
-/** The site's matcher on every root bone of the model; the root it matches best wins, with its fingers. */
+/** A match with each bone on one joint: the first joint in the rig's order keeps it, the later ones are left without a bone (a
+ * matcher that found no bone of its own for a joint is not to stand in another joint's; a bone takes one joint's pose). */
+function oneJointPerBone(match: Record<string, string>): Record<string, string> {
+  const out: Record<string, string> = {};
+  const taken = new Set<string>();
+  for (const joint of [...BODY_JOINTS, ...FINGER_JOINTS]) {
+    const bone = match[joint];
+    if (!bone || taken.has(bone)) continue;
+    taken.add(bone);
+    out[joint] = bone;
+  }
+  return out;
+}
+
+/** The automatic match, on import and on 重新自动匹配 alike: what the file's own humanoid (VRM) says first; the joints it does not name
+ * come from the site's matcher (run on every root bone of the model, the root it matches best wins, with the fingers under each hand),
+ * which never takes a bone the file gave a joint. A part neither finds is left without a bone. */
 function autoMatch(): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const [joint, bone] of Object.entries(fileJoints)) if (byName.has(bone)) out[joint] = bone;
+  const named = new Set(Object.values(out));
+  const add = (joint: string, bone: Object3D) => void (joint in out || named.has(bone.name) || (out[joint] = bone.name));
   let best: { found: Map<string, Object3D>; missing: number } | null = null;
   for (const bone of byName.values()) {
     if ((bone.parent as Bone | null)?.isBone) continue;
     const { bones: found, missing } = matchHumanBones<Object3D>(bone);
     if (!best || missing.length < best.missing) best = { found, missing: missing.length };
   }
-  const out: Record<string, string> = {};
-  if (!best) return out;
-  for (const [joint, bone] of best.found) if (BODY_JOINTS.includes(joint)) out[joint] = bone.name;
+  for (const [joint, bone] of best?.found ?? []) if (BODY_JOINTS.includes(joint)) add(joint, bone);
   for (const side of ['left', 'right'] as const) {
-    const hand = best.found.get(side + 'Hand');
-    if (hand) for (const [joint, bone] of matchHumanFingers(hand, side)) out[joint] = bone.name;
+    const hand = byName.get(out[side + 'Hand']);
+    if (hand) for (const [joint, bone] of matchHumanFingers<Object3D>(hand, side)) add(joint, bone);
   }
-  return out;
+  return oneJointPerBone(out);
 }
 
 /** Auto-matches again, dropping the author's picks. */
@@ -855,8 +898,16 @@ export async function buildArms(): Promise<SkinnedMesh | null> {
   return mesh;
 }
 
-export function pickBone(joint: string, bone: string | null) {
-  useCharacter.setState((s) => ({ picked: { ...s.picked, [joint]: bone } }));
+/** Gives `joint` the bone the author picked, none (null: the part is left out), or the automatic match's again (undefined). A bone
+ * takes one joint's pose, so a bone another joint had moves here and that joint is left without one. */
+export function pickBone(joint: string, bone: string | null | undefined) {
+  useCharacter.setState((s) => {
+    const picked = Object.fromEntries(Object.entries(s.picked).filter(([k]) => k !== joint));
+    if (bone !== undefined) picked[joint] = bone;
+    const now = bone === undefined ? s.auto[joint] : bone;
+    if (now) for (const [other, used] of Object.entries(matchOf({ auto: s.auto, picked }))) if (other !== joint && used === now) picked[other] = null;
+    return { picked };
+  });
   void checkMatch();
 }
 

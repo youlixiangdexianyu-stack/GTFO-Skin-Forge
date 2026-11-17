@@ -12,8 +12,8 @@ namespace ForgeSkin.Plugin;
 // The toon setting's three choices, in the picker's order.
 enum ToonMode { Forward, Deferred, Off }
 
-[BepInPlugin(Guid, "ForgeSkin", "1.0.0")] // package-version: NAinfini-ForgeSkin
-[BepInDependency("NAinfini.ForgeCore", ">=1.0.1")]
+[BepInPlugin(Guid, "ForgeSkin", "1.0.1")] // package-version: NAinfini-ForgeSkin
+[BepInDependency("NAinfini.ForgeCore", ">=1.0.2")]
 [BepInProcess("GTFO.exe")]
 public sealed class ForgeSkinPlugin : BasePlugin
 {
@@ -131,6 +131,7 @@ public sealed class ForgeSkinPlugin : BasePlugin
         Icons.SkinsChanged(); // the icons the game cached before may show another skin than the one now active
         Picker.Register(); // picks kept in BepInEx/config/ForgeSkin.choices.json, colours in ForgeSkin.colours.json
         Looks.Register(); // the look each player shows the others (ForgeCore Net)
+        Inspect.Register(Looks.Channel); // the inspect key and every player's inspect, on the same channel
         Characters.Register(); // character models, and ForgeCore's player looks (replay stand-ins, emote cameras)
         HologramShader = Settings.Bind(Guid, "General", "HologramShader", true,
             "Draw holograms with the game's hologram shader (Cell/Player/Display_Hologram). Off: the gear shader's plain unlit glow.",
@@ -157,5 +158,6 @@ public sealed class ForgeSkinPlugin : BasePlugin
     static void Update()
     {
         SkinnedGear.Tick(Frame.UnscaledTime, Frame.GameTime);
+        Inspect.Tick();
     }
 }

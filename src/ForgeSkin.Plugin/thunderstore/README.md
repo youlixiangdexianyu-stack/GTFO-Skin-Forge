@@ -14,17 +14,26 @@ live screens (ammo, kills, damage dealt and taken, accuracy, health, infection �
 flashes and sounds played on game events (kill, hit, miss, fire, reload, aim, low ammo, empty, going down, revived, ...;
 several sounds on one event play one at random, and kills can have their own sounds per enemy), and a custom part
 layout. Skins can also hang charms on a cord or chain that sway with gravity and swing as you move (on the gun in your
-own hands).
+own hands), and replace the reticle in a holographic sight (up to three layers, seen when you aim down it).
+
+Inspect your weapon: press the inspect key (I by default, under Forge mods on the game's key settings page) with any gun in your
+hands to turn it over and look at it. Each kind of gun has its own motion: pistols, revolvers and compact guns turn in
+the hand (a revolver spins twice), rifles, shotguns, machine guns and snipers turn in both hands. Firing, aiming,
+reloading, sprinting, a menu or a hit ends it. Known issue: rifles, shotguns, machine guns and snipers are held badly
+while their right side is shown; a later version fixes it.
 
 Character skins replace your whole character with an imported humanoid model. It moves with the game's own animations
 (walking, running, crouching, jumping, holding the gun, going down, being revived), its hair, skirt and ribbons swing as you
 move, and in first person you see the model's own arms; where you can be hit stays the original character's. The lobby
-figure wears it too.
+figure wears it too. The model need not be a whole human: a creature without fingers, with one arm or with unlike sides
+works too. Only its hips need a bone; a part without one keeps its shape and moves with the part above it.
 
 You normally don't install this by hand: skin mods made with the ForgeSkin editor list it as a dependency, so your mod
 manager installs it with them.
 
-Please also update ForgeCore to 1.0.1 (请同时更新 ForgeCore 到 1.0.1).
+Please also update ForgeCore to 1.0.2 (请同时更新 ForgeCore 到 1.0.2). In multiplayer the host and every client need it:
+a client's kill counts, kill sounds and damage screens come from the host's ForgeCore.
+联机时房主和每个客机都要更新：客机的击杀数、击杀音效和伤害屏来自房主的 ForgeCore。
 
 ## Get skins, make skins
 

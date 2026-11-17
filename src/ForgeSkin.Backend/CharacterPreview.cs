@@ -8,8 +8,8 @@ namespace ForgeSkin.Backend;
 
 // The 人物模型 tab's three backend steps, all on ForgeCore's own linked code so the editor holds no second copy:
 // springs.simulate moves one spring-bone chain set by ForgeCore's chain physics along the anchor bone's path the 3D view sends (as
-// charm.simulate does for a charm), character.check holds a bone match's rest pose to ForgeCore's rig check (RigMap), and
-// character.links gives the motion preview the game's pose-copy links for a bone match (HumanRig, PoseSolver).
+// charm.simulate does for a charm), character.check says how the game will take a bone match (what it cannot do without, what it
+// leaves out, ForgeCore's rig notes), and character.links gives the motion preview the game's pose-copy links for it (HumanRig, PoseSolver).
 public static class CharacterPreview
 {
     public sealed record Node(int Parent, double[] At);
@@ -69,27 +69,37 @@ public static class CharacterPreview
     }
 
 
-    /// <summary>The game's pose copy for a bone match (canonical joint to model bone), as the motion preview plays it: per canonical
-    /// joint the link ForgeCore's HumanRig gives (the joint its frame points at or comes from, -1 for none) and whether the copy leaves
-    /// it out (PoseSolver.Skipped: an optional joint the model lacks, a hand with only some of its fingers, every finger when the
-    /// playing body has none), and the limbs that reach (HumanRig.ArmReach: upper, lower, end).</summary>
-    public static object Links(Dictionary<string, string> bones, bool fingers)
+    // A bone match (canonical joint to model bone) as the character document holds it, with or without its finger joints.
+    static CharacterSkin Match(Dictionary<string, string> bones, bool fingers = true)
     {
-        var names = new string?[ClipRig.Count];
+        var character = new CharacterSkin();
         foreach (var (joint, bone) in bones)
         {
             var j = Array.IndexOf(ClipRig.Names, joint);
             if (j < 0) throw new BackendException("bad-request", $"no canonical joint {joint}");
-            if (j < ClipRig.BodyCount || fingers) names[j] = bone;
+            if (j < ClipRig.BodyCount || fingers) character.Bones[joint] = bone;
         }
+        return character;
+    }
+
+    static ImportedModelDescriptor Descriptor(string path) =>
+        ImportedModelDescriptor.Parse(File.ReadAllText(path), out var failure) ?? throw new BackendException("bad-mesh", failure.Detail);
+
+    /// <summary>The game's pose copy for a bone match on the model `descriptor` names, as the motion preview plays it: per canonical
+    /// joint the link the plugin copies with (CharacterRig.Links: the joint its frame points at or comes from, -1 for none) and whether
+    /// the copy leaves it out (PoseSolver.Skipped: a joint without a bone, the finger joints after one, every finger when the playing
+    /// body has none), and the limbs that reach (HumanRig.ArmReach: upper, lower, end; the preview, as the game, drops one with a joint
+    /// left out).</summary>
+    public static object Links(string descriptor, Dictionary<string, string> bones, bool fingers)
+    {
         PoseLink[] links;
-        try { links = HumanRig.Links(names); }
+        try { links = CharacterRig.Links(Match(bones, fingers), Descriptor(descriptor)); }
         catch (ArgumentException e) { throw new BackendException("bad-request", e.Message); }
         var skip = PoseSolver.Skipped(links, links.Select(l => l.Optional && l.Model.StartsWith('\0')).ToArray());
         return new
         {
             links = links.Select((l, j) => new { joint = ClipRig.Names[j], toward = l.Toward, from = l.From, skip = skip[j] }),
-            reach = HumanRig.ArmReach.Select(r => new[] { r.Upper, r.Lower, r.End }),
+            reach = PoseSolver.Reachable(HumanRig.ArmReach, skip).Select(r => new[] { r.Upper, r.Lower, r.End }),
         };
     }
 
@@ -100,24 +110,18 @@ public static class CharacterPreview
     }
 
     /// <summary>The first-person arms the game wears for this character (Characters.Arms in the plugin): the model's mesh cut by
-    /// ForgeCore's own rule (HumanRig.ArmWear's bones, MeshCut.KeptBones with descendants, then MeshCut's vertex and triangle cut), the
-    /// materials in `hide` left out. Only the kept vertices come back, in Unity's axes as the mesh file holds them: positions and normals
+    /// ForgeCore's own rule (CharacterRig.Arms's bones, MeshCut.KeptBones with descendants, then MeshCut's vertex and triangle cut), the
+    /// materials in `hide` left out; nothing for a model without both upper arms, as in the game. Only the kept vertices come back, in
+    /// Unity's axes as the mesh file holds them: positions and normals
     /// (three float32 each), uvs (two), four bone indices (into `bones`, uint16) and weights (float32) per vertex, base64 little-endian;
     /// per submesh its triangles into those vertices (base64 uint32) and its material.</summary>
     public static object Arms(string descriptorPath, string meshPath, Dictionary<string, string> joints, List<int>? hide)
     {
-        var descriptor = ImportedModelDescriptor.Parse(File.ReadAllText(descriptorPath), out var failure) ?? throw new BackendException("bad-mesh", failure.Detail);
+        var descriptor = Descriptor(descriptorPath);
         if (descriptor.Bones is not { } skeleton) throw new BackendException("bad-mesh", "the model has no skeleton");
-        var mesh = ImportedMesh.Read(File.ReadAllBytes(meshPath), descriptor, out failure) ?? throw new BackendException("bad-mesh", failure.Detail);
-        var names = new string?[ClipRig.Count];
-        foreach (var (joint, bone) in joints)
-        {
-            var j = Array.IndexOf(ClipRig.Names, joint);
-            if (j < 0) throw new BackendException("bad-request", $"no canonical joint {joint}");
-            names[j] = bone;
-        }
+        var mesh = ImportedMesh.Read(File.ReadAllBytes(meshPath), descriptor, out var failure) ?? throw new BackendException("bad-mesh", failure.Detail);
         WearBone[] wear;
-        try { wear = HumanRig.ArmWear(names); }
+        try { wear = CharacterRig.Arms(Match(joints), descriptor); }
         catch (ArgumentException e) { throw new BackendException("bad-request", e.Message); }
         var nodes = skeleton.Select(b => new BoneNode(b.Name)).ToArray();
         for (var i = 0; i < nodes.Length; i++) nodes[i].Parent = skeleton[i].Parent < 0 ? null : nodes[skeleton[i].Parent];
@@ -175,9 +179,11 @@ public static class CharacterPreview
 
     public sealed record Issue(string Kind, string[] Joints, double? Degrees, string Text);
 
-    /// <summary>A bone match held to the canonical rig: the required joints it lacks, what ForgeCore's rig check finds wrong with its
-    /// rest pose (`joints`: canonical name to the bone's rest position in the game's axes, root space), and which hands keep their
-    /// fingers (a hand with only some finger joints plays with none).</summary>
+    /// <summary>A bone match as the game will take it (`joints`: canonical name to its bone's rest position in the game's axes, root
+    /// space): the required joints it lacks (the only thing that stops a character), the joints the pose copy leaves out
+    /// (HumanRig.Unposed: no bone, or a finger joint after one), whether each arm reaches its grip and whether the model wears its own
+    /// first-person arms, and what ForgeCore's rig check notes about the rest pose (sides that look swapped, a limb far off its stance):
+    /// notes for the author, nothing the game refuses.</summary>
     public static object Check(Dictionary<string, double[]> joints)
     {
         var present = new bool[ClipRig.Count];
@@ -191,14 +197,23 @@ public static class CharacterPreview
             rest[j] = new Vector3((float)at[0], (float)at[1], (float)at[2]);
         }
         var missing = CharacterRig.Required.Where(n => !present[Array.IndexOf(ClipRig.Names, n)]).ToArray();
+        var names = ClipRig.Names.Select((n, j) => present[j] ? n : null).ToArray();
+        var unposed = missing.Length > 0 ? ClipRig.Names.Where((_, j) => !present[j]).ToArray() : HumanRig.Unposed(HumanRig.Links(names, rest));
+        bool Reaches(PoseReach r) => !new[] { r.Upper, r.Lower, r.End }.Any(j => unposed.Contains(ClipRig.Names[j]));
+        var arms = missing.Length == 0 && HumanRig.ArmWear(names, rest).Length > 0;
         var backwards = RigMap.FacesBackwards(present, rest);
         if (backwards) RigMap.TurnAround(present, rest, new Quaternion[ClipRig.Count]);
-        var issues = Sentences(RigMap.Check(present, rest, RigShape.Body));
-        var bones = new object?[ClipRig.Count];
-        for (var j = 0; j < ClipRig.Count; j++) bones[j] = present[j] ? new object() : null;
-        RigMap.DropBrokenFingers(present, bones);
-        bool Hand(int first) => Enumerable.Range(first, 15).All(j => present[j]);
-        return new { required = CharacterRig.Required, missing, issues, backwards, fingers = new { left = Hand(ClipRig.BodyCount), right = Hand(ClipRig.BodyCount + 15) } };
+        var notes = Sentences(RigMap.Check(present, rest, RigShape.Body)).Where(i => i.Kind != "samePoint").ToList();
+        return new
+        {
+            required = CharacterRig.Required,
+            missing,
+            unposed,
+            notes,
+            backwards,
+            arms,
+            reach = new { left = Reaches(HumanRig.ArmReach[0]), right = Reaches(HumanRig.ArmReach[1]) },
+        };
     }
 
     // RigMap.Check speaks in sentences for the game log; the editor words them itself, so each known sentence becomes a kind with its

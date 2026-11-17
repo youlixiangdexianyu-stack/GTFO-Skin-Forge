@@ -95,7 +95,8 @@ static class Holograms
 }
 
 // Hologram flicker: the renderers drop out for a few hundredths of a second at random moments, more often with a higher
-// amount. forceRenderingOff, so a `show` effect (Renderer.enabled) still decides whether they are there at all.
+// amount. ForgeCore's SurfaceLook.SetDrawn, so a `show` effect (Renderer.enabled) still decides whether they are there at all, and
+// a hologram that the view from behind or an action hiding the held item holds off stays off until they let go.
 sealed class Flicker : ITriggered
 {
     readonly Renderer[] _renderers;
@@ -129,6 +130,6 @@ sealed class Flicker : ITriggered
     void Set(bool off)
     {
         foreach (var r in _renderers)
-            if (r != null) r.forceRenderingOff = off;
+            if (r != null) ForgeVisual.SurfaceLook.SetDrawn(r, !off);
     }
 }

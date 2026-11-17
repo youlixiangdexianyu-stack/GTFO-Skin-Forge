@@ -149,18 +149,20 @@ static class Characters
     static readonly List<(IntPtr Bar, Animator Body, SNet_Player Player)> FiguresNow = new();
 
     // The lobby's figures shown now: each lobby bar with a player whose figure is spawned and drawn, and the figure's animator. In the
-    // lobby, a player whose figure is not built or drawn yet keeps Reconcile looking (_waiting).
+    // lobby, a bar that has no player yet (the game gives a bar its player when the host's slots arrive, which for a player who joins
+    // is after the lobby state, the agents and the looks) and a player whose figure is not built or drawn yet keep Reconcile looking
+    // (_waiting): the figure wears its character when it appears, whichever came first, the look or the figure.
     static List<(IntPtr Bar, Animator Body, SNet_Player Player)> Figures()
     {
         FiguresNow.Clear();
+        var inLobby = GameStateManager.CurrentStateName == eGameStateName.Lobby;
         var page = CM_PageLoadout.Current;
         var bars = page == null || page.WasCollected ? null : page.m_playerLobbyBars;
-        if (bars == null) return FiguresNow;
-        var inLobby = GameStateManager.CurrentStateName == eGameStateName.Lobby;
+        if (bars == null) { _waiting |= inLobby; return FiguresNow; }
         for (var i = 0; i < bars.Length; i++)
         {
             var bar = bars[i];
-            if (bar == null || bar.WasCollected || bar.m_player is not { } player) continue;
+            if (bar == null || bar.WasCollected || bar.m_player is not { } player) { _waiting |= inLobby; continue; }
             var figure = bar.m_playerModelSpawned ? bar.m_playerModel : null;
             if (figure == null || figure.WasCollected || !figure.activeInHierarchy || figure.GetComponentInChildren<Animator>() is not { } body)
             {
@@ -229,7 +231,10 @@ static class Characters
             var agent = ForgeCore.Players.At(i);
             if (agent == null) continue;
             seen.Add(agent.Pointer);
-            var want = agent.Owner is { } owner ? Wanted(owner) : null;
+            // An agent made before its player is set (a player joining): looked at again until it has one.
+            var owner = agent.Owner;
+            if (owner == null) _waiting = true;
+            var want = owner != null ? Wanted(owner) : null;
             if (ByAgent.TryGetValue(agent.Pointer, out var had))
             {
                 var loss = had.Worn.Skin == want ? Loss(had.Worn) : "another character is worn now";
@@ -283,13 +288,22 @@ static class Characters
             worn.Model = skin.Character!.Spawn(root, Label);
             var renderer = worn.Model.GetComponent<SkinnedMeshRenderer>();
             // Drawn as the body it replaces is (the local player's third-person body only casts the shadow): a mesh shown now, not one of
-            // the inactive spares the lobby's figure keeps for the other characters (on a layer its camera does not draw).
-            var original = body.GetComponentsInChildren<SkinnedMeshRenderer>(true).FirstOrDefault(r => r.gameObject.activeInHierarchy && !r.transform.IsChildOf(root));
+            // the inactive spares the lobby's figure keeps for the other characters (on a layer its camera does not draw), nor the person's
+            // ghost copies (they cast no shadow), nor a look's model (the one being taken off is destroyed only at the frame's end).
+            var model = body.GetComponentInParent<PlayerSyncModelData>();
+            var ghosts = model != null ? model.m_ghostRenderers : null;
+            bool Ghost(Renderer r)
+            {
+                if (ghosts != null) foreach (var g in ghosts) if (g != null && g.Pointer == r.Pointer) return true;
+                return false;
+            }
+            var original = body.GetComponentsInChildren<SkinnedMeshRenderer>(true).FirstOrDefault(r => r.gameObject.activeInHierarchy && !r.transform.IsChildOf(root) && !PlayerLooks.Worn(r.transform) && !Ghost(r));
             if (original != null)
             {
                 worn.Model.layer = original.gameObject.layer;
                 renderer.shadowCastingMode = original.shadowCastingMode;
             }
+            else ForgeSkinPlugin.Note($"character {skin.Doc.Id} {where}: the body shows none of its own meshes to take the drawing layer and shadow from; the model keeps layer {worn.Model.layer} and casts its shadow");
             var label = Label + " " + skin.Doc.Id;
             var target = Models.ReadPoseTarget(worn.Model.transform, renderer, skin.Links!, label) ?? throw new InvalidOperationException("the model's skeleton does not take the pose (ForgeCore logged why)");
             var bones = new Dictionary<string, Transform>(StringComparer.Ordinal);
@@ -333,7 +347,7 @@ static class Characters
                 var leftOut = new[] { "head", "leftUpperArm", "rightUpperArm" }.Select(j => target.Bone(Array.IndexOf(ClipRig.Names, j))).OfType<Transform>().ToList();
                 worn.Cut = Models.LeaveOutInFirstPerson(renderer, leftOut);
             }
-            ForgeSkinPlugin.Info($"character {skin.Doc.Id} worn {where}:{target.Links.Count} links, {worn.Chains.Count} spring chains, scale {worn.Copy.Scale:0.###} (height {character.Height:0.###}){(worn.Arms != null ? ", own first-person arms" : "")}");
+            ForgeSkinPlugin.Info($"character {skin.Doc.Id} worn {where}:{target.Links.Count} links, {worn.Chains.Count} spring chains, scale {worn.Copy.Scale:0.###} (height {character.Height:0.###}), layer {worn.Model.layer} from {(original != null ? original.name : "none")}{(worn.Arms != null ? ", own first-person arms" : "")}");
             return worn;
         }
         catch (Exception e)
@@ -355,7 +369,7 @@ static class Characters
         float? Y(HumanBodyBones bone) => body.GetBoneTransform(bone) is { } t && rest.TryGetValue(t.Pointer, out var m) ? m.m13 : null;
         if (model > 0 && Y(HumanBodyBones.Head) is { } head && Y(HumanBodyBones.LeftFoot) is { } left && Y(HumanBodyBones.RightFoot) is { } right && head - (left + right) / 2 > 0)
             return (head - (left + right) / 2) * body.transform.lossyScale.y / model * height;
-        ForgeSkinPlugin.Warn($"character {skin.Doc.Id}: the {(model > 0 ? "body's" : "model's")} height cannot be measured; the model shows at its own size");
+        ForgeSkinPlugin.Fail("skin-character-part-skipped", $"character {skin.Doc.Id}: the {(model > 0 ? "body's" : "model's")} height cannot be measured (the head must be mapped and rest above the feet, or above the model's floor without feet), so the model is not fitted to the body's height; it shows at its own size");
         var own = body.transform.lossyScale.x / Math.Max(1e-4f, body.transform.localScale.x);
         return own * height;
     }
@@ -368,12 +382,18 @@ static class Characters
         var character = skin.Doc.Character!;
         var model = skin.Character!;
         if (character.Arms?.Model != null) ForgeSkinPlugin.Warn($"{skin.Doc.Id}: a separate first-person arms model is not read yet; the model's own arms are worn");
+        var bones = CharacterRig.Arms(character, model.Descriptor);
+        if (bones.Length == 0)
+        {
+            ForgeSkinPlugin.Fail("skin-character-part-skipped", $"character {skin.Doc.Id} has no bone for one or both upper arms, which line its arms up with the game's first-person arms: the game's own arms show in first person");
+            return null;
+        }
         var leaveOut = new List<int>();
         for (int i = 0; i < model.Descriptor.Submeshes.Count; i++)
             if (character.Hide?.Contains(model.Descriptor.Submeshes[i].Material) == true) leaveOut.Add(i);
         var arms = Models.WearFirstPerson(agent, model.Spawn(null, label + " arms"), new FirstPersonWearOptions
         {
-            Bones = HumanRig.ArmWear(CharacterRig.Joints(character)),
+            Bones = bones,
             Hide = BodyParts.Arms,
             Descendants = true,
             LeaveOut = leaveOut,

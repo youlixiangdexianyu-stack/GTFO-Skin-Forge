@@ -30,7 +30,7 @@ import {
   IconX,
 } from '@tabler/icons-react';
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
-import { activateSkin, applyToGame, exportPack, importSkinGroup, installToProfile, openProject, profileProblem } from '../actions';
+import { activateSkin, applyToGame, editorEdition, exportPack, importSkinGroup, installPluginInto, installToProfile, openProject, profileProblem, shippedLabel, tellNewer } from '../actions';
 import { characterPicture, chooseModel, deleteCharacter, drawPackedPicture, ensureCharacterPicture, exportCharacterPack, openCharacter, pictureDrawn, refreshCharacters } from '../character/model';
 import { useCharacter, type Mode } from '../character/state';
 import { localName, t } from '../i18n';
@@ -50,7 +50,7 @@ async function addProfileFolder() {
   try {
     const p = await call('profiles.add', { path: folder });
     await s.refreshProfiles();
-    s.setPrefs({ profilePath: p.path });
+    s.setPrefs({ profilePath: p.path, profileChosen: true });
   } catch (e) {
     s.fail(e);
   }
@@ -72,11 +72,15 @@ export async function installPlugin() {
   const profile = s.profiles.find((p) => p.path === s.prefs.profilePath);
   if (!profile) return;
   try {
-    await call('plugin.install', { profile: profile.path });
+    useStore.setState({ busy: t('actions.k10') });
+    const { newer } = (await installPluginInto(profile.path)) as { newer?: string[] };
     await s.refreshProfiles();
-    s.toast('ok', t('topBar.k23'));
+    if (newer?.length) tellNewer({ ...profile, pluginNewer: newer }, true);
+    else s.toast('ok', t('topBar.k23'));
   } catch (e) {
     s.fail(e);
+  } finally {
+    useStore.setState({ busy: null });
   }
 }
 
@@ -105,7 +109,7 @@ function useGameDot() {
 
 /** A profile's skin plugin in a few words: installed (and its version), an update due, or none. */
 function pluginState(p: Profile) {
-  const shipped = p.pluginShipped ?? '';
+  const shipped = shippedLabel(p);
   if (!p.pluginVersion) return t('works.pluginMissing', { v0: shipped });
   return t(p.pluginCurrent === false ? 'works.pluginUpdate' : 'works.pluginInstalled', { v0: p.pluginVersion, v1: shipped });
 }
@@ -121,6 +125,8 @@ function ProfileRow() {
   const dot = useGameDot();
   const running = useStore((s) => !!s.game?.running);
   const [uninstall, setUninstall] = useState(false);
+  const [dev, setDev] = useState(false);
+  useEffect(() => void editorEdition().then((e) => setDev(e === 'dev')), []);
   return (
     <Group className="lib-profile" gap={8} wrap="nowrap" data-tour="profile">
       <Menu position="bottom-start" width={300} onOpen={() => void refreshProfiles()}>
@@ -150,9 +156,10 @@ function ProfileRow() {
                   <span>{pluginState(current)}</span>
                 </div>
               )}
-              {current.hasBepInEx && (!current.pluginVersion || current.pluginCurrent === false) && (
+              {/* The development editor offers it always: it builds the plugin from the checkout first (installPluginInto). */}
+              {current.hasBepInEx && (dev || !current.pluginVersion || current.pluginCurrent === false) && (
                 <Menu.Item leftSection={<IconDownload size={14} />} color="flare" onClick={() => void installPlugin()}>
-                  {current.pluginVersion ? t('works.updatePlugin') : t('topBar.k24')}
+                  {dev ? t('works.devPlugin') : current.pluginVersion ? t('works.updatePlugin') : t('topBar.k24')}
                 </Menu.Item>
               )}
               <Menu.Item leftSection={<IconFolderOpen size={14} />} onClick={() => void window.forge.openPath(current.path)}>
@@ -177,7 +184,7 @@ function ProfileRow() {
               key={p.path}
               leftSection={p.path === path ? <IconCheck size={14} /> : <span style={{ display: 'inline-block', width: 14 }} />}
               c={p.hasBepInEx ? undefined : 'dimmed'}
-              onClick={() => setPrefs({ profilePath: p.path })}
+              onClick={() => setPrefs({ profilePath: p.path, profileChosen: true })}
               rightSection={
                 <Group gap={4} wrap="nowrap">
                   {p.hasBepInEx && (
@@ -433,7 +440,7 @@ function ownActions(
   return out;
 }
 
-type Deleting = { name: string; run: () => void } | null;
+type Deleting = { name: string; adopted?: boolean; run: () => void } | null;
 
 /** An item's image, asked for (drawn in the background) when there is none yet. */
 function useItemThumb(id: string | null | undefined) {
@@ -542,7 +549,7 @@ function SkinWork({ weaponId, k, onDelete }: { weaponId: string; k: ProjectEntry
         copy: () => void newSkin(true),
         rename: () => setRenaming(true),
         exportIt: () => void exportPack(),
-        remove: () => onDelete({ name, run: () => void deleteSkin(k.id, weaponId) }),
+        remove: () => onDelete({ name, adopted: k.adopted, run: () => void deleteSkin(k.id, weaponId) }),
         extra: [
           { label: t('snapshots.menu'), icon: <IconHistory size={14} />, run: () => setSnapshots(true) },
           { label: t('skins.saveFile'), icon: <IconDeviceFloppy size={14} />, run: () => void saveProject() },
@@ -588,7 +595,7 @@ function CharacterWork({ k, onDelete }: { k: ProjectEntry; onDelete: (d: Deletin
         copy: () => useStore.getState().toast('info', t('works.noCharacterCopy')),
         rename: () => setRenaming(true),
         exportIt: () => void exportCharacterPack(),
-        remove: () => onDelete({ name, run: () => void deleteCharacter(k.path) }),
+        remove: () => onDelete({ name, adopted: k.adopted, run: () => void deleteCharacter(k.path) }),
       })}
     />
   );
@@ -845,7 +852,7 @@ export function Library() {
         {character ? <CharacterWorks query={query} onDelete={setDeleting} /> : <WeaponWorks query={query} onDelete={setDeleting} />}
       </ScrollArea>
       <Modal opened={!!deleting} onClose={() => setDeleting(null)} title={t('skins.deleteTitle')} centered>
-        <Text size="sm">{t('skins.deleteBody', { v0: deleting?.name })}</Text>
+        <Text size="sm">{t(deleting?.adopted ? 'skins.deleteBodyAdopted' : 'skins.deleteBody', { v0: deleting?.name })}</Text>
         <Group justify="flex-end" mt="md">
           <Button variant="default" data-autofocus onClick={() => setDeleting(null)}>
             {t('skins.cancel')}

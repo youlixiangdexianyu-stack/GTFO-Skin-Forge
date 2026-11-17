@@ -69,9 +69,6 @@ const MESSAGES: Record<string, string> = {
   get 'ammo-display'() {
     return t('errors.k24');
   },
-  get 'no-plugin'() {
-    return t('errors.noPlugin');
-  },
   get 'nothing-to-apply'() {
     return t('errors.nothingToApply');
   },
@@ -114,8 +111,19 @@ export function friendly(e: unknown, fallback = t('errors.k25')): string {
   const err = e as Partial<BackendError> | undefined;
   // A window newer than its backend (the editor was updated while open) asks for something the running backend does not know.
   if (err?.code === 'bad-request' && err.message?.startsWith('Unknown method')) return t('errors.restartEditor');
+  // An unreadable picture is named when the message holds its path (the backend's and frames.ts loadImage's do).
+  const image = err?.code === 'bad-image' && /[A-Za-z]:\\[^:]*?\.[A-Za-z0-9]{2,4}(?=$|:|\s)/.exec(err.message ?? '')?.[0];
+  if (image) return t('errors.badImageFile', { v0: image });
   if (err?.code && MESSAGES[err.code]) return MESSAGES[err.code];
+  // The development editor's plugin build (actions.ts installPluginInto) says itself what went wrong.
+  if (err?.code === 'dev-plugin') return err.message ?? fallback;
+  // A missing file is named by its path alone: .NET says "Could not find file 'C:\…'." (or "a part of the path"), the
+  // backend "{path} not found" / "missing" / "does not exist".
+  const missing = err?.code === 'not-found' && /'([A-Za-z]:\\[^']*)'|^(?:Folder )?([A-Za-z]:\\.*) (?:not found|missing|does not exist)$/.exec(err.message ?? '');
+  if (missing) return t('errors.k3', { v0: missing[1] ?? missing[2] });
   if (err?.code === 'not-found') return t('errors.k3', { v0: err.message ?? '' });
+  // The backend's no-plugin message is the plugin files it looked for and did not find.
+  if (err?.code === 'no-plugin') return t('errors.noPlugin', { v0: err.message ?? '' });
   // The bake's errors carry the layer's name.
   if (err?.code === 'empty-layer') return t('errors.emptyLayer', { v0: err.message ?? '' });
   if (err?.code === 'no-base-texture') return t('errors.noBaseTexture', { v0: err.message ?? '' });

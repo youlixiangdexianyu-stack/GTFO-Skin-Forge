@@ -21,6 +21,9 @@ import {
   type PartTransform,
   type Profile,
   type ProjectEntry,
+  type Reticle,
+  type ReticleChannel,
+  RETICLES,
   type SkinDocument,
   type SkinsNote,
   type SkinSound,
@@ -64,6 +67,9 @@ export interface Prefs {
   bloom: boolean;
   allowMissing: boolean;
   profilePath: string | null;
+  /** The user picked `profilePath` in the profile menu (not the editor's guess of the most recently used one); only then does
+   * the editor install its plugin there on its own (App.tsx useAutoPlugin). */
+  profileChosen: boolean;
   /** UI language; null follows the system. */
   lang: Lang | null;
 }
@@ -89,6 +95,7 @@ export const DEFAULT_PREFS: Prefs = {
   bloom: true,
   allowMissing: true,
   profilePath: null,
+  profileChosen: false,
   lang: null,
 };
 
@@ -187,6 +194,18 @@ export function materialOf(doc: SkinDocument, material: string): MaterialOverrid
 export function glowOf(game: MaterialParams | undefined, own: MaterialParams): { color: number[]; intensity: number } {
   if (own.emissiveColor) return { color: own.emissiveColor, intensity: own.emissiveIntensity ?? 1 };
   return { color: game?.emissiveColor ?? [1, 1, 1], intensity: (game?.emissiveIntensity ?? 1) * (own.emissiveIntensity ?? 1) };
+}
+
+/** A sight's reticle layer as the game draws it with the skin's values over it (the plugin's rules: an intensity without a
+ *  colour scales the game's colour). */
+export function reticleOf(game: Reticle | null | undefined, own: Reticle | null | undefined) {
+  return {
+    color: own?.color ?? game?.color ?? [1, 1, 1],
+    intensity: own?.color ? (own.intensity ?? 1) : (game?.intensity ?? 1) * (own?.intensity ?? 1),
+    scale: own?.scale ?? game?.scale ?? 1,
+    offset: own?.offset ?? game?.offset ?? 0,
+    visible: own?.visible ?? game?.visible ?? true,
+  };
 }
 
 export function ensureMaterial(doc: SkinDocument, material: string, part?: string): MaterialOverride {
@@ -318,6 +337,8 @@ interface State {
   confirmPending(material: string, channel: TextureChannel): void;
   confirmAllPending(): void;
   setParams(material: string, p: Partial<MaterialParams>, coalesceKey?: string): void;
+  /** Sets values of one reticle layer of a sight's lens (the rest stay as they are). */
+  setReticle(material: string, part: string | undefined, channel: ReticleChannel, r: Partial<Reticle>, coalesceKey?: string): void;
   copyEmissiveToAll(fromMaterial: string): void;
   setPartEnabled(partId: string, on: boolean): void;
 
@@ -500,7 +521,7 @@ export const useStore = create<State>((set, get) => ({
 
   async refreshGame() {
     try {
-      const game = await call('game.locate', {});
+      const game = await call('game.locate', { profile: get().prefs.profilePath });
       set({ game });
       if (game.found) get().log(t('store.k3', { v0: game.gameDir }));
     } catch (e) {
@@ -535,7 +556,7 @@ export const useStore = create<State>((set, get) => ({
       const last = profiles.find((p) => p.path === get().prefs.profilePath && p.hasBepInEx);
       const ready = profiles.filter((p) => p.hasBepInEx).sort((a, b) => (b.modified ?? '').localeCompare(a.modified ?? ''));
       const pick = last ?? ready[0];
-      get().setPrefs({ profilePath: pick?.path ?? null });
+      get().setPrefs(last ? {} : { profilePath: pick?.path ?? null, profileChosen: false });
       if (before && !profiles.some((p) => p.path === before)) get().toast('info', t('store.profileGone', { v0: before }));
     } catch (e) {
       get().log(`profiles.list: ${detail(e)}`);
@@ -633,6 +654,14 @@ export const useStore = create<State>((set, get) => ({
       doc = structuredClone(s.doc);
       doc.id = newSkinId(doc);
       doc.name = t('store.skinCopy', { v0: s.doc.name });
+      // A copy has an id of its own, so it is the author's even when the original was adopted.
+      if (doc.editor) delete (doc.editor as { adopted?: boolean }).adopted;
+      // Its own copy of the files kept beside the work, so deleting either work leaves the other whole.
+      try {
+        doc = await call('project.copy', { project: doc, from: autosavePath(s.weaponId, s.doc.id), to: autosavePath(s.weaponId, doc.id) });
+      } catch (e) {
+        return get().fail(e, t('store.skinCopyFailed'));
+      }
     } else
       doc = await blankSkin(
         s.weaponId,
@@ -657,7 +686,8 @@ export const useStore = create<State>((set, get) => ({
       try {
         await window.forge.watchFiles([]);
         await call('project.delete', { path: entry.path });
-        if (profile && s.installed.some((p) => p.id === id)) await call('pack.remove', { profile: profile.path, skinId: id });
+        // An adopted work shares its id with the pack it was made from, which stays installed.
+        if (profile && !entry.adopted && s.installed.some((p) => p.id === id)) await call('pack.remove', { profile: profile.path, skinId: id });
       } finally {
         watchHeld = false;
       }
@@ -858,6 +888,8 @@ export const useStore = create<State>((set, get) => ({
       if (path) m.textures![channel] = path;
       else delete m.textures![channel];
       if (channel === 'emissive' && path) m.params!.emissiveEnabled ??= true;
+      // A picture put on a sight's reticle layer the game leaves off shows it.
+      if (RETICLES.includes(channel as ReticleChannel) && path) ((m.params!.reticles ??= {})[channel] ??= {}).visible ??= true;
       const ed = editorOf(d);
       delete ed.pending[pendingKey(material, channel)];
       d.editor = ed as unknown as SkinDocument['editor'];
@@ -879,6 +911,12 @@ export const useStore = create<State>((set, get) => ({
     get().edit((d) => {
       const m = ensureMaterial(d, material);
       Object.assign(m.params!, p);
+    }, coalesceKey);
+  },
+  setReticle(material, part, channel, r, coalesceKey) {
+    get().edit((d) => {
+      const m = ensureMaterial(d, material, part);
+      Object.assign(((m.params!.reticles ??= {})[channel] ??= {}), r);
     }, coalesceKey);
   },
   copyEmissiveToAll(fromMaterial) {

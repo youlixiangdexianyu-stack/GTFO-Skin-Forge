@@ -160,7 +160,7 @@ export function WeaponTitle() {
       <div className="name">{item.name}</div>
       <div className="sub">
         {categoryOf(item)}
-        {lang() === 'zh' && item.nameZh ? ` · ${item.nameZh}` : ''}
+        {lang() === 'zh' && item.nameZh && item.nameZh !== categoryOf(item) ? ` · ${item.nameZh}` : ''}
         {item.calibre ? ` · ${item.calibre}` : ''}
       </div>
     </div>

@@ -4,7 +4,7 @@ import { useHotkeys } from '@mantine/hooks';
 import { IconArrowBackUp, IconArrowForwardUp, IconFileText, IconFolderDown, IconListNumbers, IconListTree, IconStack2 } from '@tabler/icons-react';
 import { useEffect, useRef, useState } from 'react';
 import { Group as PanelGroup, Panel, Separator, useDefaultLayout } from 'react-resizable-panels';
-import { applyToGame, ensurePlugin, importMesh, openProject } from './actions';
+import { applyToGame, editorEdition, ensurePlugin, importMesh, openProject } from './actions';
 import { useGameWarnings } from './gameLog';
 import { useProfile, useProfileSync } from './profile';
 import { baseName, call } from './protocol';
@@ -194,7 +194,8 @@ function useGameRunning() {
     const check = async () => {
       const s = useStore.getState();
       if (!document.hasFocus() || !s.game?.found || s.backendDown) return;
-      const game = await call('game.locate', {}).catch(() => null);
+      // Running from the chosen profile: a game started from another one never shows what is applied here.
+      const game = await call('game.locate', { profile: s.prefs.profilePath }).catch(() => null);
       if (game && game.running !== useStore.getState().game?.running) useStore.setState({ game });
     };
     const id = setInterval(() => void check(), 2000);
@@ -206,13 +207,15 @@ function useGameRunning() {
   }, []);
 }
 
-/** Keeps the chosen profile's plugin current: on start, on a profile change or refresh, and once the game closes. */
+/** Keeps the chosen profile's plugin current: on start, on a profile change or refresh, and once the game closes. Only a
+ * packaged editor (its own plugin/) does this, and only in a profile the user picked; a development editor, and the
+ * editors build scripts start, install only when the user asks (应用, or the profile menu). */
 function useAutoPlugin() {
-  const profile = useStore((s) => s.profiles.find((p) => p.path === s.prefs.profilePath));
+  const profile = useStore((s) => (s.prefs.profileChosen ? s.profiles.find((p) => p.path === s.prefs.profilePath) : undefined));
   const running = useStore((s) => !!s.game?.running);
   const due = !!profile?.hasBepInEx && profile.pluginCurrent === false;
   useEffect(() => {
-    if (due) void ensurePlugin(true);
+    if (due) void editorEdition().then((e) => e !== 'dev' && ensurePlugin(true));
   }, [due, profile?.path, running]);
 }
 

@@ -1,0 +1,12 @@
+ForgeVisual sights (red-dot-1x, holo-1x, scope-2x)
+
+Self-made for GTFO Forge on 2026-11-06 in Blender 5.2: hard-surface modelling from primitives by a script (bevelled parts: rail clamp
+and bolts, risers, turrets and knurled caps, window frames, hoods, eyecup), split materials (anodised metal, steel, polymer,
+rubber, lens coating) and textures baked in Blender from those materials (ambient occlusion and procedural wear and roughness
+noise; no photo, downloaded or generated asset, no reference mesh). Part of GTFO Forge and released under the same terms as
+ForgeVisual. The shapes follow common real-world sight classes (micro tube red dot, holographic hood, compact prism scope) and copy no
+maker's design, name or markings.
+
+Files: <id>.model.json (Forge model package descriptor, in Git); <id>.forgemesh and <id>.t<index>.png (mesh and textures, local media,
+not in Git), made by Tools/Models/glb_to_forge_model.py from the .glb the build script exports (source build_sights3.py and the
+.blend files are local media).

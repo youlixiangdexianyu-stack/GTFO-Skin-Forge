@@ -1,0 +1,173 @@
+{
+ "format": 1,
+ "mesh": {
+  "sha256": "8ebaea82425478337b31d5d7785f7488716c38c1b697f6ab407cfd5bbe4f69ab",
+  "vertices": 7477,
+  "indices": 21198
+ },
+ "submeshes": [
+  {
+   "start": 0,
+   "count": 60,
+   "material": 0
+  },
+  {
+   "start": 60,
+   "count": 120,
+   "material": 0
+  },
+  {
+   "start": 180,
+   "count": 12882,
+   "material": 1
+  },
+  {
+   "start": 13062,
+   "count": 2016,
+   "material": 2
+  },
+  {
+   "start": 15078,
+   "count": 1344,
+   "material": 3
+  },
+  {
+   "start": 16422,
+   "count": 72,
+   "material": 4
+  },
+  {
+   "start": 16494,
+   "count": 3168,
+   "material": 5
+  },
+  {
+   "start": 19662,
+   "count": 1536,
+   "material": 6
+  }
+ ],
+ "materials": [
+  {
+   "name": "Reticle",
+   "baseColor": [
+    1,
+    0.10000000149011612,
+    0.029999999329447746,
+    1
+   ],
+   "texture": -1,
+   "metallic": 0,
+   "roughness": 1,
+   "alpha": "opaque",
+   "cutoff": 0.5,
+   "emissiveColor": [
+    4,
+    0.4,
+    0.12
+   ]
+  },
+  {
+   "name": "Anodized",
+   "baseColor": [
+    1,
+    1,
+    1,
+    1
+   ],
+   "texture": 0,
+   "metallic": 1,
+   "roughness": 1,
+   "alpha": "opaque",
+   "cutoff": 0.5,
+   "metalTexture": 1
+  },
+  {
+   "name": "Steel",
+   "baseColor": [
+    1,
+    1,
+    1,
+    1
+   ],
+   "texture": 0,
+   "metallic": 1,
+   "roughness": 1,
+   "alpha": "opaque",
+   "cutoff": 0.5,
+   "metalTexture": 1
+  },
+  {
+   "name": "Interior",
+   "baseColor": [
+    1,
+    1,
+    1,
+    1
+   ],
+   "texture": 0,
+   "metallic": 1,
+   "roughness": 1,
+   "alpha": "opaque",
+   "cutoff": 0.5,
+   "metalTexture": 1
+  },
+  {
+   "name": "Marking",
+   "baseColor": [
+    1,
+    1,
+    1,
+    1
+   ],
+   "texture": 0,
+   "metallic": 1,
+   "roughness": 1,
+   "alpha": "opaque",
+   "cutoff": 0.5,
+   "metalTexture": 1
+  },
+  {
+   "name": "Rubber",
+   "baseColor": [
+    1,
+    1,
+    1,
+    1
+   ],
+   "texture": 0,
+   "metallic": 1,
+   "roughness": 1,
+   "alpha": "opaque",
+   "cutoff": 0.5,
+   "metalTexture": 1
+  },
+  {
+   "name": "Coating",
+   "baseColor": [
+    1,
+    1,
+    1,
+    1
+   ],
+   "texture": 0,
+   "metallic": 1,
+   "roughness": 1,
+   "alpha": "opaque",
+   "cutoff": 0.5,
+   "metalTexture": 1
+  }
+ ],
+ "textures": [
+  {
+   "sha256": "fd1c29a8d644a67423cd05d15062b36f4a462c55586ca951b803e6cdd8b7e6aa",
+   "width": 512,
+   "height": 512
+  },
+  {
+   "sha256": "c385d734c7f7e52a440cc2706bfecf34c5cd2055acbd3b9ba46db2dff69c1670",
+   "width": 512,
+   "height": 512
+  }
+ ]
+}

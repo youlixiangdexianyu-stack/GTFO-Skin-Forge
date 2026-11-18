@@ -1,17 +1,12 @@
-*.user
-*.suo
-.vs/
-BepInEx/
-*.zip
-*.7z
+# Unity
+Library/
+Temp/
+Logs/
+UserSettings/
+# .NET
+bin/
+obj/
+*.csproj.user
 
-src/**/bin/
-src/**/obj/
-tests/**/bin/
-tests/**/obj/
-editor/node_modules/
-editor/out/
-editor/.vite/
-editor/artifacts/
-GTFO_UserData/
 artifacts/
+node_modules/

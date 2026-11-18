@@ -1,0 +1,103 @@
+{
+  "format": "forge-fx-programs",
+  "version": "1.0.0",
+  "limits": { "params": 8, "colours": 4 },
+  "transform": [
+    { "name": "scale", "label": { "en": "Size", "zh": "大小" }, "unit": "x", "min": 0.1, "max": 8, "step": 0.05, "default": 1 },
+    { "name": "rotation", "label": { "en": "Rotation", "zh": "旋转" }, "unit": "deg", "min": -180, "max": 180, "step": 1, "default": 0 },
+    { "name": "spin", "label": { "en": "Spin", "zh": "转速" }, "unit": "deg/s", "min": -360, "max": 360, "step": 5, "default": 0 },
+    { "name": "intensity", "label": { "en": "Intensity", "zh": "强度" }, "unit": "x", "min": 0, "max": 4, "step": 0.05, "default": 1 }
+  ],
+  "programs": [
+    {
+      "name": "flowLines",
+      "label": { "en": "Flow lines", "zh": "流光" },
+      "colours": [
+        { "name": "line", "label": { "en": "Line", "zh": "光线" }, "default": "#55E0FFFF" },
+        { "name": "base", "label": { "en": "Base", "zh": "底色" }, "default": "#00000000" }
+      ],
+      "params": [
+        { "name": "density", "label": { "en": "Density", "zh": "密度" }, "unit": "per-uv", "min": 1, "max": 64, "step": 1, "default": 12 },
+        { "name": "speed", "label": { "en": "Speed", "zh": "流速" }, "unit": "per-s", "min": -4, "max": 4, "step": 0.05, "default": 0.5 },
+        { "name": "width", "label": { "en": "Width", "zh": "线宽" }, "unit": "fraction", "min": 0.01, "max": 0.5, "step": 0.01, "default": 0.08 },
+        { "name": "angle", "label": { "en": "Angle", "zh": "角度" }, "unit": "deg", "min": -180, "max": 180, "step": 1, "default": 0 },
+        { "name": "glow", "label": { "en": "Glow", "zh": "辉光" }, "unit": "fraction", "min": 0, "max": 1, "step": 0.05, "default": 0.5 }
+      ]
+    },
+    {
+      "name": "scanlines",
+      "label": { "en": "Scanlines", "zh": "扫描线" },
+      "colours": [
+        { "name": "line", "label": { "en": "Line", "zh": "线" }, "default": "#7CFFB2FF" },
+        { "name": "sweep", "label": { "en": "Sweep", "zh": "扫光" }, "default": "#FFFFFFFF" }
+      ],
+      "params": [
+        { "name": "count", "label": { "en": "Lines", "zh": "线数" }, "unit": "per-uv", "min": 4, "max": 512, "step": 1, "default": 120 },
+        { "name": "speed", "label": { "en": "Speed", "zh": "滚动速度" }, "unit": "per-s", "min": -4, "max": 4, "step": 0.05, "default": 0.2 },
+        { "name": "thickness", "label": { "en": "Thickness", "zh": "粗细" }, "unit": "fraction", "min": 0.05, "max": 0.95, "step": 0.01, "default": 0.4 },
+        { "name": "sweepWidth", "label": { "en": "Sweep width", "zh": "扫光宽度" }, "unit": "fraction", "min": 0, "max": 1, "step": 0.01, "default": 0.15 },
+        { "name": "sweepSpeed", "label": { "en": "Sweep speed", "zh": "扫光速度" }, "unit": "per-s", "min": -4, "max": 4, "step": 0.05, "default": 0.5 }
+      ]
+    },
+    {
+      "name": "pulse",
+      "label": { "en": "Pulse", "zh": "脉冲" },
+      "colours": [
+        { "name": "low", "label": { "en": "Low", "zh": "暗" }, "default": "#10202AFF" },
+        { "name": "high", "label": { "en": "High", "zh": "亮" }, "default": "#FF5A3CFF" }
+      ],
+      "params": [
+        { "name": "rate", "label": { "en": "Rate", "zh": "频率" }, "unit": "hz", "min": 0.05, "max": 8, "step": 0.05, "default": 1 },
+        { "name": "sharpness", "label": { "en": "Sharpness", "zh": "锐度" }, "unit": "exponent", "min": 0.1, "max": 16, "step": 0.1, "default": 2 },
+        { "name": "floor", "label": { "en": "Floor", "zh": "最低亮度" }, "unit": "fraction", "min": 0, "max": 1, "step": 0.01, "default": 0.1 },
+        { "name": "rings", "label": { "en": "Rings", "zh": "环数" }, "unit": "count", "min": 0, "max": 32, "step": 1, "default": 0 }
+      ]
+    },
+    {
+      "name": "noise",
+      "label": { "en": "Noise", "zh": "噪声" },
+      "colours": [
+        { "name": "low", "label": { "en": "Low", "zh": "暗部" }, "default": "#000000FF" },
+        { "name": "high", "label": { "en": "High", "zh": "亮部" }, "default": "#B07CFFFF" }
+      ],
+      "params": [
+        { "name": "scale", "label": { "en": "Grain", "zh": "颗粒" }, "unit": "per-uv", "min": 0.5, "max": 64, "step": 0.5, "default": 6 },
+        { "name": "speed", "label": { "en": "Speed", "zh": "流动速度" }, "unit": "per-s", "min": -4, "max": 4, "step": 0.05, "default": 0.3 },
+        { "name": "octaves", "label": { "en": "Detail", "zh": "细节层数" }, "unit": "count", "min": 1, "max": 5, "step": 1, "default": 3 },
+        { "name": "contrast", "label": { "en": "Contrast", "zh": "对比度" }, "unit": "exponent", "min": 0.1, "max": 8, "step": 0.1, "default": 1.5 },
+        { "name": "space", "label": { "en": "Object space", "zh": "按物体空间" }, "unit": "switch", "min": 0, "max": 1, "step": 1, "default": 1 }
+      ]
+    },
+    {
+      "name": "fresnel",
+      "label": { "en": "Rim light", "zh": "边缘光" },
+      "colours": [
+        { "name": "rim", "label": { "en": "Rim", "zh": "边缘" }, "default": "#4FC3FFFF" },
+        { "name": "core", "label": { "en": "Core", "zh": "中心" }, "default": "#00000000" }
+      ],
+      "params": [
+        { "name": "power", "label": { "en": "Falloff", "zh": "收边" }, "unit": "exponent", "min": 0.1, "max": 16, "step": 0.1, "default": 3 },
+        { "name": "bias", "label": { "en": "Base", "zh": "基底" }, "unit": "fraction", "min": 0, "max": 1, "step": 0.01, "default": 0 },
+        { "name": "flicker", "label": { "en": "Flicker", "zh": "闪烁" }, "unit": "fraction", "min": 0, "max": 1, "step": 0.01, "default": 0 },
+        { "name": "flickerRate", "label": { "en": "Flicker rate", "zh": "闪烁频率" }, "unit": "hz", "min": 0, "max": 30, "step": 0.5, "default": 8 }
+      ]
+    },
+    {
+      "name": "polar",
+      "label": { "en": "Polar pattern", "zh": "极坐标花纹" },
+      "colours": [
+        { "name": "petal", "label": { "en": "Petals", "zh": "花瓣" }, "default": "#FFD25AFF" },
+        { "name": "ring", "label": { "en": "Rings", "zh": "圆环" }, "default": "#FF7A2FFF" },
+        { "name": "base", "label": { "en": "Base", "zh": "底色" }, "default": "#00000000" }
+      ],
+      "params": [
+        { "name": "petals", "label": { "en": "Petals", "zh": "花瓣数" }, "unit": "count", "min": 1, "max": 32, "step": 1, "default": 6 },
+        { "name": "rings", "label": { "en": "Rings", "zh": "环数" }, "unit": "count", "min": 0, "max": 32, "step": 1, "default": 4 },
+        { "name": "twist", "label": { "en": "Twist", "zh": "扭转" }, "unit": "turns", "min": -8, "max": 8, "step": 0.1, "default": 0 },
+        { "name": "sharpness", "label": { "en": "Sharpness", "zh": "锐度" }, "unit": "exponent", "min": 0.1, "max": 16, "step": 0.1, "default": 2 },
+        { "name": "radius", "label": { "en": "Radius", "zh": "半径" }, "unit": "fraction", "min": 0.05, "max": 1, "step": 0.01, "default": 0.5 },
+        { "name": "drift", "label": { "en": "Ring drift", "zh": "环流速" }, "unit": "per-s", "min": -4, "max": 4, "step": 0.05, "default": 0.25 }
+      ]
+    }
+  ]
+}

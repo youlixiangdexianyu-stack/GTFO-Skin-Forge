@@ -1,0 +1,111 @@
+using System.IO.Compression;
+using System.Text.Json;
+using System.Text.RegularExpressions;
+using SkiaSharp;
+using ForgeSkin.Format;
+
+namespace ForgeSkin.Backend;
+
+// A Thunderstore skin mod: the built packs plus the `forgeskin.forge` marker the plugin looks for in each mod folder, and
+// the files Thunderstore itself requires (manifest.json, icon.png 256x256, README.md). r2modman unpacks it into
+// BepInEx/plugins/<Team>-<Name>/, where the plugin finds the marker and the packs beside it. The mod depends on the base library.
+// In the Skins format (SkinsFormat) the packs are skin groups under Assets/Skins/, which the mod manager unpacks into
+// BepInEx/Assets/Skins/ where the Skins library looks; the mod depends on that library instead. A gun pack is one group
+// for all the packs (one skin per gear); otherwise each pack is its own group, so a gear may get several to pick from.
+public static class ModExport
+{
+    // Thunderstore ids of the libraries the skin mods depend on; the base library is this release of the ForgeSkin plugin.
+    const string BaseVersion = "1.0.2"; // package-version: NAinfini-ForgeSkin
+    const string BaseLibrary = "NAinfini-ForgeSkin-" + BaseVersion, SkinsLibrary = "food-Skins-0.12.0";
+
+    public static object Export(string[] packs, string output, string name, string version, string description, string icon,
+        string format, bool gunPack, Func<List<CatalogItem>> catalog, Func<CatalogItem, Dictionary<string, GameMaterial>> materials)
+    {
+        if (!Regex.IsMatch(name, "^[A-Za-z0-9_]+$")) throw new BackendException("bad-request", "Mod name: letters, digits and _ only");
+        if (!Regex.IsMatch(version, @"^\d+\.\d+\.\d+$")) throw new BackendException("bad-request", "Version must look like 1.0.0");
+        if (description.Length > 250) throw new BackendException("bad-request", "Description: at most 250 characters");
+        if (packs.Length == 0) throw new BackendException("bad-request", "No skin packs to export");
+        var docs = packs.Select(p => { using var pack = SkinPack.Open(p); return pack.Manifest; }).ToList();
+        bool skins = format == "skins";
+        var dropped = new List<SkinsNote>();
+
+        using var temp = new AtomicFile(output);
+        using (var zip = ZipFile.Open(temp.Temp, ZipArchiveMode.Create))
+        {
+            Text(zip, "manifest.json", JsonSerializer.Serialize(new
+            {
+                name,
+                version_number = version,
+                website_url = "",
+                description,
+                dependencies = new[] { skins ? SkinsLibrary : BaseLibrary },
+            }, new JsonSerializerOptions { WriteIndented = true }));
+            using (var s = zip.CreateEntry("icon.png").Open()) Icon(icon, s);
+            if (skins)
+            {
+                var items = catalog();
+                bool any = gunPack
+                    ? SkinsFormat.Write(zip, $"Assets/Skins/{name}", name.Replace('_', ' '), description, "forgeskin." + name, packs, items, materials, dropped)
+                    : packs.Select((pack, i) => SkinsFormat.Write(zip, $"Assets/Skins/{Preview.Safe(docs[i].Id)}", docs[i].Name, description, "forgeskin." + docs[i].Id, [pack], items, materials, dropped)).ToList().Contains(true);
+                if (!any) throw new BackendException("bad-request", "None of these skins can go in a Skins mod (Skins skins guns, melee weapons and tools)");
+            }
+            else
+            {
+                // Beside the marker: a mod manager flattens every folder that is not one of its routes into the mod folder.
+                var files = packs.Select(p => Path.GetFileName(p)).ToList();
+                Text(zip, SkinFolders.ModMarker, "# ForgeSkin skin packs in this mod, one per line\n" + string.Join("\n", files) + "\n");
+                for (int i = 0; i < packs.Length; i++) zip.CreateEntryFromFile(packs[i], files[i], CompressionLevel.NoCompression);
+            }
+            // The credits character models' licences ask for (each pack's CREDITS.txt).
+            var credits = packs.Select(p =>
+            {
+                using var pack = ZipFile.OpenRead(p);
+                if (pack.GetEntry(PackBuilder.CreditsName) is not { } entry) return null;
+                using var r = new StreamReader(entry.Open());
+                return r.ReadToEnd().Trim();
+            }).Where(c => !string.IsNullOrEmpty(c)).Distinct().ToList();
+            Text(zip, "README.md", $"# {name.Replace('_', ' ')}\n\n{(string.IsNullOrWhiteSpace(description) ? "" : description.Trim() + "\n\n")}Skins for GTFO, applied by {(skins ? "the Skins library" : "ForgeSkin")} (installed automatically as a dependency).\n\n"
+                + string.Join("\n", docs.Select(d => $"- {d.Name}")) + "\n"
+                + (credits.Count > 0 ? "\n## Credits\n\n" + string.Join("\n", credits.Select(c => $"- {c}")) + "\n" : ""));
+        }
+        temp.Commit();
+        return new { mod = output, dropped };
+    }
+
+    static void Text(ZipArchive zip, string entry, string text)
+    {
+        using var w = new StreamWriter(zip.CreateEntry(entry).Open());
+        w.Write(text);
+    }
+
+    // Thunderstore wants a 256x256 PNG. The whole picture fits inside the square on a mid grey (game guns are dark), so a long gun
+    // keeps its muzzle and stock; a picture with a transparent margin (the gear pictures the editor draws) is cut to what it shows first.
+    static void Icon(string path, Stream output)
+    {
+        using var source = SKBitmap.Decode(path) ?? throw new BackendException("bad-request", $"Icon {path} is not an image");
+        var shown = Shown(source);
+        const float size = 256, margin = 12;
+        float scale = (size - 2 * margin) / Math.Max(shown.Width, shown.Height);
+        float w = shown.Width * scale, h = shown.Height * scale;
+        using var surface = SKSurface.Create(new SKImageInfo(256, 256));
+        surface.Canvas.Clear(new SKColor(0x4a, 0x50, 0x58));
+        using var paint = new SKPaint { FilterQuality = SKFilterQuality.High };
+        surface.Canvas.DrawBitmap(source, shown, new SKRect((size - w) / 2, (size - h) / 2, (size + w) / 2, (size + h) / 2), paint);
+        using var image = surface.Snapshot();
+        image.Encode(SKEncodedImageFormat.Png, 100).SaveTo(output);
+    }
+
+    // The part of a picture that is not see-through (alpha above 8), or the whole picture when nothing is.
+    static SKRectI Shown(SKBitmap b)
+    {
+        int left = b.Width, top = b.Height, right = -1, bottom = -1;
+        for (int y = 0; y < b.Height; y++)
+            for (int x = 0; x < b.Width; x++)
+                if (b.GetPixel(x, y).Alpha > 8)
+                {
+                    left = Math.Min(left, x); right = Math.Max(right, x);
+                    top = Math.Min(top, y); bottom = Math.Max(bottom, y);
+                }
+        return right < 0 ? new SKRectI(0, 0, b.Width, b.Height) : new SKRectI(left, top, right + 1, bottom + 1);
+    }
+}

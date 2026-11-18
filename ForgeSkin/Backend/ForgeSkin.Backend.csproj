@@ -1,0 +1,70 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <InvariantGlobalization>true</InvariantGlobalization>
+    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+    <!-- The editor ships a self-contained single-file publish. The single-file analyzer would add the ILLink package of the
+         installed SDK to the publish restore, which packages.lock.json cannot pin across SDK patches; it only flags
+         Assembly.Location, which the backend does not use (AppContext.BaseDirectory). -->
+    <EnableSingleFileAnalyzer>false</EnableSingleFileAnalyzer>
+    <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Unity class database for stripped type trees: UABEA's ReleaseFiles/classdata.tpk (MIT, commit 5adb448); AssetsTools.NET reads it. -->
+    <EmbeddedResource Include="classdata.tpk" LogicalName="classdata.tpk" />
+    <!-- Weapon names, Chinese names, official order and calibre labels; geometry always comes from the game. -->
+    <EmbeddedResource Include="naming.json" LogicalName="naming.json" />
+    <!-- The finger poses of the game's grip animations, measured in game (ForgeDevelopment tools/capture_finger_poses.py). -->
+    <EmbeddedResource Include="hand-shapes.json" LogicalName="hand-shapes.json" />
+    <!-- The game's own textures (content keys) per game revision, written by tools/build-editor-release.ps1: textures not on
+         it mean another mod rewrote the game files (GameAssets.IsVanilla). -->
+    <EmbeddedResource Include="vanilla-textures.json" LogicalName="vanilla-textures.json" />
+    <!-- Enemy names (enemy.* keys) for the kill-sound enemy picker, from ForgeCore's language files. -->
+    <EmbeddedResource Include="..\..\ForgeCore\lang\en.forge" LogicalName="lang.en.forge" />
+    <EmbeddedResource Include="..\..\ForgeCore\lang\zh.forge" LogicalName="lang.zh.forge" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- The skin format library, shared source with the game plugin. -->
+    <Compile Include="..\Core\*.cs" />
+    <!-- ForgeCore's one relative-path rule, which pack entry names pass. -->
+    <Compile Include="..\..\ForgeCore\Once\PosixPath.cs" Link="ForgeCore\PosixPath.cs" />
+    <!-- ForgeCore's one FNV-1a hash: the skin numbers and content hashes of a teammate's look (Core/Look.cs). -->
+    <Compile Include="..\..\ForgeCore\Once\Fnv.cs" Link="ForgeCore\Fnv.cs" />
+    <!-- ForgeCore's pure enemy name table (data block name to name key). -->
+    <Compile Include="..\..\ForgeCore\Once\EnemyNames.cs" Link="ForgeCore\EnemyNames.cs" />
+    <!-- Code effects are checked against ForgeCore's drawing-program catalogue: its reader and the catalogue itself, the same files
+         ForgeCore.dll is built from (the plugin uses that DLL's). -->
+    <Compile Include="..\..\ForgeCore\Visual\Core\ProceduralCatalog.cs" Link="ForgeCore\ProceduralCatalog.cs" />
+    <!-- ForgeCore's one sRGB/linear conversion and glow value (pure), the plugin's through ForgeCore.dll. -->
+    <Compile Include="..\..\ForgeCore\Visual\Core\ColourSpace.cs" Link="ForgeCore\ColourSpace.cs" />
+    <!-- ForgeCore's one chain physics (charm ropes, spring bones), pure; the plugin's through ForgeCore.dll. -->
+    <Compile Include="..\..\ForgeCore\Visual\Core\ChainPhysics.cs" Link="ForgeCore\ChainPhysics.cs" />
+    <!-- Character skins (Core/Character.cs): ForgeCore's canonical humanoid, its rest-pose check and the imported-model descriptor with its
+         one file check (and the PNG header reader it uses), pure; the plugin's through ForgeCore.dll. -->
+    <Compile Include="..\..\ForgeCore\Visual\Core\JointClip.cs;..\..\ForgeCore\Visual\Core\JointClipGlb.cs;..\..\ForgeCore\Visual\Core\RigMap.cs;..\..\ForgeCore\Visual\Core\JointRetarget.cs;..\..\ForgeCore\Visual\Core\BodyRig.cs;..\..\ForgeCore\Visual\Core\ImportedModelFormat.cs;..\..\ForgeCore\Once\Png.cs" Link="ForgeCore\%(Filename)%(Extension)" />
+    <EmbeddedResource Include="..\..\ForgeCore\Visual\Data\fx-programs.json" LogicalName="ForgeVisual.Data.fx-programs.json" />
+    <!-- Pack sounds pass the same Ogg Vorbis check the game's audio kit applies when it loads them. -->
+    <Compile Include="..\..\ForgeCore\Audio\Core\AssetValidation.cs;..\..\ForgeCore\Audio\Core\Results.cs" Link="ForgeCore\%(Filename)%(Extension)" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Reads Unity serialized files (the game's assets); mature MIT library used by UABEA. -->
+    <PackageReference Include="AssetsTools.NET" Version="3.0.5" />
+    <!-- Decodes Unity texture formats (DXT/BC/ETC) to RGBA; companion package of AssetsTools.NET. -->
+    <PackageReference Include="AssetsTools.NET.Texture" Version="3.0.2" />
+    <!-- Encodes replacement textures to the game's block formats (BC1/BC3/BC4/BC5/BC7) and raw RGBA with mipmaps for assets.apply/export; managed, no native code (MIT, maintained). -->
+    <PackageReference Include="BCnEncoder.Net" Version="2.3.0" />
+    <!-- Triangulates the screen glyph outlines (with holes) at pack time: the classic GLU tessellator port (MIT, widely used). -->
+    <PackageReference Include="LibTessDotNet" Version="1.1.15" />
+    <!-- PNG/JPEG decode and encode, high-quality resizing, rotation and compositing for packs and previews (Microsoft-maintained, MIT). -->
+    <PackageReference Include="SkiaSharp" Version="2.88.9" />
+    <PackageReference Include="SkiaSharp.NativeAssets.Win32" Version="2.88.9" />
+  </ItemGroup>
+
+</Project>

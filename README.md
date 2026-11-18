@@ -1,40 +1,22 @@
-# ForgeSkin
+# GTFO Forge Mods: ForgeSkin
 
-Weapon skins for GTFO: a desktop editor to make skins, and a BepInEx plugin that puts them on your own gear in game.
+Source code of NAinfini's ForgeSkin (BepInEx 6 IL2CPP plugin and desktop skin editor) and of ForgeCore, the shared library it builds against. This repository uses the same folder layout as [NAinfini/GTFO-Forge-Mods](https://github.com/NAinfini/GTFO-Forge-Mods).
 
-Players only need the plugin and a skin mod (a mod manager installs the plugin and its dependency ForgeCore for you).
-Skin authors use the editor to build textures, painted finishes, mounted models, live screens, animated layers and sounds,
-test them in game, and export a skin mod for Thunderstore.
-
-## Two places, one source
-
-This repository and the `ForgeSkin/` folder of [NAinfini/GTFO-Forge-Mods](https://github.com/NAinfini/GTFO-Forge-Mods) hold the
-same source and are updated together; releases and the editor's updates come from the GTFO-Forge-Mods releases.
-Pull requests and issues are welcome here: changes made here are carried into the other place, and the other way round.
+| Package | What it is | Thunderstore |
+|---|---|---|
+| [ForgeCore](ForgeCore/README.md) | The one shared library: asset bundles, logging, settings, pools, networking, input leases and local saves, plus its interface (lobby buttons, pickers, menu pages, HUD), audio (Ogg Vorbis cues, positioned playback) and world-visuals (effects, markers, model loading) parts. | [NAinfini/ForgeCore](https://thunderstore.io/c/gtfo/p/NAinfini/ForgeCore/) |
+| [ForgeSkin](ForgeSkin/README.md) | Applies ForgeSkin packs (textures, attachments, live ammo screens, animated layers) to your own weapons; includes the desktop skin editor. | [NAinfini/ForgeSkin](https://thunderstore.io/c/gtfo/p/NAinfini/ForgeSkin/) |
 
 ## Layout
 
-```
-ForgeSkin.sln
-editor/                       the editor (Electron, React, TypeScript, three.js)
-src/ForgeSkin.Format/         the skin pack format, compiled into both the plugin and the backend
-src/ForgeSkin.Backend/        the editor's backend (.NET 10): reads game assets, builds packs, installs
-src/ForgeSkin.Plugin/         the game plugin (net6.0, BepInEx 6 IL2CPP); thunderstore/ holds its package files
-tests/ForgeSkin.Tests/        tests
-tools/stage-plugin.ps1        builds the plugin and stages it where the editor installs it from
-```
+- One folder per package: the plugin source, tests, build tools, README, CHANGELOG and, in each folder's DEVELOPERS.md, how to build against and extend it. Sibling packages reference each other as ../<Package>, so keep the folders side by side.
+- Build/ and Directory.Build.props: the shared MSBuild settings (GTFO-API and BepInEx references, warnings as errors) and the release-check scripts.
+- Testing/: a test double used by the ForgeCore tests.
+- Tools/Vfx/ForgeVfx/: the Unity 2019.4.21f1 project that generates Forge Visual's own effect textures, materials and prefabs from code.
+- Large binary assets (model and audio bundles, Unity sources) are not stored here; the Thunderstore packages contain the finished files.
 
-## Build
+- Web/: the site code the skin editor imports (exactly the files it reaches), at the same relative paths as in the main repository.
+- ForgeCore's sight meshes are local media and are not in the repository: build with `-p:ForgeModsRoot=<a Mods folder that holds the media, trailing slash>`.
 
-You need Windows, the .NET 10 SDK, Node.js with pnpm, GTFO, and a mod manager profile that has BepInExPack_GTFO and
-NAinfini-ForgeCore installed (the plugin builds against that profile's game assemblies and `ForgeCore.dll`).
+Each package's licence is in its own folder.
 
-```powershell
-dotnet build ForgeSkin.sln -c Release -p:GTFOBepInExPath="<profile>\BepInEx"
-cd editor; pnpm install; pnpm start
-pwsh tools/stage-plugin.ps1 -BepInEx "<profile>\BepInEx"
-dotnet test tests/ForgeSkin.Tests
-```
-
-`pnpm start` runs the editor from source. Run `tools/stage-plugin.ps1` once first so "Apply to game" has a plugin to install.
-Installers are built and published from the GTFO-Forge-Mods release process, not from here.

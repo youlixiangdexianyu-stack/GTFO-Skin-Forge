@@ -1,0 +1,173 @@
+{
+ "format": 1,
+ "mesh": {
+  "sha256": "d2bb6fcb044f9a23ac541ceb7bd4152b97b2fcf8ab6538a4caf364d317382365",
+  "vertices": 5099,
+  "indices": 14370
+ },
+ "submeshes": [
+  {
+   "start": 0,
+   "count": 8370,
+   "material": 0
+  },
+  {
+   "start": 8370,
+   "count": 2652,
+   "material": 1
+  },
+  {
+   "start": 11022,
+   "count": 360,
+   "material": 2
+  },
+  {
+   "start": 11382,
+   "count": 192,
+   "material": 3
+  },
+  {
+   "start": 11574,
+   "count": 1692,
+   "material": 4
+  },
+  {
+   "start": 13266,
+   "count": 192,
+   "material": 5
+  },
+  {
+   "start": 13458,
+   "count": 144,
+   "material": 6
+  },
+  {
+   "start": 13602,
+   "count": 768,
+   "material": 6
+  }
+ ],
+ "materials": [
+  {
+   "name": "Anodized",
+   "baseColor": [
+    1,
+    1,
+    1,
+    1
+   ],
+   "texture": 0,
+   "metallic": 1,
+   "roughness": 1,
+   "alpha": "opaque",
+   "cutoff": 0.5,
+   "metalTexture": 1
+  },
+  {
+   "name": "Steel",
+   "baseColor": [
+    1,
+    1,
+    1,
+    1
+   ],
+   "texture": 0,
+   "metallic": 1,
+   "roughness": 1,
+   "alpha": "opaque",
+   "cutoff": 0.5,
+   "metalTexture": 1
+  },
+  {
+   "name": "Interior",
+   "baseColor": [
+    1,
+    1,
+    1,
+    1
+   ],
+   "texture": 0,
+   "metallic": 1,
+   "roughness": 1,
+   "alpha": "opaque",
+   "cutoff": 0.5,
+   "metalTexture": 1
+  },
+  {
+   "name": "Coating",
+   "baseColor": [
+    1,
+    1,
+    1,
+    1
+   ],
+   "texture": 0,
+   "metallic": 1,
+   "roughness": 1,
+   "alpha": "opaque",
+   "cutoff": 0.5,
+   "metalTexture": 1
+  },
+  {
+   "name": "Rubber",
+   "baseColor": [
+    1,
+    1,
+    1,
+    1
+   ],
+   "texture": 0,
+   "metallic": 1,
+   "roughness": 1,
+   "alpha": "opaque",
+   "cutoff": 0.5,
+   "metalTexture": 1
+  },
+  {
+   "name": "Marking",
+   "baseColor": [
+    1,
+    1,
+    1,
+    1
+   ],
+   "texture": 0,
+   "metallic": 1,
+   "roughness": 1,
+   "alpha": "opaque",
+   "cutoff": 0.5,
+   "metalTexture": 1
+  },
+  {
+   "name": "Reticle",
+   "baseColor": [
+    1,
+    0.05999999865889549,
+    0.029999999329447746,
+    1
+   ],
+   "texture": -1,
+   "metallic": 0,
+   "roughness": 1,
+   "alpha": "opaque",
+   "cutoff": 0.5,
+   "emissiveColor": [
+    4,
+    0.24,
+    0.12
+   ]
+  }
+ ],
+ "textures": [
+  {
+   "sha256": "132b6b9eef95d3310ca857e0d10497c1c77fe8825e0ffa8b017adb34177b652b",
+   "width": 512,
+   "height": 512
+  },
+  {
+   "sha256": "bc27d8de46b1e7e7eec30b5fb89fdae5c85c4b608fd359b6e951f4f169e33f6a",
+   "width": 512,
+   "height": 512
+  }
+ ]
+}

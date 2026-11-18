@@ -1,0 +1,23 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net6.0</TargetFramework>
+    <LangVersion>latest</LangVersion>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AssemblyName>ForgeEngine.Testing</AssemblyName>
+    <Version>1.0.0</Version>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+  <ItemGroup>
+    <!-- SourceDoubles and SourceTools hold game and host stand-ins and shared test helpers that each test assembly compiles from source against its own
+         production sources; they are never part of this assembly. TestIssuer.cs is linked into each test project that needs it. -->
+    <Compile Remove="SourceDoubles/**;SourceTools/**;TestIssuer.cs" />
+    <Compile Include="../ForgeEngine/GameBindings/RundownPlanAdmission.cs" Link="RundownPlanAdmission.cs" />
+    <ProjectReference Include="../ForgeEngine/Framework/ForgeEngine.Framework.csproj" Condition="'$(ForgeFrameworkAssembly)' == ''" />
+    <Reference Include="ForgeEngine.Framework" HintPath="$(ForgeFrameworkAssembly)" Condition="'$(ForgeFrameworkAssembly)' != ''" />
+  </ItemGroup>
+  <ItemGroup>
+    <!-- The one hash and the one deterministic random come from ForgeCore's game-independent assembly. -->
+    <ProjectReference Include="../ForgeCore/Once/ForgeCore.Once.csproj" />
+  </ItemGroup>
+</Project>

@@ -1,0 +1,456 @@
+{
+ "format": "forge-gun-hold-cases",
+ "schemaVersion": "1.0.0",
+ "about": "The gun-holding rule (gun-hold.json) on fixed inputs. Every implementation must give these answers within 0.1 mm (positions) and 0.001 (scale, quaternion components). Points are in the replaced gun's frame (x right, y up, z forward, metres); model points with the model turned to face +Z at its own size; quaternions are [x, y, z, w]; the game hands' rotations are the vanilla nodes read in game (G0). A case with a preset takes its game-gun points from that preset (gun-hold.json presets); rightAdjust/leftAdjust are a grip table's adjust.",
+ "presetIndex": [
+  {"leftAnim": "Front_Precision_3_Player_Idle", "preset": "precision-3"},
+  {"leftAnim": "Front_Rifle_1", "preset": "rifle"},
+  {"leftAnim": "no-such-animation", "preset": null}
+ ],
+ "cases": [
+  {
+   "name": "EnergyLab beam on its donor (sight decides the height)",
+   "nativeRight": [
+    0.047,
+    -0.0635,
+    -0.2235
+   ],
+   "nativeRightRotation": [
+    -0.4976,
+    0.4713,
+    0.5531,
+    0.4737
+   ],
+   "nativeLeft": [
+    -0.0693,
+    -0.0734,
+    0.1238
+   ],
+   "nativeLeftRotation": [
+    -0.5223,
+    0.5038,
+    0.5844,
+    0.3631
+   ],
+   "nativeMuzzle": [
+    0.0,
+    0.0,
+    0.42
+   ],
+   "nativeSight": [
+    0.0,
+    0.1141,
+    0.1
+   ],
+   "modelRight": {
+    "position": [
+     0.0,
+     0.0,
+     0.0
+    ]
+   },
+   "modelLeft": {
+    "position": [
+     0.0,
+     -0.00883,
+     0.36202
+    ]
+   },
+   "modelMuzzle": [
+    0.0,
+    0.11574,
+    0.57985
+   ],
+   "modelSight": [
+    0.0,
+    0.21371,
+    0.12307
+   ],
+   "modelLength": 0.8415,
+   "expected": {
+    "scale": 0.85,
+    "origin": [
+     0.0,
+     -0.067554,
+     -0.2235
+    ],
+    "right": [
+     0.014013,
+     -0.066822,
+     -0.285737
+    ],
+    "left": [
+     -0.028357,
+     -0.083648,
+     0.028277
+    ],
+    "shownLength": 0.715275,
+    "rightRotation": [
+     -0.4975899,
+     0.4712904,
+     0.5530887,
+     0.4736903
+    ],
+    "leftRotation": [
+     -0.5223061,
+     0.5038059,
+     0.5844068,
+     0.3631042
+    ]
+   }
+  },
+  {
+   "name": "Arsenal heavy machine gun, export facing -Z (turned), longer than the EnergyLab guns: kept at 0.85, its left palm on its fore grip point however far forward",
+   "nativeRight": [
+    0.047,
+    -0.0635,
+    -0.2235
+   ],
+   "nativeRightRotation": [
+    -0.4976,
+    0.4713,
+    0.5531,
+    0.4737
+   ],
+   "nativeLeft": [
+    -0.0875,
+    -0.0926,
+    0.1629
+   ],
+   "nativeLeftRotation": [
+    -0.4209,
+    0.4132,
+    0.7465,
+    0.308
+   ],
+   "nativeMuzzle": [
+    -0.0001,
+    0.017,
+    0.4921
+   ],
+   "nativeSight": [
+    0.0,
+    0.1145,
+    0.1
+   ],
+   "modelRight": {
+    "position": [
+     -0.0,
+     -0.035,
+     -0.02
+    ]
+   },
+   "modelLeft": {
+    "position": [
+     -0.0,
+     0.03,
+     0.272
+    ]
+   },
+   "modelMuzzle": [
+    -0.0,
+    0.03826,
+    0.667
+   ],
+   "modelSight": [
+    -0.00011,
+    0.08688,
+    0.2089
+   ],
+   "modelLength": 1.02,
+   "expected": {
+    "scale": 0.85,
+    "origin": [
+     -0.0001,
+     0.040652,
+     -0.2065
+    ],
+    "right": [
+     0.013913,
+     0.011634,
+     -0.285737
+    ],
+    "left": [
+     -0.042358,
+     0.066312,
+     -0.022432
+    ],
+    "shownLength": 0.867,
+    "rightRotation": [
+     -0.4975899,
+     0.4712904,
+     0.5530887,
+     0.4736903
+    ],
+    "leftRotation": [
+     -0.4208964,
+     0.4131964,
+     0.7464935,
+     0.3079973
+    ]
+   }
+  },
+  {
+   "name": "A short gun with no muzzle or sight: kept at 0.85, the right wrist on the game's",
+   "nativeRight": [
+    0.0537,
+    -0.0854,
+    -0.2023
+   ],
+   "nativeRightRotation": [
+    -0.5312,
+    0.5154,
+    0.3919,
+    0.5465
+   ],
+   "nativeLeft": [
+    -0.0787,
+    -0.0761,
+    0.0558
+   ],
+   "nativeLeftRotation": [
+    -0.4892,
+    0.5511,
+    0.5218,
+    0.4297
+   ],
+   "nativeMuzzle": null,
+   "nativeSight": null,
+   "modelRight": {
+    "position": [
+     0.0,
+     0.0,
+     0.0
+    ]
+   },
+   "modelLeft": {
+    "position": [
+     0.0,
+     -0.02,
+     0.2
+    ]
+   },
+   "modelMuzzle": null,
+   "modelSight": null,
+   "modelLength": 0.5,
+   "expected": {
+    "scale": 0.85,
+    "origin": [
+     0.027768,
+     -0.071464,
+     -0.2023
+    ],
+    "right": [
+     0.0537,
+     -0.0854,
+     -0.258901
+    ],
+    "left": [
+     0.001462,
+     -0.092799,
+     -0.089714
+    ],
+    "shownLength": 0.425,
+    "rightRotation": [
+     -0.5311845,
+     0.5153849,
+     0.3918885,
+     0.546484
+    ],
+    "leftRotation": [
+     -0.4892134,
+     0.5511151,
+     0.5218143,
+     0.4297118
+    ]
+   }
+  },
+  {
+   "name": "Grip points with their own rotation are wrist poses: no wrist offset, their rotation kept",
+   "nativeRight": [
+    0.047,
+    -0.0635,
+    -0.2235
+   ],
+   "nativeRightRotation": [
+    -0.4976,
+    0.4713,
+    0.5531,
+    0.4737
+   ],
+   "nativeLeft": [
+    -0.0875,
+    -0.0926,
+    0.1629
+   ],
+   "nativeLeftRotation": [
+    -0.4209,
+    0.4132,
+    0.7465,
+    0.308
+   ],
+   "nativeMuzzle": [
+    0.0,
+    0.017,
+    0.49
+   ],
+   "nativeSight": null,
+   "modelRight": {
+    "position": [
+     0.05,
+     -0.02,
+     0.0
+    ],
+    "rotation": [
+     0.0,
+     0.0,
+     0.7071068,
+     0.7071068
+    ]
+   },
+   "modelLeft": {
+    "position": [
+     -0.06,
+     -0.08,
+     0.3
+    ],
+    "rotation": [
+     0.7071068,
+     0.0,
+     0.0,
+     0.7071068
+    ]
+   },
+   "modelMuzzle": [
+    0.0,
+    0.1,
+    0.5
+   ],
+   "modelSight": [
+    0.0,
+    0.2,
+    0.1
+   ],
+   "modelLength": 0.7,
+   "expected": {
+    "scale": 0.85,
+    "origin": [
+     0.0,
+     -0.068,
+     -0.2235
+    ],
+    "right": [
+     0.0425,
+     -0.085,
+     -0.2235
+    ],
+    "left": [
+     -0.051,
+     -0.136,
+     0.0315
+    ],
+    "shownLength": 0.595,
+    "rightRotation": [
+     0.0,
+     0.0,
+     0.7071068,
+     0.7071068
+    ],
+    "leftRotation": [
+     0.7071068,
+     0.0,
+     0.0,
+     0.7071068
+    ]
+   }
+  },
+  {
+   "name": "The heavy machine gun on the machinegun-2 preset (no game gun: the preset's hand nodes, muzzle and sight), the right touch point 1 cm toward the thumb, the left 2 cm toward the little finger and turned 20 degrees about the bore",
+   "preset": "machinegun-2",
+   "modelRight": {"position": [0.0, -0.035, -0.02]},
+   "modelLeft": {"position": [0.0, 0.03, 0.272]},
+   "modelMuzzle": [0.0, 0.03826, 0.667],
+   "modelSight": [-0.00011, 0.08688, 0.2089],
+   "modelLength": 1.02,
+   "rightAdjust": {"offset": [0.0, 0.0, 0.01], "angle": 0.0},
+   "leftAdjust": {"offset": [0.0, 0.0, -0.02], "angle": 20.0},
+   "expected": {
+    "scale": 0.85,
+    "origin": [-0.0001, 0.040652, -0.2065],
+    "right": [0.014952, 0.001707, -0.286343],
+    "left": [-0.052884, 0.065758, -0.016347],
+    "shownLength": 0.867,
+    "rightRotation": [-0.4975899, 0.4712904, 0.5530887, 0.4736903],
+    "leftRotation": [-0.4862528, 0.3338312, 0.7886358, 0.1736909]
+   }
+  }
+ ],
+ "reach": [
+  {
+   "distance": 0.55,
+   "expected": "ok"
+  },
+  {
+   "distance": 0.6,
+   "expected": "near"
+  },
+  {
+   "distance": 0.64,
+   "expected": "out"
+  }
+ ],
+ "refused": [
+  {
+   "name": "a point that is not a number",
+   "nativeRight": [
+    "NaN",
+    0,
+    0
+   ]
+  },
+  {
+   "name": "a model with no length",
+   "modelLength": 0
+  }
+ ],
+ "length": [
+  {
+   "shownLength": 0.29,
+   "inRange": false
+  },
+  {
+   "shownLength": 0.867,
+   "inRange": true
+  },
+  {
+   "shownLength": 1.25,
+   "inRange": false
+  }
+ ],
+ "sightFov": [
+  { "magnification": 1, "expected": 45 },
+  { "magnification": 2, "expected": 23 }
+ ],
+ "hipFov": [
+  {
+   "game": 32,
+   "expected": 39
+  },
+  {
+   "game": 35,
+   "expected": 40
+  },
+  {
+   "game": 34,
+   "expected": 40
+  },
+  {
+   "game": 33,
+   "expected": 39
+  },
+  {
+   "game": 36,
+   "expected": 41
+  }
+ ]
+}

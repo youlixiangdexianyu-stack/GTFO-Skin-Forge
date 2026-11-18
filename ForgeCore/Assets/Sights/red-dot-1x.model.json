@@ -1,0 +1,148 @@
+{
+ "format": 1,
+ "mesh": {
+  "sha256": "4bf2a682a710325f96801d3d469df6eb7687f5eab79e1a76459568b6e22c86cb",
+  "vertices": 4756,
+  "indices": 13380
+ },
+ "submeshes": [
+  {
+   "start": 0,
+   "count": 144,
+   "material": 0
+  },
+  {
+   "start": 144,
+   "count": 9012,
+   "material": 1
+  },
+  {
+   "start": 9156,
+   "count": 2040,
+   "material": 2
+  },
+  {
+   "start": 11196,
+   "count": 576,
+   "material": 3
+  },
+  {
+   "start": 11772,
+   "count": 72,
+   "material": 4
+  },
+  {
+   "start": 11844,
+   "count": 1536,
+   "material": 5
+  }
+ ],
+ "materials": [
+  {
+   "name": "Reticle",
+   "baseColor": [
+    1,
+    0.05999999865889549,
+    0.029999999329447746,
+    1
+   ],
+   "texture": -1,
+   "metallic": 0,
+   "roughness": 1,
+   "alpha": "opaque",
+   "cutoff": 0.5,
+   "emissiveColor": [
+    4,
+    0.24,
+    0.12
+   ]
+  },
+  {
+   "name": "Anodized",
+   "baseColor": [
+    1,
+    1,
+    1,
+    1
+   ],
+   "texture": 0,
+   "metallic": 1,
+   "roughness": 1,
+   "alpha": "opaque",
+   "cutoff": 0.5,
+   "metalTexture": 1
+  },
+  {
+   "name": "Steel",
+   "baseColor": [
+    1,
+    1,
+    1,
+    1
+   ],
+   "texture": 0,
+   "metallic": 1,
+   "roughness": 1,
+   "alpha": "opaque",
+   "cutoff": 0.5,
+   "metalTexture": 1
+  },
+  {
+   "name": "Interior",
+   "baseColor": [
+    1,
+    1,
+    1,
+    1
+   ],
+   "texture": 0,
+   "metallic": 1,
+   "roughness": 1,
+   "alpha": "opaque",
+   "cutoff": 0.5,
+   "metalTexture": 1
+  },
+  {
+   "name": "Marking",
+   "baseColor": [
+    1,
+    1,
+    1,
+    1
+   ],
+   "texture": 0,
+   "metallic": 1,
+   "roughness": 1,
+   "alpha": "opaque",
+   "cutoff": 0.5,
+   "metalTexture": 1
+  },
+  {
+   "name": "Coating",
+   "baseColor": [
+    1,
+    1,
+    1,
+    1
+   ],
+   "texture": 0,
+   "metallic": 1,
+   "roughness": 1,
+   "alpha": "opaque",
+   "cutoff": 0.5,
+   "metalTexture": 1
+  }
+ ],
+ "textures": [
+  {
+   "sha256": "1c56ba15ed8fc3b0b365c36dcfa31b8b893d339a7dfb03684ffc3a8471c0391d",
+   "width": 512,
+   "height": 512
+  },
+  {
+   "sha256": "fdd3827fee38eef61b39e2826bfb6ef3995b716d6adb4dbf19309b710391dec7",
+   "width": 512,
+   "height": 512
+  }
+ ]
+}

@@ -1,0 +1,11 @@
+<Project>
+  <!-- A project that merges several test suites names the same production source once per suite; the compiler takes it once. -->
+  <Target Name="TakeEachCompileItemOnce" BeforeTargets="CheckForDuplicateItems;CoreCompile">
+    <ItemGroup>
+      <_DistinctCompile Include="@(Compile->Distinct())" />
+      <Compile Remove="@(Compile)" />
+      <Compile Include="@(_DistinctCompile)" />
+      <_DistinctCompile Remove="@(_DistinctCompile)" />
+    </ItemGroup>
+  </Target>
+</Project>
